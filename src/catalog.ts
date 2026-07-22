@@ -1,0 +1,34 @@
+import type { ToolId } from "./engine/types.js";
+
+export interface ToolDescriptor {
+  id: ToolId;
+  name: string;
+  hint: string;
+  aliases: readonly string[];
+  executable: string;
+}
+
+export const TOOLS: readonly ToolDescriptor[] = [
+  { id: "claude", name: "Claude Code", hint: "Anthropic's coding agent", aliases: ["c", "cc"], executable: "claude" },
+  { id: "codex", name: "Codex CLI", hint: "OpenAI's terminal agent", aliases: ["cx"], executable: "codex" },
+  { id: "codex-app", name: "Codex App", hint: "OpenAI's desktop app", aliases: ["app"], executable: "codex" },
+  { id: "opencode", name: "OpenCode", hint: "Open source coding agent", aliases: ["oc"], executable: "opencode" },
+  { id: "grok", name: "Grok Build", hint: "xAI's coding agent", aliases: ["gr"], executable: "grok" },
+  { id: "hermes", name: "Hermes", hint: "Nous Research's agent", aliases: ["h"], executable: "hermes" },
+  { id: "openclaw", name: "OpenClaw", hint: "Personal AI assistant", aliases: ["claw"], executable: "openclaw" },
+  { id: "pi", name: "Pi", hint: "Minimal coding agent", aliases: [], executable: "pi" }
+] as const;
+
+const TOOL_LOOKUP = new Map<string, ToolId>();
+for (const tool of TOOLS) {
+  TOOL_LOOKUP.set(tool.id, tool.id);
+  for (const alias of tool.aliases) TOOL_LOOKUP.set(alias, tool.id);
+}
+
+export function resolveTool(value: string): ToolId | undefined {
+  return TOOL_LOOKUP.get(value.toLowerCase());
+}
+
+export function describeTool(id: ToolId): ToolDescriptor {
+  return TOOLS.find((tool) => tool.id === id)!;
+}

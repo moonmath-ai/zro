@@ -1,0 +1,54 @@
+{
+  "name": "@moonmath-ai/zro",
+  "version": "0.2.0-alpha.0",
+  "description": "Open coding agents on Zro with isolated, session-only configuration.",
+  "type": "module",
+  "bin": {
+    "zro": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "SECURITY.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "os": [
+    "!win32"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "json5": "^2.2.3",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "zro",
+    "cli",
+    "ai",
+    "coding-agent",
+    "claude",
+    "codex",
+    "grok",
+    "hermes",
+    "openclaw",
+    "opencode",
+    "pi"
+  ],
+  "license": "UNLICENSED"
+}
