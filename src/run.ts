@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ZRO_ENV_KEY, ZRO_MODELS, DEFAULT_MODEL } from "./engine/constants.js";
+import { ENDPOINT_ROOT, ZRO_ENV_KEY, ZRO_MODELS, DEFAULT_MODEL } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -188,6 +188,11 @@ async function launch(
     return 0;
   }
 
+  if (!await verifyApiKey(key.apiKey, io, env)) {
+    await fs.rm(tempDir, { recursive: true, force: true });
+    return 1;
+  }
+
   try {
     await writePreferences(
       { homeDir: io.homeDir, env },
@@ -215,6 +220,52 @@ async function launch(
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function verifyApiKey(
+  apiKey: string,
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+): Promise<boolean> {
+  const fetcher = io.fetch ?? globalThis.fetch;
+  const endpointRoot = (env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
+  const validationUrl = `${endpointRoot}/v1/models`;
+
+  let response: Response;
+  try {
+    response = await fetcher(validationUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    io.stderr.write(
+      `Could not verify Zro authentication at ${endpointRoot}: ${messageOf(error)}. Agent was not started.\n`,
+    );
+    return false;
+  }
+
+  const status = response.status;
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The status is sufficient for this preflight; the response body is intentionally ignored.
+  }
+
+  if (response.ok) return true;
+
+  if (status === 401 || status === 403) {
+    io.stderr.write(
+      `Authentication failed: Zro rejected the API key (HTTP ${status}). ` +
+      `Run zro connect --manual with a valid API key. Agent was not started.\n`,
+    );
+    return false;
+  }
+
+  io.stderr.write(
+    `Could not verify Zro authentication: HTTP ${status} from ${validationUrl}. ` +
+    "Agent was not started.\n",
+  );
+  return false;
 }
 
 async function connect(
@@ -273,7 +324,7 @@ async function connectWithWebsite(
   colors: ReturnType<typeof theme>
 ): Promise<number> {
   const fetcher = io.fetch ?? globalThis.fetch;
-  const authRoot = (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || "https://zro.moonmath.ai").replace(/\/$/, "");
+  const authRoot = getAuthRoot(env);
   const { publicKey, privateKey } = generateKeyPairSync("rsa", {
     modulusLength: 2048,
     publicKeyEncoding: { type: "spki", format: "pem" },
@@ -282,7 +333,7 @@ async function connectWithWebsite(
 
   let started: DeviceLoginStart;
   try {
-    const response = await fetcher(`${authRoot}/api/cli-auth/start`, {
+    const response = await fetcher(`${authRoot}/api/cli/auth/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -298,23 +349,28 @@ async function connectWithWebsite(
       throw new Error(`${detail} (HTTP ${response.status} from ${authRoot})`);
     }
     started = validateDeviceLoginStart(payload);
-  } catch (error) {
-    io.stderr.write(`Website login could not start: ${messageOf(error)}\n`);
-    io.stderr.write("Use zro connect --manual to enter an API key instead.\n");
+  } catch {
+    if (request.output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
+      io.stdout.write("Website sign-in is unavailable.\nPaste your Zro API key to continue.\n\n");
+      return connectManually(undefined, request.output, io, env);
+    }
+    io.stderr.write("Website sign-in is unavailable. Run zro connect --manual to enter an API key.\n");
     return 1;
   }
+
+  const approvalUrl = browserApprovalUrl(started.verificationUriComplete, env);
 
   let opened = false;
   if (request.openBrowser) {
     opened = await (io.openBrowser
-      ? io.openBrowser(started.verificationUriComplete)
-      : openBrowserWithSystem(started.verificationUriComplete, io.platform ?? process.platform));
+      ? io.openBrowser(approvalUrl)
+      : openBrowserWithSystem(approvalUrl, io.platform ?? process.platform));
   }
 
   if (request.output === "human") {
     io.stdout.write(`${banner(colors)}\n\n`);
     io.stdout.write(`${colors.strong(opened ? "Finish signing in in your browser" : "Open this page to sign in")}\n`);
-    io.stdout.write(`  ${started.verificationUriComplete}\n\n`);
+    io.stdout.write(`  ${approvalUrl}\n\n`);
     io.stdout.write(`  Code  ${colors.accent(started.userCode)}\n\n`);
     io.stdout.write(`${colors.muted("Waiting for approval…")}\n`);
   }
@@ -327,7 +383,7 @@ async function connectWithWebsite(
     let response: Response;
     let payload: unknown;
     try {
-      response = await fetcher(`${authRoot}/api/cli-auth/token`, {
+      response = await fetcher(`${authRoot}/api/cli/auth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceCode: started.deviceCode }),
@@ -401,17 +457,26 @@ async function status(
   const stored = await readStoredApiKey({ homeDir: io.homeDir, env });
   const envKey = env[ZRO_ENV_KEY];
   const source = envKey ? "environment" : stored ? "stored" : "none";
+  const credential = envKey ?? stored;
   const preferences = await readPreferences({ homeDir: io.homeDir, env });
-  const installed = await Promise.all(TOOLS.map(async (tool) => ({
-    id: tool.id,
-    name: tool.name,
-    installed: await commandExists(tool.executable, env)
-  })));
+  const [installed, accountResult] = await Promise.all([
+    Promise.all(TOOLS.map(async (tool) => ({
+      id: tool.id,
+      name: tool.name,
+      installed: await commandExists(tool.executable, env)
+    }))),
+    credential
+      ? fetchAccountStatus(credential, io, env)
+      : Promise.resolve({ state: "not_connected" } as const),
+  ]);
+  const connected = source !== "none" && accountResult.state !== "rejected";
   if (output === "json") {
     io.stdout.write(`${JSON.stringify({
-      connected: source !== "none",
+      connected,
       credentialSource: source,
       credentialPath: credentialFilePath({ homeDir: io.homeDir, env }),
+      accountStatus: accountResult.state,
+      account: accountResult.state === "available" ? accountResult.account : null,
       lastSession: preferences.lastTool && preferences.lastModel
         ? { tool: preferences.lastTool, model: preferences.lastModel }
         : null,
@@ -421,11 +486,17 @@ async function status(
   }
 
   io.stdout.write(`${banner(colors)}\n\n`);
-  const credential = envKey ?? stored;
-  io.stdout.write(`${source === "none" ? colors.muted("◇") : colors.good("◆")} Connection  `);
+  io.stdout.write(`${!connected ? colors.muted("◇") : colors.good("◆")} Connection  `);
   io.stdout.write(source === "none"
     ? `${colors.muted("not connected")}\n  Run zro connect\n`
+    : accountResult.state === "rejected"
+      ? `${colors.muted("API key rejected")}\n  Run zro connect --manual\n`
     : `${colors.strong(source)} ${colors.muted(`· ${maskKey(credential!)}`)}\n`);
+  if (accountResult.state === "available") {
+    printAccountStatus(accountResult.account, io, colors);
+  } else if (accountResult.state === "unavailable") {
+    io.stdout.write(`${colors.muted("◇")} Account     ${colors.muted("details unavailable")}\n`);
+  }
   if (preferences.lastTool && preferences.lastModel) {
     io.stdout.write(`${colors.accent("◆")} Last session  ${describeTool(preferences.lastTool).name} ${colors.muted(`· ${preferences.lastModel}`)}\n`);
   } else {
@@ -436,6 +507,151 @@ async function status(
     io.stdout.write(`  ${tool.installed ? colors.good("◆") : colors.muted("◇")} ${pad(tool.name, 13)} ${tool.installed ? "ready" : colors.muted("not installed")}\n`);
   }
   return 0;
+}
+
+type AccountStatus = {
+  key: { id: string; alias: string };
+  billing: {
+    status: string;
+    currency: string;
+    plan: {
+      id: string;
+      name: string;
+      allowance: number;
+      used: number;
+      remaining: number;
+    } | null;
+    usagePacks: { total: number; used: number; remaining: number };
+    totalRemaining: number;
+  };
+  activity30d: {
+    requests: number;
+    modelRequests: number;
+    toolCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cacheReadInputTokens: number;
+    spend: number;
+  };
+};
+
+type AccountStatusResult =
+  | { state: "available"; account: AccountStatus }
+  | { state: "rejected" }
+  | { state: "unavailable" };
+
+async function fetchAccountStatus(
+  apiKey: string,
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+): Promise<AccountStatusResult> {
+  const fetcher = io.fetch ?? globalThis.fetch;
+  const endpointRoot = getAuthRoot(env);
+  try {
+    const response = await fetcher(`${endpointRoot}/api/cli/status`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.status === 401 || response.status === 403) {
+      await response.body?.cancel().catch(() => {});
+      return { state: "rejected" };
+    }
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      return { state: "unavailable" };
+    }
+    const account = parseAccountStatus(await responseJson(response));
+    return account ? { state: "available", account } : { state: "unavailable" };
+  } catch {
+    return { state: "unavailable" };
+  }
+}
+
+function getAuthRoot(env: NodeJS.ProcessEnv): string {
+  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
+}
+
+function browserApprovalUrl(serverUrl: string, env: NodeJS.ProcessEnv): string {
+  const publicRoot = env.ZRO_PUBLIC_URL || env.ZRO_AUTH_URL;
+  if (!publicRoot) return serverUrl;
+
+  const url = new URL(serverUrl);
+  return new URL(`${url.pathname}${url.search}${url.hash}`, new URL(publicRoot)).toString();
+}
+
+function parseAccountStatus(value: unknown): AccountStatus | null {
+  const root = asRecord(value);
+  const key = asRecord(root.key);
+  const billing = asRecord(root.billing);
+  const packs = asRecord(billing.usagePacks);
+  const activity = asRecord(root.activity30d);
+  const planValue = billing.plan;
+  const plan = planValue === null ? null : asRecord(planValue);
+  if (
+    typeof key.id !== "string" || typeof key.alias !== "string" ||
+    typeof billing.status !== "string" || typeof billing.currency !== "string" ||
+    !hasNumbers(packs, ["total", "used", "remaining"]) ||
+    !hasNumbers(billing, ["totalRemaining"]) ||
+    !hasNumbers(activity, [
+      "requests", "modelRequests", "toolCalls", "inputTokens", "outputTokens",
+      "totalTokens", "cacheReadInputTokens", "spend",
+    ]) ||
+    (plan !== null && (
+      typeof plan.id !== "string" || typeof plan.name !== "string" ||
+      !hasNumbers(plan, ["allowance", "used", "remaining"])
+    ))
+  ) return null;
+
+  return value as AccountStatus;
+}
+
+function hasNumbers(value: Record<string, unknown>, keys: string[]): boolean {
+  return keys.every((key) => typeof value[key] === "number" && Number.isFinite(value[key]));
+}
+
+function printAccountStatus(
+  account: AccountStatus,
+  io: RunIo,
+  colors: ReturnType<typeof theme>,
+): void {
+  const plan = account.billing.plan;
+  io.stdout.write("\nAccount\n");
+  io.stdout.write(
+    `  ${colors.good("◆")} Plan         ${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
+    `${colors.muted(`· ${account.billing.status}`)}\n`,
+  );
+  if (plan) {
+    io.stdout.write(
+      `  ${colors.good("◆")} Plan usage   ${money(plan.used, account.billing.currency)} of ` +
+      `${money(plan.allowance, account.billing.currency)} · ${money(plan.remaining, account.billing.currency)} left\n`,
+    );
+  }
+  const packs = account.billing.usagePacks;
+  io.stdout.write(
+    `  ${packs.remaining > 0 ? colors.good("◆") : colors.muted("◇")} Usage packs  ` +
+    `${money(packs.remaining, account.billing.currency)} left · ${money(packs.total, account.billing.currency)} total\n`,
+  );
+  io.stdout.write(
+    `  ${colors.good("◆")} Available    ${money(account.billing.totalRemaining, account.billing.currency)} total\n`,
+  );
+  io.stdout.write(
+    `  ${colors.muted("◇")} Last 30 days ${formatInteger(account.activity30d.requests)} requests · ` +
+    `${formatInteger(account.activity30d.totalTokens)} tokens\n`,
+  );
+}
+
+function money(value: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatInteger(value: number): string {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
 function models(output: "human" | "json", io: RunIo, colors: ReturnType<typeof theme>): number {

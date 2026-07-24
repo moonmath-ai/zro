@@ -17,14 +17,14 @@ describe("zro experience", () => {
     let openedUrl = "";
     const fetcher = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = String(input);
-      if (url.endsWith("/api/cli-auth/start")) {
+      if (url.endsWith("/api/cli/auth/start")) {
         const body = JSON.parse(String(init?.body)) as { publicKey: string };
         publicKey = body.publicKey;
         return Response.json({
           deviceCode: "device-secret",
           userCode: "ABCD-EFGH",
-          verificationUri: "https://zro.example/cli/authorize",
-          verificationUriComplete: "https://zro.example/cli/authorize?code=ABCD-EFGH",
+          verificationUri: "http://container:3000/cli/authorize",
+          verificationUriComplete: "http://container:3000/cli/authorize?code=ABCD-EFGH",
           expiresIn: 600,
           interval: 2
         });
@@ -39,7 +39,11 @@ describe("zro experience", () => {
 
     const code = await run(["connect"], {
       ...io(home, stdout),
-      env: { ZRO_AUTH_URL: "https://zro.example", ZRO_DEVICE_NAME: "test laptop" },
+      env: {
+        ZRO_AUTH_URL: "https://auth.zro.example",
+        ZRO_PUBLIC_URL: "https://zro.example",
+        ZRO_DEVICE_NAME: "test laptop",
+      },
       fetch: fetcher,
       openBrowser: async (url) => { openedUrl = url; return true; },
       sleep: async () => undefined
@@ -54,6 +58,37 @@ describe("zro experience", () => {
     expect(output).toContain("ABCD-EFGH");
     expect(output).toContain("Connected");
     expect(output).not.toContain("sk-browser-secret");
+  });
+
+  it("prompts for an API key when website login is unavailable", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-login-fallback-"));
+    const stdin = new PassThrough() as PassThrough & { isTTY: boolean };
+    const stdout = new PassThrough() as PassThrough & { isTTY: boolean };
+    const stderr = new PassThrough();
+    stdin.isTTY = true;
+    stdout.isTTY = true;
+
+    const result = run(["connect"], {
+      ...io(home, stdout),
+      stdin,
+      stderr,
+      fetch: async () => Response.json(
+        { error: "not found" },
+        { status: 404 },
+      ),
+    });
+    queueMicrotask(() => stdin.end("sk-manual-fallback\n"));
+
+    expect(await result).toBe(0);
+    expect(JSON.parse(
+      await fs.readFile(path.join(home, ".config", "zro", "credentials.json"), "utf8")
+    ).apiKey).toBe("sk-manual-fallback");
+    const output = await streamText(stdout);
+    expect(output).toContain("Website sign-in is unavailable.");
+    expect(output).toContain("Paste your Zro API key to continue.");
+    expect(output).toContain("Connected");
+    expect(output).not.toContain("sk-manual-fallback");
+    expect(await streamText(stderr)).toBe("");
   });
 
   it("shows the command palette as help when no TTY is available", async () => {
@@ -72,6 +107,11 @@ describe("zro experience", () => {
     const code = await run(["codex", "-m", "glm-5.2", "exec", "hello"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-new-secret" },
+      fetch: async (input, init) => {
+        expect(String(input)).toBe("https://zro.moonmath.ai/v1/models");
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-new-secret");
+        return Response.json({ data: [] });
+      },
       spawn: fakeExitSpawn((command, args, options) => {
         expect(command).toBe("codex");
         expect(args).toEqual(["exec", "-c", 'model="glm-5.2"', "hello"]);
@@ -86,6 +126,53 @@ describe("zro experience", () => {
     );
     expect(preferences).toMatchObject({ lastTool: "codex", lastModel: "glm-5.2" });
     await expect(fs.stat(sessionHome)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not launch an agent when the API rejects the key", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-rejected-key-"));
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let spawned = false;
+
+    const code = await run(["codex"], {
+      ...io(home, stdout),
+      stderr,
+      env: { ZRO_API_KEY: "sk-rejected-secret" },
+      fetch: async () => Response.json(
+        { error: { message: "invalid key" } },
+        { status: 401 },
+      ),
+      spawn: fakeExitSpawn(() => { spawned = true; }),
+    });
+
+    expect(code).toBe(1);
+    expect(spawned).toBe(false);
+    expect(await streamText(stderr)).toContain(
+      "Authentication failed: Zro rejected the API key (HTTP 401).",
+    );
+    await expect(fs.stat(path.join(home, ".config", "zro", "preferences.json")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not launch an agent when authentication cannot be verified", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-auth-unavailable-"));
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let spawned = false;
+
+    const code = await run(["claude"], {
+      ...io(home, stdout),
+      stderr,
+      env: { ZRO_API_KEY: "sk-unverified-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+      spawn: fakeExitSpawn(() => { spawned = true; }),
+    });
+
+    expect(code).toBe(1);
+    expect(spawned).toBe(false);
+    expect(await streamText(stderr)).toContain(
+      "Could not verify Zro authentication: HTTP 503",
+    );
   });
 
   it("produces a JSON preview without exposing or writing the key", async () => {
@@ -115,15 +202,69 @@ describe("zro experience", () => {
     const stdout = new PassThrough();
     const code = await run(["status", "--json"], {
       ...io(home, stdout),
-      env: { ZRO_API_KEY: "sk-status-secret", PATH: bin }
+      env: {
+        ZRO_API_KEY: "sk-status-secret",
+        ZRO_AUTH_URL: "https://auth.zro.example",
+        PATH: bin,
+      },
+      fetch: async (input, init) => {
+        expect(String(input)).toBe("https://auth.zro.example/api/cli/status");
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-status-secret");
+        return Response.json(accountStatusResponse());
+      },
     });
 
     expect(code).toBe(0);
     const result = JSON.parse(await streamText(stdout));
     expect(result.connected).toBe(true);
     expect(result.credentialSource).toBe("environment");
+    expect(result.accountStatus).toBe("available");
+    expect(result.account.billing.usagePacks.remaining).toBe(15);
+    expect(result.account.activity30d.totalTokens).toBe(1250);
     expect(result.tools.find((tool: { id: string }) => tool.id === "claude").installed).toBe(true);
     expect(JSON.stringify(result)).not.toContain("sk-status-secret");
+  });
+
+  it("shows account usage and balances in human status", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-account-status-"));
+    const stdout = new PassThrough();
+    const code = await run(["status"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-status-secret" },
+      fetch: async () => Response.json(accountStatusResponse()),
+    });
+
+    expect(code).toBe(0);
+    const output = await streamText(stdout);
+    expect(output).toContain("Plan         Pro · active");
+    expect(output).toContain("Plan usage   $8.00 of $60.00 · $52.00 left");
+    expect(output).toContain("Usage packs  $15.00 left · $20.00 total");
+    expect(output).toContain("Available    $67.00 total");
+    expect(output).toContain("Last 30 days 15 requests · 1,250 tokens");
+  });
+
+  it("reports a rejected stored key as disconnected", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-rejected-status-"));
+    const credentialDir = path.join(home, ".config", "zro");
+    await fs.mkdir(credentialDir, { recursive: true });
+    await fs.writeFile(
+      path.join(credentialDir, "credentials.json"),
+      JSON.stringify({ apiKey: "sk-rejected" }),
+    );
+    const stdout = new PassThrough();
+
+    const code = await run(["status", "--json"], {
+      ...io(home, stdout),
+      fetch: async () => Response.json({ error: "invalid" }, { status: 401 }),
+    });
+
+    expect(code).toBe(0);
+    expect(JSON.parse(await streamText(stdout))).toMatchObject({
+      connected: false,
+      credentialSource: "stored",
+      accountStatus: "rejected",
+      account: null,
+    });
   });
 
   it("reports a fully disconnected state after removing the stored key", async () => {
@@ -171,4 +312,33 @@ async function streamText(stream: PassThrough): Promise<string> {
   let output = "";
   for await (const chunk of stream) output += chunk.toString();
   return output;
+}
+
+function accountStatusResponse() {
+  return {
+    key: { id: "key_1", alias: "Laptop" },
+    billing: {
+      status: "active",
+      currency: "USD",
+      plan: {
+        id: "pro",
+        name: "Pro",
+        allowance: 60,
+        used: 8,
+        remaining: 52,
+      },
+      usagePacks: { total: 20, used: 5, remaining: 15 },
+      totalRemaining: 67,
+    },
+    activity30d: {
+      requests: 15,
+      modelRequests: 12,
+      toolCalls: 3,
+      inputTokens: 1000,
+      outputTokens: 250,
+      totalTokens: 1250,
+      cacheReadInputTokens: 400,
+      spend: 8,
+    },
+  };
 }

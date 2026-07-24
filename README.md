@@ -49,9 +49,21 @@ ephemeral public key belonging to the CLI, so the device-login database record n
 usable plaintext credential. The CLI sends a generic device label unless `ZRO_DEVICE_NAME` is
 explicitly set.
 
+If website login cannot start in an interactive terminal, `zro` immediately falls back to a masked
+API-key paste prompt. Non-interactive commands still exit with instructions instead of waiting for
+input.
+
 `ZRO_API_KEY` takes precedence over the stored key. Credentials are stored under
 `~/.config/zro/credentials.json`, and the last tool/model pair is stored in
 `~/.config/zro/preferences.json`. Set `ZRO_AUTH_URL` to use a development authentication server.
+For remote development with a browser-side port forward, set `ZRO_PUBLIC_URL` to the forwarded
+website origin.
+Before starting an agent, `zro` verifies the selected credential with the inference API. Rejected
+credentials and unavailable validation endpoints stop the launch instead of passing the failure to
+the child agent.
+
+When connected, `zro status` also shows the current plan allowance, usage-pack balance, total
+available spend, and 30-day request and token activity. JSON output includes the same account data.
 
 ## Safety
 
