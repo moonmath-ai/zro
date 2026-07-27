@@ -27,8 +27,8 @@ const { TOOLS } = require(catalogPath);
 // it from the matrix where `codex` already covers it.
 const matrix = TOOLS.filter((tool) => tool.id !== "codex-app").map(
   // Keep the matrix lean: only the fields the workflow branches on. `package`
-  // is absent for curl-installed harnesses (hermes) and print-instruction ones
-  // (grok); `installer` tells the workflow which curl step to run.
+  // is absent for curl-installed harnesses; `installer` tells the workflow
+  // which official shell installer to run.
   //
   // `installer.args` is an array in the HARNESSES table (e.g. ["--skip-setup"]),
   // but GitHub Actions coerces an array interpolated via `${{ ... }}` into the

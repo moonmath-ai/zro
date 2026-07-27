@@ -28,11 +28,10 @@ import { piTool } from "./engine/tools/pi.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
 import { describeTool, TOOLS } from "./catalog.js";
-import { ensureHarnessInstalled, install } from "./install.js";
+import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import type { CliRequest, RunIo } from "./types.js";
 import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
-import { checkUpgrade, defaultFetchLatestVersion } from "./upgrade.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -122,24 +121,6 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
   if (request.install && !request.dryRun) {
     const ready = await ensureHarnessInstalled(request.tool, io, env);
     if (!ready) return 1;
-  }
-
-  if (!request.dryRun) {
-    const upgradeResult = await checkUpgrade({
-      currentVersion: io.currentVersion ?? io.version ?? PACKAGE_VERSION,
-      homeDir: io.homeDir,
-      cwd: io.cwd,
-      env,
-      stdin: io.stdin,
-      stdout: io.stdout,
-      stderr: io.stderr,
-      spawn: io.spawn,
-      fetchLatestVersion: io.fetchLatestVersion,
-      execPath: io.execPath,
-      scriptPath: io.scriptPath,
-      argv,
-    });
-    if (!upgradeResult.proceed) return upgradeResult.exitCode;
   }
 
   return launch(request, io, env, colors);
@@ -777,20 +758,6 @@ async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): P
   });
 }
 
-async function commandExists(command: string, env: NodeJS.ProcessEnv): Promise<boolean> {
-  const searchPath = env.PATH ?? "";
-  for (const directory of searchPath.split(path.delimiter)) {
-    if (!directory) continue;
-    try {
-      await fs.access(path.join(directory, command), fs.constants.X_OK);
-      return true;
-    } catch {
-      // Keep searching.
-    }
-  }
-  return false;
-}
-
 function redact(key: string, value: string, secret: string): string {
   if (/KEY|TOKEN|SECRET|AUTH/i.test(key) || value.includes(secret)) return maskKey(value);
   return value;
@@ -884,10 +851,6 @@ function defaultIo(): RunIo {
     env: process.env,
     spawn: nodeSpawn as SpawnProcess,
     platform: process.platform,
-    version: PACKAGE_VERSION,
-    currentVersion: PACKAGE_VERSION,
-    fetchLatestVersion: defaultFetchLatestVersion,
-    execPath: process.execPath,
-    scriptPath: process.argv[1]
+    version: PACKAGE_VERSION
   };
 }

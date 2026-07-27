@@ -62,10 +62,10 @@ describe("the direct command language", () => {
   });
 
   it("parses install, upgrade, and pinned harness versions", () => {
-    expect(parseArgs(["install", "claude@2.1.105", "--upgrade"])).toEqual({
+    expect(parseArgs(["install", "claude@2.1.105"])).toEqual({
       command: "install",
       tool: "claude",
-      upgrade: true,
+      upgrade: false,
       version: "2.1.105"
     });
     expect(parseArgs(["install", "--upgrade"])).toEqual({
@@ -79,6 +79,8 @@ describe("the direct command language", () => {
       tool: "claude",
       install: true
     });
+    expect(() => parseArgs(["install", "claude@2.1.105", "--upgrade"]))
+      .toThrow("either a pinned version or --upgrade");
   });
 
   it("turns JSON launches into secret-safe previews", () => {

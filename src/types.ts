@@ -1,6 +1,5 @@
 import type { Readable, Writable } from "node:stream";
 import type { SpawnProcess, ToolId } from "./engine/types.js";
-import type { VersionCheck } from "./upgrade.js";
 
 export type { SpawnOptions, SpawnProcess } from "./engine/types.js";
 
@@ -49,11 +48,6 @@ export interface RunIo {
   spawn?: SpawnProcess;
   platform?: NodeJS.Platform;
   version?: string;
-  currentVersion?: string;
-  fetchLatestVersion?: () => Promise<string | null>;
-  resolvePackageVersion?: (packageName: string, version: string) => Promise<VersionCheck>;
-  execPath?: string;
-  scriptPath?: string;
   fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   openBrowser?: (url: string) => Promise<boolean>;
   sleep?: (milliseconds: number) => Promise<void>;

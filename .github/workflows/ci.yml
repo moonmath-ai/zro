@@ -145,12 +145,6 @@ jobs:
           curl -fsSL "${{ matrix.harness.installer.url }}" | bash -s -- ${{ matrix.harness.installer.args }}
           echo "$HOME/${{ matrix.harness.installer.binDir }}" >> "$GITHUB_PATH"
 
-      - name: Install Grok Build
-        if: matrix.harness.id == 'grok'
-        run: |
-          curl -fsSL https://x.ai/cli/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Install Claude Code test dependency
         if: matrix.harness.id == 'claude'
         run: |

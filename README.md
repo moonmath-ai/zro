@@ -50,13 +50,13 @@ process. Native tool arguments can be placed after `--`.
 
 ## Installation and upgrades
 
-`zro install <tool>` installs npm-distributed agents globally. Hermes uses its official shell
-installer; Grok Build prints its upstream installation instructions. Add `--upgrade` to update an
+`zro install <tool>` installs npm-distributed agents globally. Hermes and Grok Build use their
+official shell installers. Add `--upgrade` to update an
 installed agent, or pin an npm version with either `tool@version` or `--version version`.
 
 `zro <tool> --install` installs a missing agent and opens it in one command. `zro install
---upgrade` upgrades the Zro CLI itself. Before normal launches, Zro checks for a newer CLI release
-at most once every 24 hours and offers an interactive upgrade when attached to a terminal.
+--upgrade` upgrades the Zro CLI itself. Version validation and installer errors are reported directly
+by npm or the tool's official installer.
 
 ## Authentication
 

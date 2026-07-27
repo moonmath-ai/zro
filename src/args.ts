@@ -176,6 +176,9 @@ function parseInstallArgs(argv: string[]): Extract<CliRequest, { command: "insta
   if (!tool && !upgrade) {
     throw new Error("Missing <tool>. Use --upgrade to upgrade zro itself.");
   }
+  if (tool && version && upgrade) {
+    throw new Error("Choose either a pinned version or --upgrade, not both.");
+  }
   return { command: "install", tool, upgrade, version };
 }
 
