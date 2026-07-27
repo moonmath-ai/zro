@@ -5,34 +5,10 @@ import type { SUPPORTED_TOOLS } from "./constants.js";
 export type ToolId = (typeof SUPPORTED_TOOLS)[number];
 export type ApiKeySource = "flag" | "env" | "stored";
 
-export type CliArgs =
-  | {
-      command: "launch";
-      tool: string;
-      apiKey?: string;
-      model?: string;
-      print: boolean;
-      extraArgs: string[];
-    }
-  | {
-      command: "login";
-      apiKey?: string;
-    }
-  | {
-      command: "logout";
-    }
-  | {
-      command: "auth-status";
-    }
-  | {
-      command: "version";
-    };
-
 export interface LaunchContext {
   apiKey: string;
   apiKeySource: ApiKeySource;
   model: string;
-  print: boolean;
   extraArgs: string[];
   homeDir: string;
   cwd: string;

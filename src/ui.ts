@@ -41,7 +41,10 @@ ${colors.strong("Make it yours")}
   zro logout                 Remove the stored login
   zro status                 See connection, tools, and last session
   zro models                 Browse the model catalog
-  zro claude --inspect       Preview without launching
+  zro install claude         Install a supported agent
+  zro claude --install       Install if missing, then open
+  zro install --upgrade      Upgrade zro itself
+  zro claude --dry-run       Preview without launching
 
 ${colors.strong("Tools")}
   ${TOOLS.map((tool) => tool.id).join("  ")}

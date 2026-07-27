@@ -28,9 +28,11 @@ import { piTool } from "./engine/tools/pi.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
 import { describeTool, TOOLS } from "./catalog.js";
+import { ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import type { CliRequest, RunIo } from "./types.js";
 import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
+import { checkUpgrade, defaultFetchLatestVersion } from "./upgrade.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -74,6 +76,7 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       : `${io.version ?? PACKAGE_VERSION}\n`);
     return 0;
   }
+  if (request.command === "install") return install(request, io, env);
   if (request.command === "login") return login(request, io, env, colors);
   if (request.command === "logout") return logout(request.output, io, env);
   if (request.command === "status") return status(request.output, io, env, colors);
@@ -90,7 +93,7 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       request = {
         command: "launch",
         tool,
-        inspect: false,
+        dryRun: false,
         output: "human",
         extraArgs: []
       };
@@ -110,10 +113,33 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       command: "launch",
       tool: preferences.lastTool,
       model: preferences.lastModel,
-      inspect: request.inspect,
+      dryRun: request.dryRun,
       output: request.output,
       extraArgs: []
     };
+  }
+
+  if (request.install && !request.dryRun) {
+    const ready = await ensureHarnessInstalled(request.tool, io, env);
+    if (!ready) return 1;
+  }
+
+  if (!request.dryRun) {
+    const upgradeResult = await checkUpgrade({
+      currentVersion: io.currentVersion ?? io.version ?? PACKAGE_VERSION,
+      homeDir: io.homeDir,
+      cwd: io.cwd,
+      env,
+      stdin: io.stdin,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      spawn: io.spawn,
+      fetchLatestVersion: io.fetchLatestVersion,
+      execPath: io.execPath,
+      scriptPath: io.scriptPath,
+      argv,
+    });
+    if (!upgradeResult.proceed) return upgradeResult.exitCode;
   }
 
   return launch(request, io, env, colors);
@@ -167,7 +193,6 @@ async function launch(
       apiKey: key.apiKey,
       apiKeySource: key.source,
       model,
-      print: request.inspect,
       extraArgs: request.extraArgs,
       homeDir: io.homeDir,
       cwd: io.cwd,
@@ -182,8 +207,8 @@ async function launch(
     return 1;
   }
 
-  if (request.inspect) {
-    printInspection(plan, request.output, io, key.apiKey, colors);
+  if (request.dryRun) {
+    printPreview(plan, request.output, io, key.apiKey, colors);
     await fs.rm(tempDir, { recursive: true, force: true });
     return 0;
   }
@@ -688,7 +713,7 @@ function models(output: "human" | "json", io: RunIo, colors: ReturnType<typeof t
   return 0;
 }
 
-function printInspection(
+function printPreview(
   plan: LaunchPlan,
   output: "human" | "json",
   io: RunIo,
@@ -859,6 +884,10 @@ function defaultIo(): RunIo {
     env: process.env,
     spawn: nodeSpawn as SpawnProcess,
     platform: process.platform,
-    version: PACKAGE_VERSION
+    version: PACKAGE_VERSION,
+    currentVersion: PACKAGE_VERSION,
+    fetchLatestVersion: defaultFetchLatestVersion,
+    execPath: process.execPath,
+    scriptPath: process.argv[1]
   };
 }

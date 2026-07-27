@@ -48,10 +48,11 @@ export function parseArgs(argv: string[]): CliRequest {
     assertNoExtraArgs(parsed.extraArgs, command);
     return { command: "models", output: parsed.output };
   }
+  if (command === "install") return parseInstallArgs(argv.slice(1));
   if (command === "again") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "again", inspect: parsed.inspect, output: parsed.output };
+    return { command: "again", dryRun: parsed.dryRun, output: parsed.output };
   }
 
   if (command === "launch" || command === "run") {
@@ -72,14 +73,15 @@ export function parseArgs(argv: string[]): CliRequest {
 interface ParsedOptions {
   model?: string;
   apiKey?: string;
-  inspect: boolean;
+  dryRun: boolean;
+  install?: boolean;
   output: OutputMode;
   extraArgs: string[];
 }
 
 function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions {
   const result: ParsedOptions = {
-    inspect: false,
+    dryRun: false,
     output: "human",
     extraArgs: []
   };
@@ -111,8 +113,15 @@ function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions 
       result.apiKey = value.slice("--api-key=".length);
       continue;
     }
-    if (value === "--inspect" || value === "--dry-run" || value === "-n") {
-      result.inspect = true;
+    if (value === "--dry-run" || value === "-n") {
+      result.dryRun = true;
+      continue;
+    }
+    if (value === "--inspect" || value === "--print") {
+      throw new Error(`Unknown Zro option ${value}. Use --dry-run.`);
+    }
+    if (value === "--install" && allowPassthrough) {
+      result.install = true;
       continue;
     }
     if (value === "--json") {
@@ -126,8 +135,48 @@ function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions 
     else result.extraArgs.push(value);
   }
 
-  if (result.output === "json" && allowPassthrough) result.inspect = true;
+  if (result.output === "json" && allowPassthrough) result.dryRun = true;
   return result;
+}
+
+function parseInstallArgs(argv: string[]): Extract<CliRequest, { command: "install" }> {
+  let tool: string | undefined;
+  let version: string | undefined;
+  let upgrade = false;
+  let index = 0;
+
+  if (argv[0] && !argv[0].startsWith("-")) {
+    const rawTool = argv[0];
+    const separator = rawTool.lastIndexOf("@");
+    if (separator > 0) {
+      tool = rawTool.slice(0, separator);
+      version = rawTool.slice(separator + 1);
+      if (!version) throw new Error("A version is required after @.");
+    } else {
+      tool = rawTool;
+    }
+    index = 1;
+  }
+
+  for (; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value === "--upgrade") {
+      upgrade = true;
+      continue;
+    }
+    if (value === "--version") {
+      const next = requiredValue(argv, ++index, value);
+      if (version) throw new Error(`Conflicting versions: ${version} and ${next}.`);
+      version = next;
+      continue;
+    }
+    throw new Error(`Unexpected argument for install: ${value}`);
+  }
+
+  if (!tool && !upgrade) {
+    throw new Error("Missing <tool>. Use --upgrade to upgrade zro itself.");
+  }
+  return { command: "install", tool, upgrade, version };
 }
 
 function requiredValue(argv: string[], index: number, option: string): string {

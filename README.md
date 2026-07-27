@@ -24,7 +24,12 @@ zro login --manual          # enter an API key manually
 zro logout                  # remove the stored login
 zro status                  # connection, installed tools, last session
 zro models                  # readable model catalog
-zro claude --inspect        # secret-safe session preview
+zro install claude          # install a supported agent
+zro claude --install        # install if missing, then open
+zro install claude@2.1.105  # install a pinned agent version
+zro install claude --upgrade # upgrade one agent
+zro install --upgrade       # upgrade zro itself
+zro claude --dry-run        # secret-safe session preview
 zro codex --json            # machine-readable preview
 ```
 
@@ -42,6 +47,16 @@ zro launch claude
 Claude Code, Codex CLI, Codex App, Grok Build, OpenCode, Hermes, OpenClaw, and Pi are supported.
 Each adapter creates a session-owned configuration and launches the installed tool as a child
 process. Native tool arguments can be placed after `--`.
+
+## Installation and upgrades
+
+`zro install <tool>` installs npm-distributed agents globally. Hermes uses its official shell
+installer; Grok Build prints its upstream installation instructions. Add `--upgrade` to update an
+installed agent, or pin an npm version with either `tool@version` or `--version version`.
+
+`zro <tool> --install` installs a missing agent and opens it in one command. `zro install
+--upgrade` upgrades the Zro CLI itself. Before normal launches, Zro checks for a newer CLI release
+at most once every 24 hours and offers an interactive upgrade when attached to a terminal.
 
 ## Authentication
 
@@ -75,7 +90,7 @@ available spend, and 30-day request and token activity. JSON output includes the
 - Normal agent configs are never edited.
 - Per-session files live under `~/.cache/zro/sessions` and are removed when the agent exits.
 - API keys are masked in human and JSON previews.
-- `--inspect` writes nothing and starts nothing.
+- `--dry-run` writes nothing and starts nothing.
 - macOS and Linux are supported; use WSL on Windows.
 
 See [SECURITY.md](SECURITY.md) for the security model and private vulnerability reporting.
@@ -93,6 +108,10 @@ npm install
 npm test
 npm run build
 node dist/cli.js status
+
+# Production compatibility and live API checks require a real key.
+ZRO_API_KEY=sk-... npm run test:clients
+ZRO_API_KEY=sk-... npm run test:live
 ```
 
 ## License

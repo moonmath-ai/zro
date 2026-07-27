@@ -28,17 +28,17 @@ describe("the direct command language", () => {
       tool: "codex",
       model: "glm-5.2",
       apiKey: undefined,
-      inspect: false,
+      dryRun: false,
       output: "human",
       extraArgs: ["exec", "hello"]
     });
   });
 
-  it("supports memorable tool aliases", () => {
-    expect(parseArgs(["oc", "--inspect"])).toMatchObject({
+  it("supports memorable tool aliases and dry runs", () => {
+    expect(parseArgs(["oc", "--dry-run"])).toMatchObject({
       command: "launch",
       tool: "opencode",
-      inspect: true
+      dryRun: true
     });
   });
 
@@ -50,11 +50,42 @@ describe("the direct command language", () => {
     });
   });
 
+  it("rejects the removed preview flags before the passthrough separator", () => {
+    expect(() => parseArgs(["launch", "claude", "--inspect"])).toThrow("Use --dry-run");
+    expect(() => parseArgs(["launch", "claude", "--print"])).toThrow("Use --dry-run");
+    expect(parseArgs(["launch", "claude", "--", "--print"])).toMatchObject({
+      command: "launch",
+      tool: "claude",
+      dryRun: false,
+      extraArgs: ["--print"]
+    });
+  });
+
+  it("parses install, upgrade, and pinned harness versions", () => {
+    expect(parseArgs(["install", "claude@2.1.105", "--upgrade"])).toEqual({
+      command: "install",
+      tool: "claude",
+      upgrade: true,
+      version: "2.1.105"
+    });
+    expect(parseArgs(["install", "--upgrade"])).toEqual({
+      command: "install",
+      tool: undefined,
+      upgrade: true,
+      version: undefined
+    });
+    expect(parseArgs(["claude", "--install"])).toMatchObject({
+      command: "launch",
+      tool: "claude",
+      install: true
+    });
+  });
+
   it("turns JSON launches into secret-safe previews", () => {
     expect(parseArgs(["pi", "--json"])).toMatchObject({
       command: "launch",
       tool: "pi",
-      inspect: true,
+      dryRun: true,
       output: "json"
     });
   });
