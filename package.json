@@ -4,7 +4,7 @@
   "description": "Open coding agents on Zro with isolated, Zro-owned configuration.",
   "type": "module",
   "bin": {
-    "zro": "./dist/cli.js"
+    "zro": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -13,8 +13,7 @@
     "SECURITY.md"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "os": [
     "!win32"
