@@ -37,7 +37,7 @@ describe("zro experience", () => {
       return Response.json({ status: "approved", encryptedToken, algorithm: "RSA-OAEP-256" });
     };
 
-    const code = await run(["connect"], {
+    const code = await run(["login"], {
       ...io(home, stdout),
       env: {
         ZRO_AUTH_URL: "https://auth.zro.example",
@@ -56,8 +56,44 @@ describe("zro experience", () => {
     ).apiKey).toBe("sk-browser-secret");
     const output = await streamText(stdout);
     expect(output).toContain("ABCD-EFGH");
-    expect(output).toContain("Connected");
+    expect(output).toContain("Logged in");
     expect(output).not.toContain("sk-browser-secret");
+  });
+
+  it("offers website and API key login choices in an interactive terminal", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-login-choice-"));
+    const stdin = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      isRaw: boolean;
+      setRawMode(mode: boolean): void;
+    };
+    const stdout = new PassThrough() as PassThrough & { isTTY: boolean };
+    const stderr = new PassThrough();
+    stdin.isTTY = true;
+    stdin.isRaw = false;
+    stdin.setRawMode = (mode) => { stdin.isRaw = mode; };
+    stdout.isTTY = true;
+
+    const result = run(["login"], {
+      ...io(home, stdout),
+      stdin,
+      stderr,
+    });
+    queueMicrotask(() => {
+      stdin.write("\u001b[B\r");
+      setImmediate(() => stdin.end("sk-chosen-manually\n"));
+    });
+
+    expect(await result).toBe(0);
+    expect(JSON.parse(
+      await fs.readFile(path.join(home, ".config", "zro", "credentials.json"), "utf8"),
+    ).apiKey).toBe("sk-chosen-manually");
+    const output = await streamText(stdout);
+    expect(output).toContain("How do you want to log in?");
+    expect(output).toContain("Login with website");
+    expect(output).toContain("Login with API key");
+    expect(output).not.toContain("sk-chosen-manually");
+    expect(await streamText(stderr)).toBe("");
   });
 
   it("prompts for an API key when website login is unavailable", async () => {
@@ -68,7 +104,7 @@ describe("zro experience", () => {
     stdin.isTTY = true;
     stdout.isTTY = true;
 
-    const result = run(["connect"], {
+    const result = run(["login", "--no-browser"], {
       ...io(home, stdout),
       stdin,
       stderr,
@@ -86,7 +122,7 @@ describe("zro experience", () => {
     const output = await streamText(stdout);
     expect(output).toContain("Website sign-in is unavailable.");
     expect(output).toContain("Paste your Zro API key to continue.");
-    expect(output).toContain("Connected");
+    expect(output).toContain("Logged in");
     expect(output).not.toContain("sk-manual-fallback");
     expect(await streamText(stderr)).toBe("");
   });
@@ -274,7 +310,7 @@ describe("zro experience", () => {
     await fs.writeFile(path.join(credentialDir, "credentials.json"), JSON.stringify({ apiKey: "sk-stored" }));
     const stdout = new PassThrough();
 
-    const code = await run(["disconnect", "--json"], io(home, stdout));
+    const code = await run(["logout", "--json"], io(home, stdout));
 
     expect(code).toBe(0);
     expect(JSON.parse(await streamText(stdout))).toEqual({

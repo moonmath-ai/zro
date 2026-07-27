@@ -8,13 +8,13 @@ export type CliRequest =
   | { command: "help"; output: OutputMode }
   | { command: "version"; output: OutputMode }
   | {
-      command: "connect";
+      command: "login";
       apiKey?: string;
-      method: "browser" | "manual";
+      method: "choose" | "browser" | "manual";
       openBrowser: boolean;
       output: OutputMode;
     }
-  | { command: "disconnect"; output: OutputMode }
+  | { command: "logout"; output: OutputMode }
   | { command: "status"; output: OutputMode }
   | { command: "models"; output: OutputMode }
   | { command: "again"; inspect: boolean; output: OutputMode }

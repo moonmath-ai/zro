@@ -1,12 +1,12 @@
 # zro
 
 `zro` opens coding agents against the Zro inference endpoint without modifying their normal
-configuration. The tool is the command, setup happens in context, and launching before connecting
+configuration. The tool is the command, setup happens in context, and launching before logging in
 starts the website login automatically.
 
 ```bash
 npm install --global @moonmath-ai/zro
-zro connect
+zro login
 zro claude
 ```
 
@@ -18,9 +18,10 @@ zro claude                  # open directly on the default model
 zro codex -m glm-5.2        # choose a model for this session
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
-zro connect                 # sign in through the Zro website
-zro connect --no-browser    # print an approval URL for a remote machine
-zro connect --manual        # enter an API key manually
+zro login                   # choose website or API key login
+zro login --no-browser      # print an approval URL for a remote machine
+zro login --manual          # enter an API key manually
+zro logout                  # remove the stored login
 zro status                  # connection, installed tools, last session
 zro models                  # readable model catalog
 zro claude --inspect        # secret-safe session preview
@@ -44,6 +45,10 @@ process. Native tool arguments can be placed after `--`.
 
 ## Authentication
 
+Run `zro login` and choose **Login with website** or **Login with API key**. Use
+`zro login --manual` to go directly to API-key entry, or `zro login --no-browser` to start
+website login without opening a browser automatically.
+
 Website login creates a revocable API key after approval. The generated key is encrypted to an
 ephemeral public key belonging to the CLI, so the device-login database record never contains a
 usable plaintext credential. The CLI sends a generic device label unless `ZRO_DEVICE_NAME` is
@@ -62,7 +67,7 @@ Before starting an agent, `zro` verifies the selected credential with the infere
 credentials and unavailable validation endpoints stop the launch instead of passing the failure to
 the child agent.
 
-When connected, `zro status` also shows the current plan allowance, usage-pack balance, total
+When logged in, `zro status` also shows the current plan allowance, usage-pack balance, total
 available spend, and 30-day request and token activity. JSON output includes the same account data.
 
 ## Safety

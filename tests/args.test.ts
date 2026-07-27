@@ -2,19 +2,24 @@ import { describe, expect, it } from "vitest";
 import { parseArgs } from "../src/args.js";
 
 describe("the direct command language", () => {
-  it("uses website login by default and keeps manual entry available", () => {
-    expect(parseArgs(["connect"])).toEqual({
-      command: "connect",
+  it("offers login choices by default and keeps manual entry available", () => {
+    expect(parseArgs(["login"])).toEqual({
+      command: "login",
       apiKey: undefined,
-      method: "browser",
+      method: "choose",
       openBrowser: true,
       output: "human"
     });
-    expect(parseArgs(["connect", "--manual", "--no-browser"])).toMatchObject({
-      command: "connect",
+    expect(parseArgs(["login", "--manual", "--no-browser"])).toMatchObject({
+      command: "login",
       method: "manual",
       openBrowser: false
     });
+  });
+
+  it("does not keep the old authentication command aliases", () => {
+    expect(() => parseArgs(["connect"])).toThrow('Unknown command "connect"');
+    expect(() => parseArgs(["disconnect"])).toThrow('Unknown command "disconnect"');
   });
 
   it("launches a tool directly with a short model flag", () => {

@@ -11,27 +11,31 @@ export function parseArgs(argv: string[]): CliRequest {
   if (VERSION.has(argv[0])) return { command: "version", output: outputMode(argv) };
 
   const command = argv[0].toLowerCase();
-  if (command === "connect" || command === "login") {
-    const connectArgs = argv.slice(1);
-    const manual = connectArgs.includes("--manual");
-    const noBrowser = connectArgs.includes("--no-browser");
+  if (command === "login") {
+    const loginArgs = argv.slice(1);
+    const manual = loginArgs.includes("--manual");
+    const noBrowser = loginArgs.includes("--no-browser");
     const parsed = parseOptions(
-      connectArgs.filter((value) => value !== "--manual" && value !== "--no-browser"),
+      loginArgs.filter((value) => value !== "--manual" && value !== "--no-browser"),
       false,
     );
     assertNoExtraArgs(parsed.extraArgs, command);
     return {
-      command: "connect",
+      command: "login",
       apiKey: parsed.apiKey,
-      method: manual || parsed.apiKey ? "manual" : "browser",
+      method: manual || parsed.apiKey
+        ? "manual"
+        : noBrowser || parsed.output === "json"
+          ? "browser"
+          : "choose",
       openBrowser: !noBrowser,
       output: parsed.output,
     };
   }
-  if (command === "disconnect" || command === "logout") {
+  if (command === "logout") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "disconnect", output: parsed.output };
+    return { command: "logout", output: parsed.output };
   }
   if (command === "status" || command === "doctor" || command === "auth") {
     const rest = command === "auth" && argv[1] === "status" ? argv.slice(2) : argv.slice(1);

@@ -30,7 +30,7 @@ import { parseArgs } from "./args.js";
 import { describeTool, TOOLS } from "./catalog.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import type { CliRequest, RunIo } from "./types.js";
-import { banner, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
+import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -74,8 +74,8 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       : `${io.version ?? PACKAGE_VERSION}\n`);
     return 0;
   }
-  if (request.command === "connect") return connect(request, io, env, colors);
-  if (request.command === "disconnect") return disconnect(request.output, io, env);
+  if (request.command === "login") return login(request, io, env, colors);
+  if (request.command === "logout") return logout(request.output, io, env);
   if (request.command === "status") return status(request.output, io, env, colors);
   if (request.command === "models") return models(request.output, io, colors);
 
@@ -136,17 +136,17 @@ async function launch(
     key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
   } catch (error) {
     if (!isTty(io.stdin) || !isTty(io.stdout)) {
-      io.stderr.write("Not connected. Run zro connect or set ZRO_API_KEY.\n");
+      io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
       return 1;
     }
     io.stdout.write(`${colors.strong("Connect once to keep going.")}\n\n`);
-    const connected = await connectWithWebsite({
-      command: "connect",
+    const loggedIn = await loginWithWebsite({
+      command: "login",
       method: "browser",
       openBrowser: true,
       output: "human",
     }, io, env, colors);
-    if (connected !== 0) return connected;
+    if (loggedIn !== 0) return loggedIn;
     try {
       key = await resolveApiKey({ env, homeDir: io.homeDir });
     } catch (resolutionError) {
@@ -156,7 +156,7 @@ async function launch(
   }
 
   if (request.apiKey) {
-    io.stderr.write(`Note: --api-key can land in shell history. Prefer zro connect or ${ZRO_ENV_KEY}.\n`);
+    io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
   const tempRoot = path.join(env.XDG_CACHE_HOME || path.join(io.homeDir, ".cache"), "zro", "sessions");
@@ -256,7 +256,7 @@ async function verifyApiKey(
   if (status === 401 || status === 403) {
     io.stderr.write(
       `Authentication failed: Zro rejected the API key (HTTP ${status}). ` +
-      `Run zro connect --manual with a valid API key. Agent was not started.\n`,
+      `Run zro login --manual with a valid API key. Agent was not started.\n`,
     );
     return false;
   }
@@ -268,19 +268,37 @@ async function verifyApiKey(
   return false;
 }
 
-async function connect(
-  request: Extract<CliRequest, { command: "connect" }>,
+async function login(
+  request: Extract<CliRequest, { command: "login" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>
 ): Promise<number> {
-  if (request.method === "browser") {
-    return connectWithWebsite(request, io, env, colors);
+  let method = request.method;
+  let showWebsiteBanner = true;
+
+  if (method === "choose") {
+    if (request.output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
+      io.stdout.write(`${banner(colors)}\n\n`);
+      try {
+        method = await chooseConnectMethod(io.stdin, io.stdout, colors);
+      } catch (error) {
+        if (messageOf(error) !== "Cancelled.") io.stderr.write(`${messageOf(error)}\n`);
+        return messageOf(error) === "Cancelled." ? 0 : 1;
+      }
+      showWebsiteBanner = false;
+    } else {
+      method = "browser";
+    }
   }
-  return connectManually(request.apiKey, request.output, io, env);
+
+  if (method === "browser") {
+    return loginWithWebsite(request, io, env, colors, showWebsiteBanner);
+  }
+  return loginWithApiKey(request.apiKey, request.output, io, env);
 }
 
-async function connectManually(
+async function loginWithApiKey(
   apiKeyFlag: string | undefined,
   output: "human" | "json",
   io: RunIo,
@@ -301,10 +319,10 @@ async function connectManually(
     return 1;
   }
   const filePath = await writeStoredApiKey({ apiKey: trimmed, homeDir: io.homeDir, env });
-  if (apiKeyFlag) io.stderr.write("Note: --api-key can land in shell history. Interactive connect is safer.\n");
+  if (apiKeyFlag) io.stderr.write("Note: --api-key can land in shell history. Interactive login is safer.\n");
   io.stdout.write(output === "json"
     ? `${JSON.stringify({ connected: true, source: "stored", path: filePath })}\n`
-    : `Connected. Your key is stored securely.\nTry: zro claude\n`);
+    : `Logged in. Your key is stored securely.\nTry: zro claude\n`);
   return 0;
 }
 
@@ -317,11 +335,12 @@ type DeviceLoginStart = {
   interval: number;
 };
 
-async function connectWithWebsite(
-  request: Extract<CliRequest, { command: "connect" }>,
+async function loginWithWebsite(
+  request: Extract<CliRequest, { command: "login" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
-  colors: ReturnType<typeof theme>
+  colors: ReturnType<typeof theme>,
+  showBanner = true,
 ): Promise<number> {
   const fetcher = io.fetch ?? globalThis.fetch;
   const authRoot = getAuthRoot(env);
@@ -352,9 +371,9 @@ async function connectWithWebsite(
   } catch {
     if (request.output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
       io.stdout.write("Website sign-in is unavailable.\nPaste your Zro API key to continue.\n\n");
-      return connectManually(undefined, request.output, io, env);
+      return loginWithApiKey(undefined, request.output, io, env);
     }
-    io.stderr.write("Website sign-in is unavailable. Run zro connect --manual to enter an API key.\n");
+    io.stderr.write("Website sign-in is unavailable. Run zro login --manual to enter an API key.\n");
     return 1;
   }
 
@@ -368,7 +387,7 @@ async function connectWithWebsite(
   }
 
   if (request.output === "human") {
-    io.stdout.write(`${banner(colors)}\n\n`);
+    if (showBanner) io.stdout.write(`${banner(colors)}\n\n`);
     io.stdout.write(`${colors.strong(opened ? "Finish signing in in your browser" : "Open this page to sign in")}\n`);
     io.stdout.write(`  ${approvalUrl}\n\n`);
     io.stdout.write(`  Code  ${colors.accent(started.userCode)}\n\n`);
@@ -425,15 +444,15 @@ async function connectWithWebsite(
     const filePath = await writeStoredApiKey({ apiKey: apiKey.trim(), homeDir: io.homeDir, env });
     io.stdout.write(request.output === "json"
       ? `${JSON.stringify({ connected: true, source: "website", path: filePath })}\n`
-      : `${colors.good("Connected")} — you can close the browser.\nTry: zro claude\n`);
+      : `${colors.good("Logged in")} — you can close the browser.\nTry: zro claude\n`);
     return 0;
   }
 
-  io.stderr.write("Website login expired. Run zro connect to try again.\n");
+  io.stderr.write("Website login expired. Run zro login to try again.\n");
   return 1;
 }
 
-async function disconnect(
+async function logout(
   output: "human" | "json",
   io: RunIo,
   env: NodeJS.ProcessEnv
@@ -441,7 +460,7 @@ async function disconnect(
   const removed = await deleteStoredApiKey({ homeDir: io.homeDir, env });
   io.stdout.write(output === "json"
     ? `${JSON.stringify({ connected: Boolean(env[ZRO_ENV_KEY]), storedKeyRemoved: removed, environmentKeySet: Boolean(env[ZRO_ENV_KEY]) })}\n`
-    : removed ? "Disconnected. Stored key removed.\n" : "No stored key to remove.\n");
+    : removed ? "Logged out. Stored key removed.\n" : "No stored login to remove.\n");
   if (env[ZRO_ENV_KEY] && output === "human") {
     io.stdout.write(`${ZRO_ENV_KEY} is still set in this shell.\n`);
   }
@@ -488,9 +507,9 @@ async function status(
   io.stdout.write(`${banner(colors)}\n\n`);
   io.stdout.write(`${!connected ? colors.muted("◇") : colors.good("◆")} Connection  `);
   io.stdout.write(source === "none"
-    ? `${colors.muted("not connected")}\n  Run zro connect\n`
+    ? `${colors.muted("not logged in")}\n  Run zro login\n`
     : accountResult.state === "rejected"
-      ? `${colors.muted("API key rejected")}\n  Run zro connect --manual\n`
+      ? `${colors.muted("API key rejected")}\n  Run zro login --manual\n`
     : `${colors.strong(source)} ${colors.muted(`· ${maskKey(credential!)}`)}\n`);
   if (accountResult.state === "available") {
     printAccountStatus(accountResult.account, io, colors);
