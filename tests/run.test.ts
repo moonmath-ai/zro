@@ -306,8 +306,12 @@ describe("zro experience", () => {
   it("reports a fully disconnected state after removing the stored key", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-disconnect-"));
     const credentialDir = path.join(home, ".config", "zro");
+    const codexAppDir = path.join(credentialDir, "codex-app");
     await fs.mkdir(credentialDir, { recursive: true });
     await fs.writeFile(path.join(credentialDir, "credentials.json"), JSON.stringify({ apiKey: "sk-stored" }));
+    await fs.mkdir(codexAppDir);
+    await fs.writeFile(path.join(codexAppDir, ".env"), "ZRO_API_KEY=sk-stored\n");
+    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"minimax-m3\"\n");
     const stdout = new PassThrough();
 
     const code = await run(["logout", "--json"], io(home, stdout));
@@ -318,6 +322,30 @@ describe("zro experience", () => {
       storedKeyRemoved: true,
       environmentKeySet: false
     });
+    await expect(fs.stat(path.join(credentialDir, "credentials.json")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(path.join(codexAppDir, ".env")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.readFile(path.join(codexAppDir, "config.toml"), "utf8"))
+      .resolves.toBe("model = \"minimax-m3\"\n");
+  });
+
+  it("removes the Codex App key when it is the only stored credential", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-codex-app-logout-"));
+    const codexAppDir = path.join(home, ".config", "zro", "codex-app");
+    await fs.mkdir(codexAppDir, { recursive: true });
+    await fs.writeFile(path.join(codexAppDir, ".env"), "ZRO_API_KEY=sk-codex-app\n");
+    const stdout = new PassThrough();
+
+    const code = await run(["logout", "--json"], io(home, stdout));
+
+    expect(code).toBe(0);
+    expect(JSON.parse(await streamText(stdout))).toMatchObject({
+      connected: false,
+      storedKeyRemoved: true,
+    });
+    await expect(fs.stat(path.join(codexAppDir, ".env")))
+      .rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

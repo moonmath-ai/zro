@@ -77,7 +77,7 @@ export const codexAppTool: ToolModule = {
   id: "codex-app",
   label: "Codex App",
   async launch(ctx) {
-    const codexHome = path.join(ctx.homeDir, ".config", "zro", "codex-app");
+    const codexHome = codexAppHome(ctx.homeDir);
     const catalogPath = path.join(codexHome, "zro-models.json");
     return {
       tool: "codex-app",
@@ -96,7 +96,7 @@ export const codexAppTool: ToolModule = {
           persistent: true
         },
         {
-          path: path.join(codexHome, ".env"),
+          path: codexAppCredentialFilePath(ctx.homeDir),
           contents: `${ZRO_ENV_KEY}=${dotenvValue(ctx.apiKey)}\n`,
           persistent: true
         },
@@ -110,6 +110,14 @@ export const codexAppTool: ToolModule = {
     };
   }
 };
+
+export function codexAppHome(homeDir: string): string {
+  return path.join(homeDir, ".config", "zro", "codex-app");
+}
+
+export function codexAppCredentialFilePath(homeDir: string): string {
+  return path.join(codexAppHome(homeDir), ".env");
+}
 
 export function buildCodexModelCatalog(modelSpecs: readonly ZroModel[]): Record<string, unknown> {
   return {

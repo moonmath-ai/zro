@@ -1,13 +1,14 @@
 {
   "name": "@moonmath-ai/zro",
   "version": "0.2.0-alpha.0",
-  "description": "Open coding agents on Zro with isolated, session-only configuration.",
+  "description": "Open coding agents on Zro with isolated, Zro-owned configuration.",
   "type": "module",
   "bin": {
     "zro": "./dist/cli.js"
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md",
     "SECURITY.md"
   ],
@@ -52,5 +53,5 @@
     "opencode",
     "pi"
   ],
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

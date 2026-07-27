@@ -19,7 +19,11 @@ import {
   writeStoredApiKey
 } from "./engine/key.js";
 import { claudeTool } from "./engine/tools/claude.js";
-import { codexAppTool, codexTool } from "./engine/tools/codex.js";
+import {
+  codexAppCredentialFilePath,
+  codexAppTool,
+  codexTool,
+} from "./engine/tools/codex.js";
 import { grokTool } from "./engine/tools/grok.js";
 import { hermesTool } from "./engine/tools/hermes.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
@@ -463,7 +467,11 @@ async function logout(
   io: RunIo,
   env: NodeJS.ProcessEnv
 ): Promise<number> {
-  const removed = await deleteStoredApiKey({ homeDir: io.homeDir, env });
+  const [storedKeyRemoved, codexAppKeyRemoved] = await Promise.all([
+    deleteStoredApiKey({ homeDir: io.homeDir, env }),
+    deleteOptionalFile(codexAppCredentialFilePath(io.homeDir)),
+  ]);
+  const removed = storedKeyRemoved || codexAppKeyRemoved;
   io.stdout.write(output === "json"
     ? `${JSON.stringify({ connected: Boolean(env[ZRO_ENV_KEY]), storedKeyRemoved: removed, environmentKeySet: Boolean(env[ZRO_ENV_KEY]) })}\n`
     : removed ? "Logged out. Stored key removed.\n" : "No stored login to remove.\n");
@@ -471,6 +479,16 @@ async function logout(
     io.stdout.write(`${ZRO_ENV_KEY} is still set in this shell.\n`);
   }
   return 0;
+}
+
+async function deleteOptionalFile(filePath: string): Promise<boolean> {
+  try {
+    await fs.rm(filePath);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 async function status(
