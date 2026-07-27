@@ -4,23 +4,182 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: Run live reasoning and cache checks
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         node-version: [18, 20, 22]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
+
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and pack package
+        run: npm pack --silent
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: zro-package-${{ github.run_attempt }}
+          path: "*.tgz"
+          if-no-files-found: error
+          retention-days: 1
+
+  discover:
+    name: Discover harnesses
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      harnesses: ${{ steps.set.outputs.harnesses }}
+      os: ${{ steps.set.outputs.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zro-package-${{ github.run_attempt }}
+          path: .
+
+      - name: Install package
+        run: npm install --global ./*.tgz
+
+      - name: Read harness matrix from package
+        id: set
+        run: |
+          harnesses=$(node scripts/ci/list-harnesses.mjs | jq -c 'map({id, label: .label, package, installer})')
+          echo "harnesses=$harnesses" >> "$GITHUB_OUTPUT"
+          echo 'os=["ubuntu-latest","macos-latest"]' >> "$GITHUB_OUTPUT"
+
+  harness:
+    name: ${{ matrix.harness.label }} (${{ matrix.os }})
+    needs: discover
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.discover.outputs.os) }}
+        harness: ${{ fromJson(needs.discover.outputs.harnesses) }}
+    env:
+      ZRO_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zro-package-${{ github.run_attempt }}
+          path: .
+
+      - name: Install Zro package
+        run: npm install --global ./*.tgz
+
+      - name: Install ${{ matrix.harness.label }}
+        if: matrix.harness.package != ''
+        run: npm install --global "${{ matrix.harness.package }}"
+
+      - name: Install ${{ matrix.harness.label }} (curl installer)
+        if: matrix.harness.installer != ''
+        run: |
+          curl -fsSL "${{ matrix.harness.installer.url }}" | bash -s -- ${{ matrix.harness.installer.args }}
+          echo "$HOME/${{ matrix.harness.installer.binDir }}" >> "$GITHUB_PATH"
+
+      - name: Install Grok Build
+        if: matrix.harness.id == 'grok'
+        run: |
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install Claude Code test dependency
+        if: matrix.harness.id == 'claude'
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install pexpect==4.9.0
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Check compatibility
+        env:
+          ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
+          ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-compatibility.json
+        run: npm run test:clients -- ${{ matrix.harness.id }}
+
+      - name: Check live API
+        if: >-
+          (github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && inputs.run_live)
+        env:
+          ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
+          ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-live.json
+        run: npm run test:live -- ${{ matrix.harness.id }}
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zro-${{ matrix.harness.id }}-${{ matrix.os }}-${{ github.run_attempt }}
+          path: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-*.json
+          if-no-files-found: warn
+          retention-days: 14

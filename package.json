@@ -25,6 +25,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
     "prepack": "npm run build",
     "test": "vitest run",
+    "test:clients": "node scripts/ci/check-clients.mjs",
+    "test:live": "node scripts/ci/check-live.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
