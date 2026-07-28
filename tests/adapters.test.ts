@@ -12,6 +12,7 @@ const adapters = [
   ["grok", "grok"],
   ["hermes", "hermes"],
   ["kilo", "kilo"],
+  ["omp", "omp"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
   ["pi", "pi"]

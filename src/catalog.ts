@@ -19,6 +19,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   { id: "codex", name: "Codex CLI", hint: "OpenAI's terminal agent", aliases: ["cx"], executable: "codex", package: "@openai/codex@latest" },
   { id: "codex-app", name: "Codex App", hint: "OpenAI's desktop app", aliases: ["app"], executable: "codex", package: "@openai/codex@latest" },
   { id: "kilo", name: "Kilo Code", hint: "Kilo's terminal coding agent", aliases: ["kc", "kilocode"], executable: "kilo", package: "@kilocode/cli@latest" },
+  { id: "omp", name: "Oh My Pi", hint: "Power-user terminal coding agent", aliases: ["oh-my-pi", "ohmypi"], executable: "omp", installer: { url: "https://omp.sh/install", args: ["--binary"], binDir: ".local/bin" } },
   { id: "opencode", name: "OpenCode", hint: "Open source coding agent", aliases: ["oc"], executable: "opencode", package: "opencode-ai@latest" },
   { id: "grok", name: "Grok Build", hint: "xAI's coding agent", aliases: ["gr"], executable: "grok", installer: { url: "https://x.ai/cli/install.sh", binDir: ".local/bin" } },
   { id: "hermes", name: "Hermes", hint: "Nous Research's agent", aliases: ["h"], executable: "hermes", installer: { url: "https://hermes-agent.nousresearch.com/install.sh", args: ["--skip-setup"], binDir: ".local/bin" } },

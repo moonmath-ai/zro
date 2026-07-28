@@ -14,7 +14,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 }
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-models-report.json");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "opencode", "pi", "hermes", "openclaw"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -38,8 +38,18 @@ const env = {
   KILO_PERMISSION: '{"*":"deny"}',
   KILO_REMOTE: "0",
   KILO_AUTO_SHARE: "0",
+  PI_AUTO_QA: "0",
+  PI_AUTO_QA_PUSH: "0",
+  OTEL_SDK_DISABLED: "true",
+  OTEL_TRACES_EXPORTER: "none",
+  OTEL_LOGS_EXPORTER: "none",
+  OTEL_METRICS_EXPORTER: "none",
   OTEL_EXPORTER_OTLP_ENDPOINT: "",
-  OTEL_EXPORTER_OTLP_HEADERS: ""
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_HEADERS: "",
+  NO_UPDATE_NOTIFIER: "1"
 };
 
 const report = {
@@ -56,6 +66,7 @@ try {
     codex: ["codex", "--version"],
     grok: ["grok", "--version"],
     kilo: ["kilo", "--version"],
+    omp: ["omp", "--version"],
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
@@ -155,6 +166,61 @@ try {
       );
     }
     passed("Kilo Code loads every Zro model and keeps runtime state isolated");
+  }
+
+  if (harnesses.includes("omp")) {
+    const ompOutput = run(
+      zroBin,
+      ["launch", "omp", "--model", "glm-5.2", "--", "models", PROVIDER_ID, "--json", "--no-extensions"],
+      "Oh My Pi model list"
+    );
+    const ompModels = JSON.parse(ompOutput).models;
+    assert.deepEqual(
+      ompModels.map((model) => model.selector).sort(),
+      expectedModelIds
+    );
+    for (const model of zroCatalog.models) {
+      const actual = ompModels.find((candidate) => candidate.id === model.id);
+      assert.ok(actual, `Oh My Pi omitted ${model.id}`);
+      assert.equal(actual.provider, PROVIDER_ID);
+      assert.equal(actual.name, model.displayName);
+      assert.equal(actual.contextWindow, model.contextWindow);
+      assert.equal(actual.maxTokens, model.maxOutputTokens);
+      assert.equal(actual.reasoning, true);
+      assert.ok(Array.isArray(actual.thinking) && actual.thinking.length > 0, `${model.id} has no thinking levels`);
+      for (const level of model.reasoning.levels.filter((level) => level.piLevel !== "off")) {
+        const expectedLevel = ["minimal", "low", "medium", "high", "xhigh", "max"].includes(level.id)
+          ? level.id
+          : level.piLevel;
+        assert.ok(actual.thinking.includes(expectedLevel), `${model.id} omitted Oh My Pi thinking level ${expectedLevel}`);
+      }
+    }
+    const ompGlm = ompModels.find((model) => model.id === "glm-5.2");
+    assert.ok(ompGlm.thinking.includes("minimal"), "GLM-5.2 omitted the Oh My Pi off fallback level");
+
+    const ompConfigPath = run(
+      zroBin,
+      ["launch", "omp", "--model", "glm-5.2", "--", "config", "path"],
+      "Oh My Pi isolated config path"
+    ).trim();
+    assert.ok(
+      ompConfigPath.includes(`${path.sep}zro${path.sep}sessions${path.sep}`),
+      `Oh My Pi config escaped the isolated session: ${ompConfigPath}`
+    );
+
+    const updateSetting = JSON.parse(run(
+      zroBin,
+      ["launch", "omp", "--model", "glm-5.2", "--", "config", "get", "startup.checkUpdate", "--json"],
+      "Oh My Pi update-check setting"
+    ));
+    const marketplaceSetting = JSON.parse(run(
+      zroBin,
+      ["launch", "omp", "--model", "glm-5.2", "--", "config", "get", "marketplace.autoUpdate", "--json"],
+      "Oh My Pi marketplace-update setting"
+    ));
+    assert.equal(updateSetting.value, false);
+    assert.equal(marketplaceSetting.value, "off");
+    passed("Oh My Pi loads every Zro model with isolated state and update checks disabled");
   }
 
   if (harnesses.includes("pi")) {

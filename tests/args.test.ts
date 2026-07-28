@@ -50,6 +50,16 @@ describe("the direct command language", () => {
       tool: "kilo",
       extraArgs: ["--help"]
     });
+    expect(parseArgs(["oh-my-pi", "--", "models", "zro"])).toMatchObject({
+      command: "launch",
+      tool: "omp",
+      extraArgs: ["models", "zro"]
+    });
+    expect(parseArgs(["ohmypi", "--dry-run"])).toMatchObject({
+      command: "launch",
+      tool: "omp",
+      dryRun: true
+    });
   });
 
   it("keeps the old launch shape as a migration path", () => {
