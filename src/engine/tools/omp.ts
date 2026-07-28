@@ -16,6 +16,8 @@ const OMP_CONFIG_DIR = ".omp";
 const OMP_MCP_AUTH_ENV_KEY = "ZRO_MCP_AUTHORIZATION";
 const OMP_MCP_SCHEMA = "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json";
 const OMP_THINKING_LEVELS = new Set(["minimal", "low", "medium", "high", "xhigh", "max"]);
+const OMP_OFF_FALLBACK_LEVEL = "minimal";
+const OMP_ZAI_THINKING_FORMAT_MODELS = new Set(["minimax-m3"]);
 const MODEL_ROLES = [
   "default",
   "smol",
@@ -201,13 +203,7 @@ export function buildOmpModelsConfig(
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow: model.contextWindow,
           maxTokens: model.maxOutputTokens,
-          compat: {
-            reasoningEffortMap: Object.fromEntries(
-              model.reasoning.levels
-                .filter((level) => level.piLevel !== "off")
-                .map((level) => [ompThinkingLevel(level), level.id]),
-            ),
-          },
+          compat: buildOmpModelCompat(model),
         })),
       },
     },
@@ -215,17 +211,46 @@ export function buildOmpModelsConfig(
 }
 
 function buildOmpThinkingConfig(model: ZroModel): Record<string, unknown> {
-  const efforts = [...new Set(
+  const efforts = new Set(
     model.reasoning.levels
       .filter((level) => level.piLevel !== "off")
       .map(ompThinkingLevel),
-  )];
-  const defaultLevel = defaultThinkingLevel(model) ?? efforts[0];
+  );
+  if (ompOffFallback(model)) efforts.add(OMP_OFF_FALLBACK_LEVEL);
+  const orderedEfforts = [...OMP_THINKING_LEVELS].filter((level) => efforts.has(level));
+  const defaultLevel = defaultThinkingLevel(model) ?? orderedEfforts[0];
   return {
     mode: "effort",
-    efforts,
+    efforts: orderedEfforts,
     ...(defaultLevel ? { defaultLevel } : {}),
   };
+}
+
+function buildOmpModelCompat(model: ZroModel): Record<string, unknown> {
+  const reasoningEffortMap = Object.fromEntries(
+    model.reasoning.levels
+      .filter((level) => level.piLevel !== "off")
+      .map((level) => [ompThinkingLevel(level), level.id]),
+  );
+  const offFallback = ompOffFallback(model);
+  if (offFallback) reasoningEffortMap[OMP_OFF_FALLBACK_LEVEL] = offFallback.id;
+
+  return {
+    reasoningEffortMap,
+    ...(OMP_ZAI_THINKING_FORMAT_MODELS.has(model.id) ? { thinkingFormat: "zai" } : {}),
+  };
+}
+
+function ompOffFallback(
+  model: ZroModel,
+): ZroModel["reasoning"]["levels"][number] | undefined {
+  if (OMP_ZAI_THINKING_FORMAT_MODELS.has(model.id)) return undefined;
+  const offLevel = model.reasoning.levels.find((level) => level.piLevel === "off");
+  if (!offLevel) return undefined;
+  const conflictsWithRealLevel = model.reasoning.levels.some(
+    (level) => level.piLevel !== "off" && ompThinkingLevel(level) === OMP_OFF_FALLBACK_LEVEL,
+  );
+  return conflictsWithRealLevel ? undefined : offLevel;
 }
 
 function defaultThinkingLevel(model: ZroModel): string | undefined {

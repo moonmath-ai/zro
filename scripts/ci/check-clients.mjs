@@ -195,6 +195,8 @@ try {
         assert.ok(actual.thinking.includes(expectedLevel), `${model.id} omitted Oh My Pi thinking level ${expectedLevel}`);
       }
     }
+    const ompGlm = ompModels.find((model) => model.id === "glm-5.2");
+    assert.ok(ompGlm.thinking.includes("minimal"), "GLM-5.2 omitted the Oh My Pi off fallback level");
 
     const ompConfigPath = run(
       zroBin,

@@ -165,33 +165,45 @@ auth:
     expect(provider.models).toHaveLength(ZRO_MODELS.length);
     for (const model of ZRO_MODELS) {
       const actual = provider.models.find((candidate: any) => candidate.id === model.id);
-      const efforts = [...new Set(
-        model.reasoning.levels
-          .filter((level) => level.piLevel !== "off")
-          .map((level) => ["minimal", "low", "medium", "high", "xhigh", "max"].includes(level.id)
-            ? level.id
-            : level.piLevel),
-      )];
       expect(actual).toMatchObject({
         id: model.id,
         name: model.displayName,
         reasoning: true,
-        thinking: { mode: "effort", efforts },
+        thinking: { mode: "effort" },
         input: ["text"],
         contextWindow: model.contextWindow,
         maxTokens: model.maxOutputTokens,
       });
-      expect(actual.compat.reasoningEffortMap).toEqual(Object.fromEntries(
-        model.reasoning.levels
-          .filter((level) => level.piLevel !== "off")
-          .map((level) => [
-            ["minimal", "low", "medium", "high", "xhigh", "max"].includes(level.id)
-              ? level.id
-              : level.piLevel,
-            level.id,
-          ]),
-      ));
     }
+
+    const miniMax = provider.models.find((candidate: any) => candidate.id === "minimax-m3");
+    expect(miniMax.thinking).toEqual({
+      mode: "effort",
+      efforts: ["medium", "high"],
+      defaultLevel: "medium",
+    });
+    expect(miniMax.compat).toEqual({
+      reasoningEffortMap: { medium: "adaptive", high: "enabled" },
+      thinkingFormat: "zai",
+    });
+
+    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.2");
+    expect(glm.thinking).toEqual({
+      mode: "effort",
+      efforts: ["minimal", "high", "max"],
+      defaultLevel: "max",
+    });
+    expect(glm.compat).toEqual({
+      reasoningEffortMap: { minimal: "none", high: "high", max: "max" },
+    });
+
+    const kimi = provider.models.find((candidate: any) => candidate.id === "kimi-k2.7-code");
+    expect(kimi.thinking).toEqual({
+      mode: "effort",
+      efforts: ["high"],
+      defaultLevel: "high",
+    });
+    expect(kimi.compat).toEqual({ reasoningEffortMap: { high: "high" } });
 
     const mcpFile = findFile(plan.files, "mcp.json");
     const mcp = JSON.parse(String(mcpFile.contents));
