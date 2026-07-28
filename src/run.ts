@@ -26,6 +26,7 @@ import {
 } from "./engine/tools/codex.js";
 import { grokTool } from "./engine/tools/grok.js";
 import { hermesTool } from "./engine/tools/hermes.js";
+import { kiloTool } from "./engine/tools/kilo.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
 import { opencodeTool } from "./engine/tools/opencode.js";
 import { piTool } from "./engine/tools/pi.js";
@@ -43,6 +44,7 @@ const tools: Record<ToolId, ToolModule> = {
   "codex-app": codexAppTool,
   grok: grokTool,
   hermes: hermesTool,
+  kilo: kiloTool,
   openclaw: openClawTool,
   opencode: opencodeTool,
   pi: piTool
@@ -177,6 +179,7 @@ async function launch(
     plan = await tools[request.tool].launch({
       apiKey: key.apiKey,
       apiKeySource: key.source,
+      env,
       model,
       extraArgs: request.extraArgs,
       homeDir: io.homeDir,

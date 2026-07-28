@@ -108,6 +108,23 @@ describe("zro <tool> --install", () => {
     expect(calls.at(-1)?.command).toBe("grok");
   });
 
+  it("installs and launches Kilo Code through its npm package", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-kilo-"));
+    const { spawn, calls } = harness();
+
+    const code = await run(
+      ["kc", "--install", "--api-key", "sk-test"],
+      launchIo(home, spawn, { PATH: "" }),
+    );
+
+    expect(code).toBe(0);
+    expect(calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@kilocode/cli@latest"],
+    });
+    expect(calls.at(-1)?.command).toBe("kilo");
+  });
+
   it("stops when installation fails", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-failure-"));
     const { spawn, calls } = harness({ installExitCode: 9 });

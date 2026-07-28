@@ -55,6 +55,28 @@ describe("zro install", () => {
     ]);
   });
 
+  it("installs Kilo Code from its official package by ID or alias", async () => {
+    const latest = recorder();
+    const pinned = recorder();
+    const upgraded = recorder();
+
+    expect(await run(["install", "kc"], io(latest.spawn))).toBe(0);
+    expect(latest.calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@kilocode/cli@latest"],
+    });
+
+    expect(await run(["install", "kilocode@7.4.16"], io(pinned.spawn))).toBe(0);
+    expect(pinned.calls[0].args).toEqual([
+      "install",
+      "--global",
+      "@kilocode/cli@7.4.16",
+    ]);
+
+    expect(await run(["install", "kilo", "--upgrade"], io(upgraded.spawn))).toBe(0);
+    expect(upgraded.calls[0].args.at(-1)).toBe("@kilocode/cli@latest");
+  });
+
   it("upgrades agents and Zro by reinstalling latest", async () => {
     const agent = recorder();
     const self = recorder();

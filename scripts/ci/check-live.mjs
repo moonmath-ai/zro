@@ -23,7 +23,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-live-report.json");
 const runId = (process.env.ZRO_CI_RUN_ID || `${Date.now()}`).replace(/[^A-Za-z0-9_.-]/g, "-");
-const supportedHarnesses = ["claude", "codex", "grok", "opencode", "pi", "hermes", "openclaw"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "opencode", "pi", "hermes", "openclaw"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -35,6 +35,22 @@ const childEnv = {
   HOME: home,
   ZRO_API_KEY: apiKey,
   DO_NOT_TRACK: "1",
+  KILO_TELEMETRY_LEVEL: "off",
+  KILO_DISABLE_AUTOUPDATE: "1",
+  KILO_DISABLE_MODELS_FETCH: "1",
+  KILO_DISABLE_SESSION_INGEST: "1",
+  KILO_DISABLE_SHARE: "1",
+  KILO_DISABLE_DEFAULT_PLUGINS: "1",
+  KILO_DISABLE_LSP_DOWNLOAD: "1",
+  KILO_DISABLE_EXTERNAL_SKILLS: "1",
+  KILO_DISABLE_CLAUDE_CODE: "1",
+  KILO_DISABLE_PROJECT_CONFIG: "1",
+  KILO_PURE: "1",
+  KILO_PERMISSION: '{"*":"deny"}',
+  KILO_REMOTE: "0",
+  KILO_AUTO_SHARE: "0",
+  OTEL_EXPORTER_OTLP_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_HEADERS: "",
   CI: "1"
 };
 const report = {
@@ -54,6 +70,7 @@ try {
     if (harness === "claude") await checkClaude();
     else if (harness === "codex") await checkCodex();
     else if (harness === "grok") await checkGrok();
+    else if (harness === "kilo") await checkKilo();
     else if (harness === "opencode") await checkOpenCode();
     else if (harness === "pi") await checkPi();
     else if (SKIPPED_LIVE_HARNESSES.has(harness)) skipped(harness);
@@ -87,6 +104,7 @@ async function collectVersions() {
     claude: ["claude", "--version"],
     codex: ["codex", "--version"],
     grok: ["grok", "--version"],
+    kilo: ["kilo", "--version"],
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
@@ -236,6 +254,36 @@ async function checkOpenCode() {
   passed("opencode.reasoning.max", { model: "glm-5.2", reasoningTokens: max.tokens.reasoning });
 }
 
+async function checkKilo() {
+  const marker = "ZRO_KILO_CACHE_OK";
+  const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
+  const cacheArgs = [
+    "launch", "kilo", "--model", "minimax-m3", "--", "run", "--pure",
+    "--format", "json", "--model", "zro/minimax-m3", "--variant", "disabled", prompt
+  ];
+
+  const first = kiloTurn(await runZro(cacheArgs, "Kilo Code cache warm-up"), marker);
+  const second = kiloTurn(await runZro(cacheArgs, "Kilo Code cache read"), marker);
+  assert.equal(first.tokens.reasoning, 0);
+  assert.equal(second.tokens.reasoning, 0);
+  assert.ok(second.tokens.cache.read > 0, "Kilo Code reported no cache-read tokens");
+  passed("kilo.cache", {
+    model: "minimax-m3",
+    effort: "disabled",
+    firstCacheRead: first.tokens.cache.read,
+    secondCacheRead: second.tokens.cache.read
+  });
+
+  const reasoningMarker = "ZRO_KILO_MAX_OK";
+  const max = kiloTurn(await runZro([
+    "launch", "kilo", "--model", "glm-5.2", "--", "run", "--pure",
+    "--format", "json", "--model", "zro/glm-5.2", "--variant", "max",
+    `Think briefly, then include ${reasoningMarker} in the answer.`
+  ], "Kilo Code max reasoning", REASONING_TIMEOUT_MS), reasoningMarker);
+  assert.ok(max.tokens.reasoning > 0, "Kilo Code max effort reported no reasoning tokens");
+  passed("kilo.reasoning.max", { model: "glm-5.2", reasoningTokens: max.tokens.reasoning });
+}
+
 async function checkPi() {
   const marker = "ZRO_PI_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
@@ -308,6 +356,18 @@ function openCodeTurn(result, marker) {
   assert.match(text, new RegExp(marker));
   const completed = events.findLast((event) => event.type === "step_finish");
   assert.ok(completed?.part?.tokens, "OpenCode emitted no step token usage");
+  return completed.part;
+}
+
+function kiloTurn(result, marker) {
+  const events = jsonLines(result.stdout);
+  const text = events
+    .filter((event) => event.type === "text")
+    .map((event) => event.part?.text || "")
+    .join("");
+  assert.match(text, new RegExp(marker));
+  const completed = events.findLast((event) => event.type === "step_finish");
+  assert.ok(completed?.part?.tokens, "Kilo Code emitted no step token usage");
   return completed.part;
 }
 

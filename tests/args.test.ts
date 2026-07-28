@@ -40,6 +40,16 @@ describe("the direct command language", () => {
       tool: "opencode",
       dryRun: true
     });
+    expect(parseArgs(["kc", "--dry-run"])).toMatchObject({
+      command: "launch",
+      tool: "kilo",
+      dryRun: true
+    });
+    expect(parseArgs(["kilocode", "--", "--help"])).toMatchObject({
+      command: "launch",
+      tool: "kilo",
+      extraArgs: ["--help"]
+    });
   });
 
   it("keeps the old launch shape as a migration path", () => {

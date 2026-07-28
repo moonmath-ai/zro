@@ -16,6 +16,7 @@ zro claude
 zro                         # interactive agent picker
 zro claude                  # open directly on the default model
 zro codex -m glm-5.2        # choose a model for this session
+zro kilo -m minimax-m3      # launch Kilo Code through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
 zro login                   # choose website or API key login
@@ -35,7 +36,7 @@ zro codex --json            # machine-readable preview
 
 ## Supported tools
 
-Claude Code, Codex CLI, Codex App, Grok Build, OpenCode, Hermes, OpenClaw, and Pi are supported.
+Claude Code, Codex CLI, Codex App, Grok Build, Kilo Code, OpenCode, Hermes, OpenClaw, and Pi are supported.
 Each adapter launches the installed tool as a child process with isolated configuration. Most
 session files are temporary; Codex App uses a persistent Zro-owned home so the desktop app can
 reopen. Native tool arguments can be placed after `--`.
@@ -87,6 +88,12 @@ available spend, and 30-day request and token activity. JSON output includes the
 
 - Normal agent configs are never edited.
 - Temporary session files live under `~/.cache/zro/sessions` and are removed when the agent exits.
+- Kilo Code runs with a temporary home and XDG profile. Zro copies only sanitized preferences and
+  safe agent/command/skill assets; provider credentials, MCP definitions, sessions, databases,
+  dependency trees, and symlinks remain outside the profile.
+- Kilo telemetry, OTLP export, automatic updates, model-catalog refresh, cloud session ingest and
+  sharing, remote control, and default vendor plugins are disabled. Model and MCP requests still go
+  to their configured Zro endpoints.
 - Codex App uses persistent configuration under `~/.config/zro/codex-app`; logout removes its key.
 - API keys are masked in human and JSON previews.
 - `--dry-run` writes nothing and starts nothing.

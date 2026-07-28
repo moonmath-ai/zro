@@ -11,6 +11,7 @@ const adapters = [
   ["codex-app", "codex"],
   ["grok", "grok"],
   ["hermes", "hermes"],
+  ["kilo", "kilo"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
   ["pi", "pi"]
