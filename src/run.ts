@@ -27,6 +27,7 @@ import {
 import { grokTool } from "./engine/tools/grok.js";
 import { hermesTool } from "./engine/tools/hermes.js";
 import { kiloTool } from "./engine/tools/kilo.js";
+import { ompTool } from "./engine/tools/omp.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
 import { opencodeTool } from "./engine/tools/opencode.js";
 import { piTool } from "./engine/tools/pi.js";
@@ -45,6 +46,7 @@ const tools: Record<ToolId, ToolModule> = {
   grok: grokTool,
   hermes: hermesTool,
   kilo: kiloTool,
+  omp: ompTool,
   openclaw: openClawTool,
   opencode: opencodeTool,
   pi: piTool

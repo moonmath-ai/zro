@@ -23,7 +23,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-live-report.json");
 const runId = (process.env.ZRO_CI_RUN_ID || `${Date.now()}`).replace(/[^A-Za-z0-9_.-]/g, "-");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "opencode", "pi", "hermes", "openclaw"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -49,8 +49,18 @@ const childEnv = {
   KILO_PERMISSION: '{"*":"deny"}',
   KILO_REMOTE: "0",
   KILO_AUTO_SHARE: "0",
+  PI_AUTO_QA: "0",
+  PI_AUTO_QA_PUSH: "0",
+  OTEL_SDK_DISABLED: "true",
+  OTEL_TRACES_EXPORTER: "none",
+  OTEL_LOGS_EXPORTER: "none",
+  OTEL_METRICS_EXPORTER: "none",
   OTEL_EXPORTER_OTLP_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "",
   OTEL_EXPORTER_OTLP_HEADERS: "",
+  NO_UPDATE_NOTIFIER: "1",
   CI: "1"
 };
 const report = {
@@ -71,6 +81,7 @@ try {
     else if (harness === "codex") await checkCodex();
     else if (harness === "grok") await checkGrok();
     else if (harness === "kilo") await checkKilo();
+    else if (harness === "omp") await checkOmp();
     else if (harness === "opencode") await checkOpenCode();
     else if (harness === "pi") await checkPi();
     else if (SKIPPED_LIVE_HARNESSES.has(harness)) skipped(harness);
@@ -105,6 +116,7 @@ async function collectVersions() {
     codex: ["codex", "--version"],
     grok: ["grok", "--version"],
     kilo: ["kilo", "--version"],
+    omp: ["omp", "--version"],
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
@@ -284,6 +296,40 @@ async function checkKilo() {
   passed("kilo.reasoning.max", { model: "glm-5.2", reasoningTokens: max.tokens.reasoning });
 }
 
+async function checkOmp() {
+  const marker = "ZRO_OMP_CACHE_OK";
+  const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
+  const cacheArgs = [
+    "launch", "omp", "--model", "minimax-m3", "--",
+    "--print", "--mode", "json", "--no-tools", "--no-session",
+    "--no-extensions", "--no-skills", "--no-rules", "--no-title",
+    "--thinking", "off", prompt
+  ];
+
+  const first = ompTurn(await runZro(cacheArgs, "Oh My Pi cache warm-up"), marker);
+  const second = ompTurn(await runZro(cacheArgs, "Oh My Pi cache read"), marker);
+  assert.equal(first.usage.reasoningTokens ?? 0, 0);
+  assert.equal(second.usage.reasoningTokens ?? 0, 0);
+  assert.ok(second.usage.cacheRead > 0, "Oh My Pi reported no cache-read tokens");
+  passed("omp.cache", {
+    model: "minimax-m3",
+    effort: "off",
+    firstCacheRead: first.usage.cacheRead,
+    secondCacheRead: second.usage.cacheRead
+  });
+
+  const reasoningMarker = "ZRO_OMP_MAX_OK";
+  const max = ompTurn(await runZro([
+    "launch", "omp", "--model", "glm-5.2", "--",
+    "--print", "--mode", "json", "--no-tools", "--no-session",
+    "--no-extensions", "--no-skills", "--no-rules", "--no-title",
+    "--thinking", "max",
+    `Think briefly, then include ${reasoningMarker} in the answer.`
+  ], "Oh My Pi max reasoning", REASONING_TIMEOUT_MS), reasoningMarker);
+  assert.ok((max.usage.reasoningTokens ?? 0) > 0, "Oh My Pi max effort reported no reasoning tokens");
+  passed("omp.reasoning.max", { model: "glm-5.2", reasoningTokens: max.usage.reasoningTokens });
+}
+
 async function checkPi() {
   const marker = "ZRO_PI_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
@@ -377,6 +423,20 @@ function piTurn(result, marker) {
     (event) => event.type === "message_end" && event.message?.role === "assistant"
   )?.message;
   assert.ok(completed?.usage, "Pi emitted no assistant token usage");
+  const text = completed.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+  assert.match(text, new RegExp(marker));
+  return completed;
+}
+
+function ompTurn(result, marker) {
+  const events = jsonLines(result.stdout);
+  const completed = events.findLast(
+    (event) => event.type === "message_end" && event.message?.role === "assistant"
+  )?.message;
+  assert.ok(completed?.usage, "Oh My Pi emitted no assistant token usage");
   const text = completed.content
     .filter((part) => part.type === "text")
     .map((part) => part.text)

@@ -125,6 +125,22 @@ describe("zro <tool> --install", () => {
     expect(calls.at(-1)?.command).toBe("kilo");
   });
 
+  it("installs and launches Oh My Pi through its official binary installer", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-omp-"));
+    const { spawn, calls } = harness();
+
+    const code = await run(
+      ["oh-my-pi", "--install", "--api-key", "sk-test"],
+      launchIo(home, spawn, { PATH: "" }),
+    );
+
+    expect(code).toBe(0);
+    expect(calls[0].command).toBe("bash");
+    expect(calls[0].args.join(" ")).toContain("https://omp.sh/install");
+    expect(calls[0].args.join(" ")).toContain("--binary");
+    expect(calls.at(-1)?.command).toBe("omp");
+  });
+
   it("stops when installation fails", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-failure-"));
     const { spawn, calls } = harness({ installExitCode: 9 });

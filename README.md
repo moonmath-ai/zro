@@ -17,6 +17,7 @@ zro                         # interactive agent picker
 zro claude                  # open directly on the default model
 zro codex -m glm-5.2        # choose a model for this session
 zro kilo -m minimax-m3      # launch Kilo Code through Zro
+zro omp -m glm-5.2          # launch Oh My Pi through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
 zro login                   # choose website or API key login
@@ -36,7 +37,7 @@ zro codex --json            # machine-readable preview
 
 ## Supported tools
 
-Claude Code, Codex CLI, Codex App, Grok Build, Kilo Code, OpenCode, Hermes, OpenClaw, and Pi are supported.
+Claude Code, Codex CLI, Codex App, Grok Build, Kilo Code, Oh My Pi, OpenCode, Hermes, OpenClaw, and Pi are supported.
 Each adapter launches the installed tool as a child process with isolated configuration. Most
 session files are temporary; Codex App uses a persistent Zro-owned home so the desktop app can
 reopen. Native tool arguments can be placed after `--`.
@@ -45,9 +46,10 @@ reopen. Native tool arguments can be placed after `--`.
 
 Zro requires Node.js 18 or later and supports macOS and Linux. On Windows, use WSL.
 
-`zro install <tool>` installs npm-distributed agents globally. Hermes and Grok Build use their
-official shell installers. Add `--upgrade` to update an installed agent, or pin an npm version with
-either `tool@version` or `--version version`.
+`zro install <tool>` installs npm-distributed agents globally. Hermes, Grok Build, and Oh My Pi use
+their official shell installers; Oh My Pi uses its prebuilt binary so Bun is not required. Add
+`--upgrade` to update an installed agent, or pin an npm-distributed agent version with either
+`tool@version` or `--version version`.
 
 `zro <tool> --install` installs a missing agent and opens it in one command. `zro install
 --upgrade` upgrades the Zro CLI itself. Version validation and installer errors are reported directly
@@ -94,6 +96,12 @@ available spend, and 30-day request and token activity. JSON output includes the
 - Kilo telemetry, OTLP export, automatic updates, model-catalog refresh, cloud session ingest and
   sharing, remote control, and default vendor plugins are disabled. Model and MCP requests still go
   to their configured Zro endpoints.
+- Oh My Pi runs with a temporary home, XDG roots, agent directory, and model cache. Zro copies only
+  sanitized display preferences and local agent/command/prompt/skill/theme assets; auth state,
+  databases, sessions, dependency trees, secret files, and symlinks stay outside the profile.
+- Oh My Pi OTLP export, Auto QA reporting, startup update checks, marketplace updates, remote
+  memory, and remote compaction are disabled. Its Zro model and MCP files contain environment
+  variable names rather than API-key values.
 - Codex App uses persistent configuration under `~/.config/zro/codex-app`; logout removes its key.
 - API keys are masked in human and JSON previews.
 - `--dry-run` writes nothing and starts nothing.
