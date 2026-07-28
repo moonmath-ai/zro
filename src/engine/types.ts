@@ -8,6 +8,7 @@ export type ApiKeySource = "flag" | "env" | "stored";
 export interface LaunchContext {
   apiKey: string;
   apiKeySource: ApiKeySource;
+  env: NodeJS.ProcessEnv;
   model: string;
   extraArgs: string[];
   homeDir: string;

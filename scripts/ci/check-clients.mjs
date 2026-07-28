@@ -7,13 +7,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const PROVIDER_ID = "zro";
 const apiKey = process.env.ZRO_API_KEY;
 if (!apiKey || apiKey === "ci-fake-key") {
   throw new Error("ZRO_API_KEY must contain a production API key");
 }
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-models-report.json");
-const supportedHarnesses = ["claude", "codex", "grok", "opencode", "pi", "hermes", "openclaw"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "opencode", "pi", "hermes", "openclaw"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -22,7 +23,23 @@ const harnesses = requestedHarness === "all" ? supportedHarnesses : [requestedHa
 const env = {
   ...process.env,
   ZRO_API_KEY: apiKey,
-  DO_NOT_TRACK: "1"
+  DO_NOT_TRACK: "1",
+  KILO_TELEMETRY_LEVEL: "off",
+  KILO_DISABLE_AUTOUPDATE: "1",
+  KILO_DISABLE_MODELS_FETCH: "1",
+  KILO_DISABLE_SESSION_INGEST: "1",
+  KILO_DISABLE_SHARE: "1",
+  KILO_DISABLE_DEFAULT_PLUGINS: "1",
+  KILO_DISABLE_LSP_DOWNLOAD: "1",
+  KILO_DISABLE_EXTERNAL_SKILLS: "1",
+  KILO_DISABLE_CLAUDE_CODE: "1",
+  KILO_DISABLE_PROJECT_CONFIG: "1",
+  KILO_PURE: "1",
+  KILO_PERMISSION: '{"*":"deny"}',
+  KILO_REMOTE: "0",
+  KILO_AUTO_SHARE: "0",
+  OTEL_EXPORTER_OTLP_ENDPOINT: "",
+  OTEL_EXPORTER_OTLP_HEADERS: ""
 };
 
 const report = {
@@ -38,6 +55,7 @@ try {
     claude: ["claude", "--version"],
     codex: ["codex", "--version"],
     grok: ["grok", "--version"],
+    kilo: ["kilo", "--version"],
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
@@ -49,6 +67,9 @@ try {
     report.clients[name] = firstNonEmptyLine(output);
   }
   report.clients.zro = firstNonEmptyLine(run(zroBin, ["--help"], "zro version"));
+  const zroCatalog = JSON.parse(run(zroBin, ["models", "--json"], "Zro model catalog"));
+  assert.ok(Array.isArray(zroCatalog.models), "Zro model catalog emitted no models");
+  const expectedModelIds = zroCatalog.models.map((model) => `${PROVIDER_ID}/${model.id}`).sort();
 
   if (harnesses.includes("codex")) {
     const codexConfig = await readCodexAppServerConfig("glm-5.2");
@@ -81,9 +102,59 @@ try {
     );
     assert.deepEqual(
       openCodeOutput.trim().split(/\r?\n/).filter(Boolean).sort(),
-      ["zro/glm-5.2", "zro/kimi-k2.7-code", "zro/minimax-m3"]
+      expectedModelIds
     );
     passed("OpenCode lists all Zro models");
+  }
+
+  if (harnesses.includes("kilo")) {
+    const kiloOutput = run(
+      zroBin,
+      ["launch", "kilo", "--model", "glm-5.2", "--", "models", PROVIDER_ID],
+      "Kilo Code model list"
+    );
+    assert.deepEqual(
+      kiloOutput.trim().split(/\r?\n/).filter(Boolean).sort(),
+      expectedModelIds
+    );
+
+    const verboseOutput = run(
+      zroBin,
+      ["launch", "kilo", "--model", "glm-5.2", "--", "models", PROVIDER_ID, "--verbose"],
+      "Kilo Code verbose model list"
+    );
+    const verboseModels = parseKiloVerboseModels(verboseOutput);
+    for (const model of zroCatalog.models) {
+      const actual = verboseModels.get(`${PROVIDER_ID}/${model.id}`);
+      assert.ok(actual, `Kilo Code omitted verbose metadata for ${model.id}`);
+      assert.equal(actual.id, model.id);
+      assert.equal(actual.name, model.displayName);
+      assert.equal(actual.providerID, PROVIDER_ID);
+      assert.equal(actual.capabilities?.reasoning, true);
+      assert.equal(actual.capabilities?.toolcall, true);
+      assert.equal(actual.limit?.context, model.contextWindow);
+      assert.equal(actual.limit?.output, model.maxOutputTokens);
+      assert.deepEqual(
+        actual.variants,
+        Object.fromEntries(model.reasoning.levels.map((level) => [level.id, level.openCodeOptions]))
+      );
+    }
+
+    const pathsOutput = run(
+      zroBin,
+      ["launch", "kilo", "--model", "glm-5.2", "--", "debug", "paths"],
+      "Kilo Code isolated paths"
+    );
+    const kiloPaths = parseKiloPaths(pathsOutput);
+    assert.equal(typeof kiloPaths.home, "string", "Kilo Code did not report an isolated home path");
+    const sessionRoot = path.dirname(kiloPaths.home);
+    for (const key of ["home", "data", "bin", "log", "repos", "cache", "config", "state"]) {
+      assert.ok(
+        kiloPaths[key]?.startsWith(`${sessionRoot}${path.sep}`),
+        `Kilo Code ${key} escaped the isolated session: ${kiloPaths[key]}`
+      );
+    }
+    passed("Kilo Code loads every Zro model and keeps runtime state isolated");
   }
 
   if (harnesses.includes("pi")) {
@@ -231,6 +302,30 @@ function run(command, args, label) {
 
 function firstNonEmptyLine(value) {
   return value.split(/\r?\n/).find((line) => line.trim())?.trim() || "installed";
+}
+
+function parseKiloVerboseModels(value) {
+  const models = new Map();
+  for (const section of value.split(/(?=^zro\/[^\r\n]+$)/m)) {
+    const [name, ...jsonLines] = section.trim().split(/\r?\n/);
+    if (!name?.startsWith(`${PROVIDER_ID}/`) || jsonLines.length === 0) continue;
+    let metadata;
+    try {
+      metadata = JSON.parse(jsonLines.join("\n"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Kilo Code emitted invalid verbose metadata for ${name}: ${message}`);
+    }
+    models.set(name, metadata);
+  }
+  return models;
+}
+
+function parseKiloPaths(value) {
+  return Object.fromEntries(value.split(/\r?\n/).map((line) => {
+    const match = /^(home|data|bin|log|repos|cache|config|state)\s+(.+)$/.exec(line.trim());
+    return match ? [match[1], match[2]] : undefined;
+  }).filter(Boolean));
 }
 
 function passed(name) {

@@ -110,4 +110,4 @@ export const ZRO_MODELS = [
 
 export const DEFAULT_MODEL = ZRO_MODELS[0].id;
 
-export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "opencode", "hermes", "openclaw", "pi"] as const;
+export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "opencode", "hermes", "openclaw", "pi"] as const;

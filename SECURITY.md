@@ -16,6 +16,13 @@ for each launched tool. Normal tool configuration is read only when an adapter n
 compatible user settings; it is not modified. Temporary session files are removed when the child
 process exits.
 
+Kilo Code receives a per-session `HOME` and XDG profile. Its adapter copies only a sanitized subset
+of user preferences plus regular files from known agent, command, skill, mode, and plugin asset
+directories. It excludes provider and MCP configuration, model overrides, auth/account state,
+sessions, databases, caches, dependency manifests and trees, telemetry state, and symbolic links.
+The high-precedence generated configuration refers to the credential as `{env:ZRO_API_KEY}` rather
+than writing its value to disk.
+
 Browser login uses a short-lived device code. The CLI generates an ephemeral RSA keypair, and the
 website encrypts the issued credential to that public key. The private key remains in CLI memory
 and is not written to disk.
