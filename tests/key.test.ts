@@ -38,8 +38,10 @@ describe("key handling", () => {
 
     expect(filePath).toBe(credentialFilePath({ homeDir, env }));
     expect(await readStoredApiKey({ homeDir, env })).toBe("sk-stored-secret");
-    expect((await fs.stat(filePath)).mode & 0o777).toBe(0o600);
-    expect((await fs.stat(path.dirname(filePath))).mode & 0o777).toBe(0o700);
+    if (process.platform !== "win32") {
+      expect((await fs.stat(filePath)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(path.dirname(filePath))).mode & 0o777).toBe(0o700);
+    }
     expect(await deleteStoredApiKey({ homeDir, env })).toBe(true);
     expect(await readStoredApiKey({ homeDir, env })).toBeNull();
   });

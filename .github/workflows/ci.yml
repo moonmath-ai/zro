@@ -43,12 +43,16 @@ jobs:
         run: node scripts/ci/check-version.mjs
 
   test:
-    name: Node ${{ matrix.node-version }}
-    runs-on: ubuntu-latest
+    name: Node ${{ matrix.node-version }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       matrix:
+        os: [ubuntu-latest]
         node-version: [22, 24, 26]
+        include:
+          - os: windows-latest
+            node-version: 22
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
