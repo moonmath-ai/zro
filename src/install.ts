@@ -55,6 +55,7 @@ export async function commandExists(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
+  const accessMode = platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK;
   const extensions = platform === "win32"
     ? executableExtensions(command, env.PATHEXT)
     : [""];
@@ -62,7 +63,7 @@ export async function commandExists(
     if (!directory) continue;
     for (const extension of extensions) {
       try {
-        await fs.access(path.join(directory, `${command}${extension}`), fs.constants.X_OK);
+        await fs.access(path.join(directory, `${command}${extension}`), accessMode);
         return true;
       } catch {
         // Keep searching.
