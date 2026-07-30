@@ -21,12 +21,16 @@ concurrency:
 
 jobs:
   test:
-    name: Node ${{ matrix.node-version }}
-    runs-on: ubuntu-latest
+    name: Node ${{ matrix.node-version }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
       matrix:
+        os: [ubuntu-latest]
         node-version: [18, 20, 22]
+        include:
+          - os: windows-latest
+            node-version: 22
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

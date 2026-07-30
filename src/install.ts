@@ -4,6 +4,7 @@ import path from "node:path";
 import { resolveTool, TOOLS, type ToolDescriptor } from "./catalog.js";
 import type { SpawnProcess } from "./engine/types.js";
 import type { RunIo } from "./types.js";
+import { spawnCommand } from "./process.js";
 
 const ZRO_PACKAGE = "@moonmath-ai/zro";
 
@@ -39,7 +40,7 @@ export async function ensureHarnessInstalled(
 ): Promise<boolean> {
   const tool = TOOLS.find((candidate) => candidate.id === toolId);
   if (!tool) return false;
-  if (await commandExists(tool.executable, env)) return true;
+  if (await commandExists(tool.executable, env, io.platform)) return true;
   if (!tool.package && !tool.installer) {
     io.stderr.write(`${tool.name} cannot be installed automatically.\n`);
     return false;
@@ -52,17 +53,31 @@ export async function ensureHarnessInstalled(
 export async function commandExists(
   command: string,
   env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<boolean> {
+  const extensions = platform === "win32"
+    ? executableExtensions(command, env.PATHEXT)
+    : [""];
   for (const directory of (env.PATH ?? "").split(path.delimiter)) {
     if (!directory) continue;
-    try {
-      await fs.access(path.join(directory, command), fs.constants.X_OK);
-      return true;
-    } catch {
-      // Keep searching.
+    for (const extension of extensions) {
+      try {
+        await fs.access(path.join(directory, `${command}${extension}`), fs.constants.X_OK);
+        return true;
+      } catch {
+        // Keep searching.
+      }
     }
   }
   return false;
+}
+
+function executableExtensions(command: string, pathExt: string | undefined): string[] {
+  if (path.extname(command)) return [""];
+  return (pathExt || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .filter(Boolean)
+    .map((extension) => extension.startsWith(".") ? extension : `.${extension}`);
 }
 
 function resolveInstallableTool(value: string, io: RunIo): ToolDescriptor | undefined {
@@ -143,7 +158,7 @@ async function installWithScript(
   }
 
   const binDir = path.join(io.homeDir, installer.binDir);
-  if (await commandExists(tool.executable, { ...env, PATH: binDir })) {
+  if (await commandExists(tool.executable, { ...env, PATH: binDir }, io.platform)) {
     env.PATH = env.PATH ? `${binDir}${path.delimiter}${env.PATH}` : binDir;
   }
   io.stdout.write("Done.\n");
@@ -157,7 +172,11 @@ function runAndWait(
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
   const spawn = io.spawn ?? (nodeSpawn as SpawnProcess);
-  const child = spawn(command, args, { cwd: io.cwd, env, stdio: "inherit" });
+  const child = spawnCommand(spawn, io.platform ?? process.platform, command, args, {
+    cwd: io.cwd,
+    env,
+    stdio: "inherit",
+  });
   return new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => resolve(typeof code === "number" ? code : 1));

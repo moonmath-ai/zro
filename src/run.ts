@@ -37,6 +37,7 @@ import { describeTool, TOOLS } from "./catalog.js";
 import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import type { CliRequest, RunIo } from "./types.js";
+import { spawnCommand } from "./process.js";
 import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
 
 const tools: Record<ToolId, ToolModule> = {
@@ -57,11 +58,6 @@ const PACKAGE_VERSION = (
 ).version;
 
 export async function run(argv: string[], io: RunIo = defaultIo()): Promise<number> {
-  if ((io.platform ?? process.platform) === "win32") {
-    io.stderr.write("zro supports macOS and Linux. Use WSL on Windows.\n");
-    return 1;
-  }
-
   let request: CliRequest;
   try {
     request = parseArgs(argv);
@@ -511,7 +507,7 @@ async function status(
     Promise.all(TOOLS.map(async (tool) => ({
       id: tool.id,
       name: tool.name,
-      installed: await commandExists(tool.executable, env)
+      installed: await commandExists(tool.executable, env, io.platform)
     }))),
     credential
       ? fetchAccountStatus(credential, io, env)
@@ -764,7 +760,7 @@ async function writeLaunchFiles(plan: LaunchPlan): Promise<void> {
 
 async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): Promise<number> {
   const spawn = io.spawn ?? (nodeSpawn as SpawnProcess);
-  const child = spawn(plan.command, plan.args, {
+  const child = spawnCommand(spawn, io.platform ?? process.platform, plan.command, plan.args, {
     cwd: io.cwd,
     env: { ...env, ...(plan.env ?? {}) },
     stdio: "inherit"
@@ -810,7 +806,13 @@ function messageOf(error: unknown): string {
 }
 
 async function openBrowserWithSystem(url: string, platform: NodeJS.Platform): Promise<boolean> {
-  const command = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : null;
+  const command = platform === "darwin"
+    ? "open"
+    : platform === "linux"
+      ? "xdg-open"
+      : platform === "win32"
+        ? "explorer.exe"
+        : null;
   if (!command) return false;
 
   return new Promise((resolve) => {

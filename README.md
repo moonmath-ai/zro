@@ -44,12 +44,17 @@ reopen. Native tool arguments can be placed after `--`.
 
 ## Installation and upgrades
 
-Zro requires Node.js 18 or later and supports macOS and Linux. On Windows, use WSL.
+Zro requires Node.js 18 or later and supports macOS, Linux, and Windows. Windows launches npm
+command shims through the built-in Windows PowerShell runtime.
 
 `zro install <tool>` installs npm-distributed agents globally. Hermes, Grok Build, and Oh My Pi use
 their official shell installers; Oh My Pi uses its prebuilt binary so Bun is not required. Add
 `--upgrade` to update an installed agent, or pin an npm-distributed agent version with either
 `tool@version` or `--version version`.
+
+On Windows, agents distributed through npm can be installed by Zro. The official Hermes, Grok
+Build, and Oh My Pi installers require Bash; install those agents separately before launching them
+with Zro, or use WSL for their installer flow.
 
 `zro <tool> --install` installs a missing agent and opens it in one command. `zro install
 --upgrade` upgrades the Zro CLI itself. Version validation and installer errors are reported directly
@@ -105,7 +110,7 @@ available spend, and 30-day request and token activity. JSON output includes the
 - Codex App uses persistent configuration under `~/.config/zro/codex-app`; logout removes its key.
 - API keys are masked in human and JSON previews.
 - `--dry-run` writes nothing and starts nothing.
-- macOS and Linux are supported; use WSL on Windows.
+- macOS, Linux, and Windows are supported.
 
 See [SECURITY.md](SECURITY.md) for the security model and private vulnerability reporting.
 
