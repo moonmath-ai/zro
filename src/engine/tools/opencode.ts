@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
 import type { LaunchFile, ToolModule } from "../types.js";
 import { asPlainObject, objectAt } from "./helpers.js";
@@ -19,7 +19,7 @@ export const opencodeTool: ToolModule = {
     const userConfigRoot = ctx.env.XDG_CONFIG_HOME ?? path.join(ctx.homeDir, ".config");
     const userOpencodeRoot = path.join(userConfigRoot, "opencode");
     const existing = await readOpenCodeConfig(userOpencodeRoot);
-    const nextConfig = buildOpenCodeConfig(existing, ctx.apiKey, true);
+    const nextConfig = buildOpenCodeConfig(existing, ctx.apiKey, ctx.models, true);
     nextConfig.model = `${PROVIDER_ID}/${ctx.model}`;
     const userFiles = await collectUserConfigFiles(userOpencodeRoot, opencodeRoot);
 
@@ -152,6 +152,7 @@ function isMissingPathError(error: unknown): error is NodeJS.ErrnoException {
 function buildOpenCodeConfig(
   existing: Record<string, unknown>,
   apiKey: string,
+  modelSpecs: readonly ZroModel[],
   useEnvReference = false
 ): Record<string, unknown> {
   const next = { ...existing };
@@ -163,7 +164,7 @@ function buildOpenCodeConfig(
   provider[PROVIDER_ID] = openAiCompatibleProvider(
     provider[PROVIDER_ID],
     apiKey,
-    ZRO_MODELS,
+    modelSpecs,
     useEnvReference
   );
   const mcp = objectAt(next, "mcp");

@@ -137,11 +137,11 @@ export const ompTool: ToolModule = {
         },
         {
           path: overlayPath,
-          contents: yamlSerializer.stringify(buildOmpConfigOverlay(ctx.model)),
+          contents: yamlSerializer.stringify(buildOmpConfigOverlay(ctx.model, ctx.models)),
         },
         {
           path: path.join(agentDir, "models.yml"),
-          contents: yamlSerializer.stringify(buildOmpModelsConfig(ZRO_MODELS)),
+          contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models)),
         },
         {
           path: path.join(agentDir, "mcp.json"),
@@ -154,8 +154,11 @@ export const ompTool: ToolModule = {
   },
 };
 
-export function buildOmpConfigOverlay(model: string): Record<string, unknown> {
-  const modelSpec = ZRO_MODELS.find((candidate) => candidate.id === model);
+export function buildOmpConfigOverlay(
+  model: string,
+  modelSpecs: readonly ZroModel[] = ZRO_MODELS,
+): Record<string, unknown> {
+  const modelSpec = modelSpecs.find((candidate) => candidate.id === model);
   const thinkingLevel = modelSpec ? defaultThinkingLevel(modelSpec) : undefined;
   const selector = `${PROVIDER_ID}/${model}${thinkingLevel ? `:${thinkingLevel}` : ""}`;
 
