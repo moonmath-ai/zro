@@ -1,0 +1,56 @@
+{
+  "name": "zro",
+  "publisher": "moonmath-ai",
+  "displayName": "ZRO",
+  "description": "Use ZRO models as a Copilot Chat model provider in VS Code.",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moonmath-ai/zro.git",
+    "directory": "vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "zro",
+        "displayName": "ZRO",
+        "managementCommand": "zro.manage"
+      }
+    ],
+    "commands": [
+      {
+        "command": "zro.manage",
+        "title": "ZRO: Enter API key"
+      },
+      {
+        "command": "zro.login",
+        "title": "ZRO: Log in"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.104.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.9.0"
+  }
+}

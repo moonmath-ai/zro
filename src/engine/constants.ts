@@ -90,18 +90,31 @@ export const ZRO_MODELS = [
     }
   },
   {
-    id: "kimi-k2.7-code",
-    displayName: "Kimi K2.7 Code",
-    contextWindow: 128000,
+    id: "kimi-k3",
+    displayName: "Kimi K3",
+    contextWindow: 1048576,
     maxOutputTokens: 64000,
     reasoning: {
       defaultLevel: "high",
       levels: [
         {
+          id: "low",
+          description: "Use Kimi low reasoning effort",
+          piLevel: "low",
+          openCodeOptions: { reasoningEffort: "low" }
+        },
+        {
           id: "high",
-          description: "Kimi always reasons before responding",
+          description: "Use Kimi high reasoning effort",
           piLevel: "high",
           openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use Kimi maximum reasoning effort",
+          codexEffort: "xhigh",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
         }
       ]
     }
