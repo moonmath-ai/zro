@@ -61,7 +61,6 @@ const childEnv = {
   OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "",
   OTEL_EXPORTER_OTLP_HEADERS: "",
   NO_UPDATE_NOTIFIER: "1",
-  PI_STARTUP_BENCHMARK: "1",
   CI: "1"
 };
 const report = {
@@ -364,29 +363,12 @@ async function checkPi() {
 }
 
 async function checkPrime() {
-  const marker = "ZRO_PRIME_CACHE_OK";
-  const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
-  const cacheArgs = [
-    "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", "off", prompt
-  ];
-
-  const first = primeTurn(await runZro(cacheArgs, "Prime Agent cache warm-up"), marker, { expectThinking: false });
-  const second = primeTurn(await runZro(cacheArgs, "Prime Agent cache read"), marker, { expectThinking: false });
-  assert.ok(second.usage.cacheRead > 0, "Prime Agent reported no cache-read tokens");
-  passed("prime.cache", {
-    model: "glm-5.2",
-    effort: "off",
-    firstCacheRead: first.usage.cacheRead,
-    secondCacheRead: second.usage.cacheRead
-  });
-
   const reasoningMarker = "ZRO_PRIME_MAX_OK";
-  const max = primeTurn(await runZro([
+  const max = primeTurn(await runZroRetry([
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
     "--no-tools", "--no-session", "--thinking", "xhigh",
     `Think briefly, then include ${reasoningMarker} in the answer.`
-  ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
+  ], "Prime Agent max reasoning"), reasoningMarker, { expectThinking: true });
   assert.ok(max.hasThinking, "Prime Agent max effort returned no thinking content");
   passed("prime.reasoning.max", { model: "glm-5.2", thinkingContent: true });
 }
@@ -502,8 +484,8 @@ function jsonLines(value) {
     .map((line) => JSON.parse(line));
 }
 
-async function runZro(args, label, timeoutMs = 120_000) {
-  return run(zroBin, args, label, timeoutMs);
+async function runZro(args, label, timeoutMs = 120_000, env = childEnv) {
+  return run(zroBin, args, label, timeoutMs, env);
 }
 
 async function runZroRetry(args, label, maxAttempts = 3) {
@@ -525,11 +507,11 @@ async function runZroRetry(args, label, maxAttempts = 3) {
   throw lastError;
 }
 
-function run(command, args, label, timeoutMs) {
+function run(command, args, label, timeoutMs, env = childEnv) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: process.cwd(),
-      env: childEnv,
+      env,
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";

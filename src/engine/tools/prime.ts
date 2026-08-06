@@ -25,11 +25,11 @@ export const primeTool: ToolModule = {
   id: "prime",
   label: "Prime Agent",
   async launch(ctx) {
+    const existingAgentDir = process.env[PRIME_AGENT_DIR_ENV_KEY] ?? path.join(ctx.homeDir, ".prime", "agent");
     const tempHome = path.join(ctx.tempDir, "prime", "home");
     const tempAgentDir = path.join(tempHome, ".prime", "agent");
     const filePath = path.join(tempAgentDir, "models.json");
     const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
-    const existingAgentDir = process.env[PRIME_AGENT_DIR_ENV_KEY] ?? path.join(ctx.homeDir, ".prime", "agent");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
     const nextConfig = buildPrimeModelsConfig(existing, ctx.models);
     return {
