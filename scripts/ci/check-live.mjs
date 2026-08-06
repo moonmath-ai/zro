@@ -179,17 +179,17 @@ async function checkCodex() {
     "launch", "codex", "--model", "glm-5.2", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
-    "-c", 'model_reasoning_effort="disabled"', prompt
+    "-c", 'model_reasoning_effort="none"', prompt
   ];
 
-  const first = codexTurn(await runZro(cacheArgs, "Codex cache warm-up"), marker);
-  const second = codexTurn(await runZro(cacheArgs, "Codex cache read"), marker);
+  const first = codexTurn(await runZro(cacheArgs, "Codex cache warm-up", REASONING_TIMEOUT_MS), marker);
+  const second = codexTurn(await runZro(cacheArgs, "Codex cache read", REASONING_TIMEOUT_MS), marker);
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
   assert.ok(second.usage.cached_input_tokens > 0, "Codex reported no cached input tokens");
   passed("codex.cache", {
     model: "glm-5.2",
-    effort: "disabled",
+    effort: "none",
     firstCacheRead: first.usage.cached_input_tokens,
     secondCacheRead: second.usage.cached_input_tokens
   });
@@ -363,11 +363,12 @@ async function checkPi() {
 }
 
 async function checkPrime() {
+  const daemonSocket = path.join(home, ".prime-agent-daemon.sock");
   const marker = "ZRO_PRIME_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", "off", prompt
+    "--no-tools", "--no-session", "--daemon-socket", daemonSocket, "--thinking", "off", prompt
   ];
 
   const first = primeTurn(await runZro(cacheArgs, "Prime Agent cache warm-up"), marker, { expectThinking: false });
@@ -383,7 +384,7 @@ async function checkPrime() {
   const reasoningMarker = "ZRO_PRIME_MAX_OK";
   const max = primeTurn(await runZro([
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", "xhigh",
+    "--no-tools", "--no-session", "--daemon-socket", daemonSocket, "--thinking", "xhigh",
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
   assert.ok(max.hasThinking, "Prime Agent max effort returned no thinking content");
