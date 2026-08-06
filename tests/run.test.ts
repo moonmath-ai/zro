@@ -136,6 +136,44 @@ describe("zro experience", () => {
     expect(await streamText(stdout)).toContain("zro claude");
   });
 
+  it("lists the authenticated control-plane model catalog", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-models-"));
+    const stdout = new PassThrough();
+    const catalog = dynamicCatalogResponse();
+
+    const code = await run(["models", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-models-secret" },
+      fetch: async (input, init) => {
+        expect(String(input)).toBe("https://zro.moonmath.ai/api/cli/models");
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-models-secret");
+        return Response.json(catalog);
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(JSON.parse(await streamText(stdout))).toEqual(catalog);
+  });
+
+  it("accepts a remotely added model without a CLI release", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-dynamic-model-"));
+    const stdout = new PassThrough();
+
+    const code = await run(["codex", "-m", "future-model", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-dynamic-secret" },
+      fetch: async () => Response.json(dynamicCatalogResponse()),
+    });
+
+    expect(code).toBe(0);
+    expect(JSON.parse(await streamText(stdout))).toMatchObject({
+      tool: "codex",
+      model: "future-model",
+    });
+    await expect(fs.stat(path.join(home, ".cache", "zro")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("launches directly and remembers the session", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-launch-"));
     const stdout = new PassThrough();
@@ -218,6 +256,7 @@ describe("zro experience", () => {
     const code = await run(["claude", "--json"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-preview-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
       spawn: fakeExitSpawn(() => { spawned = true; })
     });
 
@@ -312,6 +351,9 @@ describe("zro experience", () => {
     await fs.mkdir(codexAppDir);
     await fs.writeFile(path.join(codexAppDir, ".env"), "ZRO_API_KEY=sk-stored\n");
     await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"glm-5.2\"\n");
+    const catalogPath = path.join(home, ".cache", "zro", "model-catalog.json");
+    await fs.mkdir(path.dirname(catalogPath), { recursive: true });
+    await fs.writeFile(catalogPath, JSON.stringify(dynamicCatalogResponse()));
     const stdout = new PassThrough();
 
     const code = await run(["logout", "--json"], io(home, stdout));
@@ -326,6 +368,7 @@ describe("zro experience", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(path.join(codexAppDir, ".env")))
       .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(catalogPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(path.join(codexAppDir, "config.toml"), "utf8"))
       .resolves.toBe("model = \"glm-5.2\"\n");
   });
@@ -404,5 +447,31 @@ function accountStatusResponse() {
       cacheReadInputTokens: 400,
       spend: 8,
     },
+  };
+}
+
+function dynamicCatalogResponse() {
+  return {
+    version: 1,
+    default: "future-model",
+    models: [
+      {
+        id: "future-model",
+        displayName: "Future Model",
+        contextWindow: 200_000,
+        maxOutputTokens: 20_000,
+        reasoning: {
+          defaultLevel: "high",
+          levels: [
+            {
+              id: "high",
+              description: "Reason carefully",
+              piLevel: "high",
+              openCodeOptions: { reasoningEffort: "high" },
+            },
+          ],
+        },
+      },
+    ],
   };
 }

@@ -69,10 +69,23 @@ export const ZRO_MODELS = [
       defaultLevel: "high",
       levels: [
         {
+          id: "low",
+          description: "Use Kimi low reasoning effort",
+          piLevel: "low",
+          openCodeOptions: { reasoningEffort: "low" }
+        },
+        {
           id: "high",
-          description: "Kimi always reasons before responding",
+          description: "Use Kimi high reasoning effort",
           piLevel: "high",
           openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use Kimi maximum reasoning effort",
+          codexEffort: "xhigh",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
         }
       ]
     }
@@ -103,6 +116,6 @@ export const ZRO_MODELS = [
   }
 ] as const satisfies readonly ZroModel[];
 
-export const DEFAULT_MODEL = ZRO_MODELS[0].id;
+export const DEFAULT_MODEL = "glm-5.2";
 
 export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "hermes", "openclaw", "pi", "prime"] as const;

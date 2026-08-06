@@ -7,6 +7,7 @@ import {
   PROVIDER_NAME,
   ZRO_ENV_KEY,
   ZRO_MODELS,
+  type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
 import type { LaunchFile, ToolModule } from "../types.js";
@@ -101,7 +102,7 @@ export const kiloTool: ToolModule = {
     const userKiloRoot = path.join(userConfigHome, "kilo");
     const existing = await readKiloConfig(userKiloRoot);
     const safeConfig = sanitizeKiloConfig(existing);
-    const overlay = buildKiloConfigOverlay(ctx.model);
+    const overlay = buildKiloConfigOverlay(ctx.model, ctx.models);
     const userFiles = await collectSafeUserAssets(userKiloRoot, kiloConfigRoot);
 
     return {
@@ -146,8 +147,11 @@ export const kiloTool: ToolModule = {
   },
 };
 
-export function buildKiloConfigOverlay(model: string): Record<string, unknown> {
-  const models = Object.fromEntries(ZRO_MODELS.map((spec) => [
+export function buildKiloConfigOverlay(
+  model: string,
+  modelSpecs: readonly ZroModel[] = ZRO_MODELS,
+): Record<string, unknown> {
+  const models = Object.fromEntries(modelSpecs.map((spec) => [
     spec.id,
     {
       name: spec.displayName,

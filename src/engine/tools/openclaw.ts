@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { json5Serializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -14,7 +14,7 @@ export const openClawTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".openclaw", "openclaw.json");
     const existing = await readConfig(path.join(ctx.homeDir, ".openclaw", "openclaw.json"), json5Serializer);
-    const nextConfig = buildOpenClawConfig(existing, ctx.apiKey, ZRO_MODELS);
+    const nextConfig = buildOpenClawConfig(existing, ctx.apiKey, ctx.models);
     objectAt(objectAt(objectAt(nextConfig, "agents"), "defaults"), "model").primary = `${PROVIDER_ID}/${ctx.model}`;
     return {
       tool: "openclaw",

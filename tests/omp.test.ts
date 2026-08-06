@@ -189,10 +189,12 @@ auth:
     const kimi = provider.models.find((candidate: any) => candidate.id === "kimi-k3");
     expect(kimi.thinking).toEqual({
       mode: "effort",
-      efforts: ["high"],
+      efforts: ["low", "high", "max"],
       defaultLevel: "high",
     });
-    expect(kimi.compat).toEqual({ reasoningEffortMap: { high: "high" } });
+    expect(kimi.compat).toEqual({
+      reasoningEffortMap: { low: "low", high: "high", max: "max" },
+    });
 
     const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4-flash-0731");
     expect(deepseek.thinking).toEqual({
@@ -258,6 +260,7 @@ auth:
         XDG_CACHE_HOME: cache,
       },
       platform: "linux",
+      fetch: async () => new Response(null, { status: 503 }),
     });
 
     expect(code).toBe(0);
@@ -318,6 +321,7 @@ function context(
     apiKeySource: "env",
     env,
     model: "glm-5.2",
+    models: ZRO_MODELS,
     extraArgs: ["--print", "hello"],
     homeDir,
     cwd: homeDir,

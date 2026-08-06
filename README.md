@@ -83,6 +83,11 @@ Before starting an agent, `zro` verifies the selected credential with the infere
 credentials and unavailable validation endpoints stop the launch instead of passing the failure to
 the child agent.
 
+When signed in, the CLI fetches the active model catalog from Zro and passes that catalog to every
+supported agent adapter. It caches successful catalogs under `~/.cache/zro/model-catalog.json` for
+offline startup and falls back to bundled defaults only when no valid cache is available. An
+authentication rejection never uses the cache and removes it; `zro logout` removes it as well.
+
 When logged in, `zro status` also shows the current plan allowance, usage-pack balance, total
 available spend, and 30-day request and token activity. JSON output includes the same account data.
 

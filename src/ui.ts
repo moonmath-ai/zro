@@ -1,6 +1,6 @@
 import { clearScreenDown, emitKeypressEvents, moveCursor } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { ZRO_MODELS } from "./engine/constants.js";
+import { ZRO_MODELS, type ZroModel } from "./engine/constants.js";
 import { TOOLS } from "./catalog.js";
 import type { ToolId } from "./engine/types.js";
 
@@ -54,8 +54,8 @@ Credentials saved by earlier zro versions remain compatible.
 `;
 }
 
-export function modelName(modelId: string): string {
-  return ZRO_MODELS.find((model) => model.id === modelId)?.displayName ?? modelId;
+export function modelName(modelId: string, models: readonly ZroModel[] = ZRO_MODELS): string {
+  return models.find((model) => model.id === modelId)?.displayName ?? modelId;
 }
 
 export async function chooseTool(stdin: Readable, stdout: Writable, colors: Theme): Promise<ToolId> {

@@ -233,6 +233,7 @@ describe("Kilo Code adapter", () => {
         XDG_CONFIG_HOME: path.join(home, "config"),
       },
       platform: "linux",
+      fetch: async () => new Response(null, { status: 503 }),
     });
 
     expect(code).toBe(0);

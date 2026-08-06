@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -31,7 +31,7 @@ export const primeTool: ToolModule = {
     const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
     const existingAgentDir = process.env[PRIME_AGENT_DIR_ENV_KEY] ?? path.join(ctx.homeDir, ".prime", "agent");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
-    const nextConfig = buildPrimeModelsConfig(existing, ZRO_MODELS);
+    const nextConfig = buildPrimeModelsConfig(existing, ctx.models);
     return {
       tool: "prime",
       label: "Prime Agent",
