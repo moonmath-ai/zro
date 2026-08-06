@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_ENV_KEY, ZRO_MODELS, DEFAULT_MODEL } from "./engine/constants.js";
+import { ENDPOINT_ROOT, ZRO_ENV_KEY } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -31,11 +31,18 @@ import { ompTool } from "./engine/tools/omp.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
 import { opencodeTool } from "./engine/tools/opencode.js";
 import { piTool } from "./engine/tools/pi.js";
+import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
 import { describeTool, TOOLS } from "./catalog.js";
 import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
+import {
+  CatalogAuthenticationError,
+  invalidateModelCatalog,
+  loadModelCatalog,
+  type ModelCatalog,
+} from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
 import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
 
@@ -49,7 +56,8 @@ const tools: Record<ToolId, ToolModule> = {
   omp: ompTool,
   openclaw: openClawTool,
   opencode: opencodeTool,
-  pi: piTool
+  pi: piTool,
+  prime: primeTool
 };
 
 const PACKAGE_VERSION = (
@@ -87,7 +95,7 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
   if (request.command === "login") return login(request, io, env, colors);
   if (request.command === "logout") return logout(request.output, io, env);
   if (request.command === "status") return status(request.output, io, env, colors);
-  if (request.command === "models") return models(request.output, io, colors);
+  if (request.command === "models") return models(request.output, io, env, colors);
 
   if (request.command === "home") {
     if (!isTty(io.stdin) || !isTty(io.stdout)) {
@@ -140,12 +148,6 @@ async function launch(
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>
 ): Promise<number> {
-  const model = request.model ?? DEFAULT_MODEL;
-  if (!ZRO_MODELS.some((candidate) => candidate.id === model)) {
-    io.stderr.write(`Unknown model "${model}". Run zro models.\n`);
-    return 1;
-  }
-
   let key;
   try {
     key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
@@ -174,6 +176,32 @@ async function launch(
     io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
+  let catalog: ModelCatalog;
+  try {
+    catalog = await loadModelCatalog({
+      apiKey: key.apiKey,
+      env,
+      homeDir: io.homeDir,
+      fetch: io.fetch,
+      cacheRemote: !request.dryRun,
+    });
+  } catch (error) {
+    if (error instanceof CatalogAuthenticationError) {
+      io.stderr.write(
+        `Authentication failed: ${error.message} Run zro login --manual with a valid API key. Agent was not started.\n`,
+      );
+      return 1;
+    }
+    io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
+    return 1;
+  }
+
+  const model = request.model ?? catalog.default;
+  if (!catalog.models.some((candidate) => candidate.id === model)) {
+    io.stderr.write(`Unknown model "${model}". Run zro models.\n`);
+    return 1;
+  }
+
   const tempRoot = path.join(env.XDG_CACHE_HOME || path.join(io.homeDir, ".cache"), "zro", "sessions");
   const tempDir = path.join(tempRoot, `session-${process.pid}-${Date.now()}`);
   let plan: LaunchPlan;
@@ -183,6 +211,7 @@ async function launch(
       apiKeySource: key.source,
       env,
       model,
+      models: catalog.models,
       extraArgs: request.extraArgs,
       homeDir: io.homeDir,
       cwd: io.cwd,
@@ -221,7 +250,7 @@ async function launch(
   if (request.output === "human" && isTty(io.stdout)) {
     io.stdout.write(
       `${colors.accent("◆")} ${colors.strong(describeTool(request.tool).name)}  ` +
-      `${colors.muted(`${modelName(model)} · ${model}`)}\n` +
+      `${colors.muted(`${modelName(model, catalog.models)} · ${model}`)}\n` +
       `${colors.muted(`  ${compactPath(io.cwd, io.homeDir)}`)}\n\n`
     );
   }
@@ -269,6 +298,7 @@ async function verifyApiKey(
   if (response.ok) return true;
 
   if (status === 401 || status === 403) {
+    await invalidateModelCatalog({ env, homeDir: io.homeDir }).catch(() => {});
     io.stderr.write(
       `Authentication failed: Zro rejected the API key (HTTP ${status}). ` +
       `Run zro login --manual with a valid API key. Agent was not started.\n`,
@@ -475,6 +505,7 @@ async function logout(
   const [storedKeyRemoved, codexAppKeyRemoved] = await Promise.all([
     deleteStoredApiKey({ homeDir: io.homeDir, env }),
     deleteOptionalFile(codexAppCredentialFilePath(io.homeDir)),
+    invalidateModelCatalog({ homeDir: io.homeDir, env }),
   ]);
   const removed = storedKeyRemoved || codexAppKeyRemoved;
   io.stdout.write(output === "json"
@@ -518,6 +549,9 @@ async function status(
       : Promise.resolve({ state: "not_connected" } as const),
   ]);
   const connected = source !== "none" && accountResult.state !== "rejected";
+  if (accountResult.state === "rejected") {
+    await invalidateModelCatalog({ homeDir: io.homeDir, env }).catch(() => {});
+  }
   if (output === "json") {
     io.stdout.write(`${JSON.stringify({
       connected,
@@ -702,14 +736,38 @@ function formatInteger(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }
 
-function models(output: "human" | "json", io: RunIo, colors: ReturnType<typeof theme>): number {
+async function models(
+  output: "human" | "json",
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+  colors: ReturnType<typeof theme>,
+): Promise<number> {
+  let apiKey: string | undefined;
+  try {
+    apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
+  } catch {
+    // A cached or bundled catalog remains useful before the user signs in.
+  }
+
+  let catalog: ModelCatalog;
+  try {
+    catalog = await loadModelCatalog({ apiKey, env, homeDir: io.homeDir, fetch: io.fetch });
+  } catch (error) {
+    if (error instanceof CatalogAuthenticationError) {
+      io.stderr.write(`Authentication failed: ${error.message} Run zro login --manual with a valid API key.\n`);
+      return 1;
+    }
+    io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
+    return 1;
+  }
+
   if (output === "json") {
-    io.stdout.write(`${JSON.stringify({ default: DEFAULT_MODEL, models: ZRO_MODELS }, null, 2)}\n`);
+    io.stdout.write(`${JSON.stringify(catalog, null, 2)}\n`);
     return 0;
   }
   io.stdout.write(`${banner(colors)}\n\nModels\n`);
-  for (const model of ZRO_MODELS) {
-    const isDefault = model.id === DEFAULT_MODEL;
+  for (const model of catalog.models) {
+    const isDefault = model.id === catalog.default;
     io.stdout.write(`\n  ${isDefault ? colors.accent("◆") : colors.muted("◇")} ${colors.strong(model.displayName)}  ${colors.muted(model.id)}${isDefault ? colors.accent("  default") : ""}\n`);
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }

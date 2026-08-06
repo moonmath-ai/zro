@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 
@@ -9,7 +9,7 @@ export const codexTool: ToolModule = {
   async launch(ctx) {
     const codexHome = path.join(ctx.tempDir, "codex");
     const catalogPath = path.join(codexHome, "zro-models.json");
-    const selectedModel = ZRO_MODELS.find((model) => model.id === ctx.model);
+    const selectedModel = ctx.models.find((model) => model.id === ctx.model);
     return {
       tool: "codex",
       label: "Codex CLI",
@@ -30,7 +30,7 @@ export const codexTool: ToolModule = {
         },
         {
           path: catalogPath,
-          contents: jsonSerializer.stringify(buildCodexModelCatalog(ZRO_MODELS))
+          contents: jsonSerializer.stringify(buildCodexModelCatalog(ctx.models))
         }
       ],
       message: "Launch Codex CLI with Zro"
@@ -102,7 +102,7 @@ export const codexAppTool: ToolModule = {
         },
         {
           path: catalogPath,
-          contents: jsonSerializer.stringify(buildCodexModelCatalog(ZRO_MODELS)),
+          contents: jsonSerializer.stringify(buildCodexModelCatalog(ctx.models)),
           persistent: true
         }
       ],

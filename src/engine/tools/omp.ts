@@ -17,7 +17,7 @@ const OMP_MCP_AUTH_ENV_KEY = "ZRO_MCP_AUTHORIZATION";
 const OMP_MCP_SCHEMA = "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json";
 const OMP_THINKING_LEVELS = new Set(["minimal", "low", "medium", "high", "xhigh", "max"]);
 const OMP_OFF_FALLBACK_LEVEL = "minimal";
-const OMP_ZAI_THINKING_FORMAT_MODELS = new Set(["minimax-m3"]);
+const OMP_ZAI_THINKING_FORMAT_MODELS = new Set<string>();
 const MODEL_ROLES = [
   "default",
   "smol",
@@ -137,11 +137,11 @@ export const ompTool: ToolModule = {
         },
         {
           path: overlayPath,
-          contents: yamlSerializer.stringify(buildOmpConfigOverlay(ctx.model)),
+          contents: yamlSerializer.stringify(buildOmpConfigOverlay(ctx.model, ctx.models)),
         },
         {
           path: path.join(agentDir, "models.yml"),
-          contents: yamlSerializer.stringify(buildOmpModelsConfig(ZRO_MODELS)),
+          contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models)),
         },
         {
           path: path.join(agentDir, "mcp.json"),
@@ -154,8 +154,11 @@ export const ompTool: ToolModule = {
   },
 };
 
-export function buildOmpConfigOverlay(model: string): Record<string, unknown> {
-  const modelSpec = ZRO_MODELS.find((candidate) => candidate.id === model);
+export function buildOmpConfigOverlay(
+  model: string,
+  modelSpecs: readonly ZroModel[] = ZRO_MODELS,
+): Record<string, unknown> {
+  const modelSpec = modelSpecs.find((candidate) => candidate.id === model);
   const thinkingLevel = modelSpec ? defaultThinkingLevel(modelSpec) : undefined;
   const selector = `${PROVIDER_ID}/${model}${thinkingLevel ? `:${thinkingLevel}` : ""}`;
 

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import type { ToolModule } from "../types.js";
 
 const GROK_HOME_ENV_KEY = "GROK_HOME";
@@ -22,14 +22,18 @@ export const grokTool: ToolModule = {
       },
       files: [{
         path: configPath,
-        contents: buildGrokConfig(ctx.model, ctx.apiKey)
+        contents: buildGrokConfig(ctx.model, ctx.apiKey, ctx.models)
       }],
       message: "Launch Grok Build with Zro"
     };
   }
 };
 
-function buildGrokConfig(selectedModel: string, apiKey: string): string {
+function buildGrokConfig(
+  selectedModel: string,
+  apiKey: string,
+  modelSpecs: readonly ZroModel[],
+): string {
   const lines: string[] = [];
 
   lines.push("[models]");
@@ -44,7 +48,7 @@ function buildGrokConfig(selectedModel: string, apiKey: string): string {
   lines.push("telemetry = false");
   lines.push("");
 
-  for (const model of ZRO_MODELS) {
+  for (const model of modelSpecs) {
     lines.push(`[model.${tomlKey(model.id)}]`);
     lines.push(`model = ${tomlString(model.id)}`);
     lines.push(`base_url = ${tomlString(BASE_URL)}`);

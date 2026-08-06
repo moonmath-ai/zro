@@ -14,7 +14,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 }
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-models-report.json");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -70,7 +70,8 @@ try {
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
-    openclaw: ["openclaw", "--version"]
+    openclaw: ["openclaw", "--version"],
+    prime: ["prime-agent", "--version"]
   };
   for (const name of harnesses) {
     const command = clientCommands[name];
@@ -230,16 +231,35 @@ try {
       "Pi model list"
     );
     assert.match(piOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
-    assert.match(piOutput, /zro\s+minimax-m3\s+1\.0M\s+64K\s+yes/);
-    assert.match(piOutput, /zro\s+kimi-k2\.7-code\s+128K\s+64K\s+yes/);
+    assert.match(piOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
+    assert.match(piOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
     passed("Pi lists all Zro models with their context limits");
+  }
+
+  if (harnesses.includes("prime")) {
+    const primeResult = spawnSync(
+      zroBin,
+      ["launch", "prime", "--model", "glm-5.2", "--", "model", "list", "zro"],
+      { cwd: process.cwd(), env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 60_000 }
+    );
+    if (primeResult.error) {
+      throw new Error(`Prime Agent model list failed to start: ${primeResult.error.message}`);
+    }
+    if (primeResult.status !== 0) {
+      throw new Error(`Prime Agent model list exited ${primeResult.status}\n${redact(primeResult.stderr)}\n${redact(primeResult.stdout)}`.trim());
+    }
+    const primeOutput = (primeResult.stdout + primeResult.stderr).trim();
+    assert.match(primeOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
+    assert.match(primeOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
+    assert.match(primeOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
+    passed("Prime Agent lists all Zro models with their context limits");
   }
 
   if (harnesses.includes("claude")) {
     const claudeLabels = {
-      "minimax-m3": "Zro MiniMax M3",
       "glm-5.2": "Zro GLM-5.2",
-      "kimi-k2.7-code": "Zro Kimi K2.7 Code"
+      "kimi-k3": "Zro Kimi K3",
+      "deepseek-v4-flash-0731": "Zro DeepSeek V4 Flash"
     };
     for (const model of Object.keys(claudeLabels)) {
       run(

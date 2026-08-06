@@ -233,15 +233,16 @@ describe("Kilo Code adapter", () => {
         XDG_CONFIG_HOME: path.join(home, "config"),
       },
       platform: "linux",
+      fetch: async () => new Response(null, { status: 503 }),
     });
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "minimax-m3" });
+    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "glm-5.2" });
     expect(JSON.parse(preview.environment.KILO_CONFIG_CONTENT)).toMatchObject({
-      model: "zro/minimax-m3",
+      model: "zro/glm-5.2",
     });
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
   });

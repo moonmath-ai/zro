@@ -16,7 +16,7 @@ zro claude
 zro                         # interactive agent picker
 zro claude                  # open directly on the default model
 zro codex -m glm-5.2        # choose a model for this session
-zro kilo -m minimax-m3      # launch Kilo Code through Zro
+zro kilo -m glm-5.2          # launch Kilo Code through Zro
 zro omp -m glm-5.2          # launch Oh My Pi through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
@@ -82,6 +82,11 @@ development authentication server. For remote development with a browser-side po
 Before starting an agent, `zro` verifies the selected credential with the inference API. Rejected
 credentials and unavailable validation endpoints stop the launch instead of passing the failure to
 the child agent.
+
+When signed in, the CLI fetches the active model catalog from Zro and passes that catalog to every
+supported agent adapter. It caches successful catalogs under `~/.cache/zro/model-catalog.json` for
+offline startup and falls back to bundled defaults only when no valid cache is available. An
+authentication rejection never uses the cache and removes it; `zro logout` removes it as well.
 
 When logged in, `zro status` also shows the current plan allowance, usage-pack balance, total
 available spend, and 30-day request and token activity. JSON output includes the same account data.
