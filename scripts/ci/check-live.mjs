@@ -176,10 +176,10 @@ async function checkCodex() {
   const marker = "ZRO_CODEX_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "codex", "--model", "glm-5.2", "--", "exec", "--json",
+    "launch", "codex", "--model", "deepseek-v4-flash-0731", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
-    "-c", 'model_reasoning_effort="none"', prompt
+    "-c", 'model_reasoning_effort="disabled"', prompt
   ];
 
   const first = codexTurn(await runZroRetry(cacheArgs, "Codex cache warm-up"), marker);
@@ -188,23 +188,23 @@ async function checkCodex() {
   assert.equal(second.usage.reasoning_output_tokens, 0);
   assert.ok(second.usage.cached_input_tokens > 0, "Codex reported no cached input tokens");
   passed("codex.cache", {
-    model: "glm-5.2",
-    effort: "none",
+    model: "deepseek-v4-flash-0731",
+    effort: "disabled",
     firstCacheRead: first.usage.cached_input_tokens,
     secondCacheRead: second.usage.cached_input_tokens
   });
 
   const reasoningMarker = "ZRO_CODEX_MAX_OK";
   const max = codexTurn(await runZro([
-    "launch", "codex", "--model", "glm-5.2", "--", "exec", "--json",
+    "launch", "codex", "--model", "deepseek-v4-flash-0731", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
-    "-c", 'model_reasoning_effort="max"',
+    "-c", 'model_reasoning_effort="high"',
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Codex max reasoning", REASONING_TIMEOUT_MS), reasoningMarker);
   passed("codex.reasoning.max", {
-    model: "glm-5.2",
-    acceptedEffort: "max",
+    model: "deepseek-v4-flash-0731",
+    acceptedEffort: "high",
     reportedReasoningTokens: max.usage.reasoning_output_tokens
   });
 }
@@ -363,6 +363,24 @@ async function checkPi() {
 }
 
 async function checkPrime() {
+  const marker = "ZRO_PRIME_CACHE_OK";
+  const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
+  const cacheArgs = [
+    "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
+    "--no-tools", "--no-session", "--thinking", "off", prompt
+  ];
+
+  const first = primeTurn(await runZroRetry(cacheArgs, "Prime Agent cache warm-up"), marker, { expectThinking: false });
+  await run("prime-agent", ["shutdown", "--force"], "Prime Agent daemon shutdown", 15_000).catch(() => {});
+  const second = primeTurn(await runZroRetry(cacheArgs, "Prime Agent cache read"), marker, { expectThinking: false });
+  assert.ok(second.usage.cacheRead > 0, "Prime Agent reported no cache-read tokens");
+  passed("prime.cache", {
+    model: "glm-5.2",
+    effort: "off",
+    firstCacheRead: first.usage.cacheRead,
+    secondCacheRead: second.usage.cacheRead
+  });
+
   const reasoningMarker = "ZRO_PRIME_MAX_OK";
   const max = primeTurn(await runZroRetry([
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
