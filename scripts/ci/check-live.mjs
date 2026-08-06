@@ -61,6 +61,7 @@ const childEnv = {
   OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "",
   OTEL_EXPORTER_OTLP_HEADERS: "",
   NO_UPDATE_NOTIFIER: "1",
+  PI_STARTUP_BENCHMARK: "1",
   CI: "1"
 };
 const report = {
@@ -182,8 +183,8 @@ async function checkCodex() {
     "-c", 'model_reasoning_effort="none"', prompt
   ];
 
-  const first = codexTurn(await runZro(cacheArgs, "Codex cache warm-up", REASONING_TIMEOUT_MS), marker);
-  const second = codexTurn(await runZro(cacheArgs, "Codex cache read", REASONING_TIMEOUT_MS), marker);
+  const first = codexTurn(await runZroRetry(cacheArgs, "Codex cache warm-up"), marker);
+  const second = codexTurn(await runZroRetry(cacheArgs, "Codex cache read"), marker);
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
   assert.ok(second.usage.cached_input_tokens > 0, "Codex reported no cached input tokens");
@@ -363,13 +364,11 @@ async function checkPi() {
 }
 
 async function checkPrime() {
-  const daemonSocket = path.join(home, ".prime-agent-daemon.sock");
   const marker = "ZRO_PRIME_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--cwd", home,
-    "--daemon-socket", daemonSocket, "--thinking", "off", prompt
+    "--no-tools", "--no-session", "--thinking", "off", prompt
   ];
 
   const first = primeTurn(await runZro(cacheArgs, "Prime Agent cache warm-up"), marker, { expectThinking: false });
@@ -385,8 +384,7 @@ async function checkPrime() {
   const reasoningMarker = "ZRO_PRIME_MAX_OK";
   const max = primeTurn(await runZro([
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--cwd", home,
-    "--daemon-socket", daemonSocket, "--thinking", "xhigh",
+    "--no-tools", "--no-session", "--thinking", "xhigh",
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
   assert.ok(max.hasThinking, "Prime Agent max effort returned no thinking content");
@@ -506,6 +504,25 @@ function jsonLines(value) {
 
 async function runZro(args, label, timeoutMs = 120_000) {
   return run(zroBin, args, label, timeoutMs);
+}
+
+async function runZroRetry(args, label, maxAttempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await run(zroBin, args, `${label} (attempt ${attempt}/${maxAttempts})`, REASONING_TIMEOUT_MS);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt < maxAttempts && /high demand|Reconnecting|exited 1/i.test(message)) {
+        console.log(`  ${label} failed (attempt ${attempt}), retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
 }
 
 function run(command, args, label, timeoutMs) {
