@@ -45,34 +45,55 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Bump version
+      - name: Resolve bump level
         id: bump
         run: |
-          LEVEL="${{ inputs.bump || 'patch' }}"
-          npm version "$LEVEL" --no-git-tag-version
+          if [ -n "${{ inputs.bump }}" ]; then
+            LEVEL="${{ inputs.bump }}"
+          elif git log --format=%B -n 1 | grep -qiF "[release:major]"; then
+            LEVEL="major"
+          elif git log --format=%B -n 1 | grep -qiF "[release:minor]"; then
+            LEVEL="minor"
+          elif git log --format=%B -n 1 | grep -qiE "\[release:none\]|\[skip release\]"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            LEVEL="none"
+          else
+            LEVEL="patch"
+          fi
+          echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
+          echo "Bump level: $LEVEL"
+
+      - name: Bump version
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          npm version "${{ steps.bump.outputs.level }}" --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_ENV"
 
       - name: Build
+        if: steps.bump.outputs.skip != 'true'
         run: npm run build
 
       - name: Commit version bump and tag
+        if: steps.bump.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
-          git commit -m "v${{ steps.bump.outputs.version }}"
-          git tag "v${{ steps.bump.outputs.version }}"
+          git commit -m "v${{ env.version }}"
+          git tag "v${{ env.version }}"
           git push origin main --tags
 
       - name: Publish to npm
+        if: steps.bump.outputs.skip != 'true'
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
+        if: steps.bump.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump.outputs.version }}
-          name: v${{ steps.bump.outputs.version }}
+          tag_name: v${{ env.version }}
+          name: v${{ env.version }}
           generate_release_notes: true
