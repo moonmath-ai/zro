@@ -28,30 +28,31 @@ export interface ZroModel {
 
 export const ZRO_MODELS = [
   {
-    id: "minimax-m3",
-    displayName: "MiniMax M3",
+    id: "deepseek-v4-flash-0731",
+    displayName: "DeepSeek V4 Flash 0731",
     contextWindow: 1048576,
-    maxOutputTokens: 64000,
+    maxOutputTokens: 384000,
     reasoning: {
-      defaultLevel: "adaptive",
+      defaultLevel: "high",
       levels: [
         {
-          id: "disabled",
-          description: "Disable reasoning for the lowest latency",
-          piLevel: "off",
-          openCodeOptions: { thinking: { type: "disabled" } }
+          id: "low",
+          description: "Use DeepSeek low reasoning effort",
+          piLevel: "low",
+          openCodeOptions: { reasoningEffort: "low" }
         },
         {
-          id: "adaptive",
-          description: "Reason only when MiniMax determines it is useful",
-          piLevel: "medium",
-          openCodeOptions: { thinking: { type: "adaptive" } }
-        },
-        {
-          id: "enabled",
-          description: "Reason before every response",
+          id: "high",
+          description: "Use DeepSeek high reasoning effort",
           piLevel: "high",
-          openCodeOptions: { thinking: { type: "enabled" } }
+          openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use DeepSeek maximum reasoning effort",
+          codexEffort: "xhigh",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
         }
       ]
     }

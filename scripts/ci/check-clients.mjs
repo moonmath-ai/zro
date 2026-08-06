@@ -230,14 +230,14 @@ try {
       "Pi model list"
     );
     assert.match(piOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
-    assert.match(piOutput, /zro\s+minimax-m3\s+1\.0M\s+64K\s+yes/);
+    assert.match(piOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
     assert.match(piOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
     passed("Pi lists all Zro models with their context limits");
   }
 
   if (harnesses.includes("claude")) {
     const claudeLabels = {
-      "minimax-m3": "Zro MiniMax M3",
+      "deepseek-v4-flash-0731": "Zro DeepSeek V4 Flash 0731",
       "glm-5.2": "Zro GLM-5.2",
       "kimi-k3": "Zro Kimi K3"
     };

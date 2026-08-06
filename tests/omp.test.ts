@@ -176,15 +176,14 @@ auth:
       });
     }
 
-    const miniMax = provider.models.find((candidate: any) => candidate.id === "minimax-m3");
-    expect(miniMax.thinking).toEqual({
+    const deepSeek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4-flash-0731");
+    expect(deepSeek.thinking).toEqual({
       mode: "effort",
-      efforts: ["medium", "high"],
-      defaultLevel: "medium",
+      efforts: ["low", "high", "max"],
+      defaultLevel: "high",
     });
-    expect(miniMax.compat).toEqual({
-      reasoningEffortMap: { medium: "adaptive", high: "enabled" },
-      thinkingFormat: "zai",
+    expect(deepSeek.compat).toEqual({
+      reasoningEffortMap: { low: "low", high: "high", max: "max" },
     });
 
     const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.2");

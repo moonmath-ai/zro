@@ -350,7 +350,7 @@ describe("zro experience", () => {
     await fs.writeFile(path.join(credentialDir, "credentials.json"), JSON.stringify({ apiKey: "sk-stored" }));
     await fs.mkdir(codexAppDir);
     await fs.writeFile(path.join(codexAppDir, ".env"), "ZRO_API_KEY=sk-stored\n");
-    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"minimax-m3\"\n");
+    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"glm-5.2\"\n");
     const catalogPath = path.join(home, ".cache", "zro", "model-catalog.json");
     await fs.mkdir(path.dirname(catalogPath), { recursive: true });
     await fs.writeFile(catalogPath, JSON.stringify(dynamicCatalogResponse()));
@@ -370,7 +370,7 @@ describe("zro experience", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(catalogPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(path.join(codexAppDir, "config.toml"), "utf8"))
-      .resolves.toBe("model = \"minimax-m3\"\n");
+      .resolves.toBe("model = \"glm-5.2\"\n");
   });
 
   it("removes the Codex App key when it is the only stored credential", async () => {
