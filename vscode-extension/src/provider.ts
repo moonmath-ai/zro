@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { BASE_URL, PROVIDER_NAME, type ZroModel } from "./constants.js";
+import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, type ZroModel } from "./constants.js";
 import { fetchModelCatalog } from "./catalog.js";
 import { resolveApiKey } from "./credentials.js";
 
@@ -83,7 +83,7 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider {
   }
 }
 
-function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation {
+export function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation {
   // A misconfigured catalog can advertise maxOutputTokens >= contextWindow
   // (kimi-k3 shipped with maxOutputTokens = contextWindow = 1_048_576). Copilot
   // forwards that verbatim as max_tokens, and the model rejects the request
@@ -94,11 +94,16 @@ function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation {
     model.maxOutputTokens,
     Math.floor(model.contextWindow / 2)
   );
+  // VS Code's Copilot Chat picker groups models by `family`: if every model
+  // shares one family value, the picker collapses them into a single selectable
+  // entry. Use a per-model family so each ZRO model appears as its own entry.
+  const family = `${PROVIDER_ID}-${model.id}`;
   return {
     id: model.id,
     name: `${PROVIDER_NAME} ${model.displayName}`,
-    family: "zro",
+    family,
     tooltip: `${PROVIDER_NAME} model via ${BASE_URL}`,
+    detail: `${model.displayName} · ${PROVIDER_ID}`,
     version: "1.0.0",
     maxInputTokens: model.contextWindow - cappedMaxOutput,
     maxOutputTokens: cappedMaxOutput,
@@ -122,7 +127,7 @@ interface OpenAiMessage {
   tool_call_id?: string;
 }
 
-function buildRequestBody(
+export function buildRequestBody(
   model: vscode.LanguageModelChatInformation,
   messages: readonly vscode.LanguageModelChatRequestMessage[],
   options: vscode.ProvideLanguageModelChatResponseOptions
@@ -164,7 +169,7 @@ function buildRequestBody(
  * assistant message with `tool_calls`; a user message carrying tool-result
  * parts becomes one OpenAI `role: "tool"` message per result.
  */
-function toOpenAiMessages(msg: vscode.LanguageModelChatRequestMessage): OpenAiMessage[] {
+export function toOpenAiMessages(msg: vscode.LanguageModelChatRequestMessage): OpenAiMessage[] {
   const textParts: string[] = [];
   const toolCalls: NonNullable<OpenAiMessage["tool_calls"]> = [];
   const toolResults: Array<{ callId: string; content: string }> = [];
