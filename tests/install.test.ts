@@ -55,6 +55,28 @@ describe("zro install", () => {
     ]);
   });
 
+  it("installs Kilo Code from its official package by ID or alias", async () => {
+    const latest = recorder();
+    const pinned = recorder();
+    const upgraded = recorder();
+
+    expect(await run(["install", "kc"], io(latest.spawn))).toBe(0);
+    expect(latest.calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@kilocode/cli@latest"],
+    });
+
+    expect(await run(["install", "kilocode@7.4.16"], io(pinned.spawn))).toBe(0);
+    expect(pinned.calls[0].args).toEqual([
+      "install",
+      "--global",
+      "@kilocode/cli@7.4.16",
+    ]);
+
+    expect(await run(["install", "kilo", "--upgrade"], io(upgraded.spawn))).toBe(0);
+    expect(upgraded.calls[0].args.at(-1)).toBe("@kilocode/cli@latest");
+  });
+
   it("upgrades agents and Zro by reinstalling latest", async () => {
     const agent = recorder();
     const self = recorder();
@@ -69,6 +91,8 @@ describe("zro install", () => {
   it.each([
     ["hermes", "hermes-agent.nousresearch.com/install.sh", "--skip-setup"],
     ["grok", "x.ai/cli/install.sh", undefined],
+    ["omp", "omp.sh/install", "--binary"],
+    ["prime", "app.primeintellect.ai/prime-agent/install.sh", undefined],
   ])("uses the official installer for %s", async (tool, url, expectedArg) => {
     const { spawn, calls } = recorder();
     const code = await run(["install", tool], io(spawn));
@@ -77,6 +101,16 @@ describe("zro install", () => {
     expect(calls[0].command).toBe("bash");
     expect(calls[0].args.join(" ")).toContain(url);
     if (expectedArg) expect(calls[0].args.join(" ")).toContain(expectedArg);
+  });
+
+  it("accepts Oh My Pi's aliases for install and rejects pinned binary versions", async () => {
+    const { spawn, calls } = recorder();
+    const stderr = new PassThrough();
+
+    expect(await run(["install", "oh-my-pi"], io(spawn))).toBe(0);
+    expect(calls[0].args.join(" ")).toContain("https://omp.sh/install");
+    expect(await run(["install", "ohmypi@17.1.7"], io(spawn, new PassThrough(), stderr))).toBe(1);
+    expect(await text(stderr)).toContain("does not support pinned versions");
   });
 
   it("installs the shared Codex package for Codex App", async () => {

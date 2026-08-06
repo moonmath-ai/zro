@@ -1,8 +1,8 @@
 # zro
 
-`zro` opens coding agents against the Zro inference endpoint without modifying their normal
-configuration. The tool is the command, setup happens in context, and launching before logging in
-starts the website login automatically.
+`zro` launches supported coding agents through the Zro inference endpoint using isolated,
+Zro-owned configuration. It leaves each agent's normal configuration untouched and starts website
+login automatically when needed.
 
 ```bash
 npm install --global @moonmath-ai/zro
@@ -16,6 +16,8 @@ zro claude
 zro                         # interactive agent picker
 zro claude                  # open directly on the default model
 zro codex -m glm-5.2        # choose a model for this session
+zro kilo -m glm-5.2          # launch Kilo Code through Zro
+zro omp -m glm-5.2          # launch Oh My Pi through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
 zro login                   # choose website or API key login
@@ -33,26 +35,21 @@ zro claude --dry-run        # secret-safe session preview
 zro codex --json            # machine-readable preview
 ```
 
-The original forms still work during migration:
-
-```bash
-zro login
-zro logout
-zro auth status
-zro launch claude
-```
-
 ## Supported tools
 
-Claude Code, Codex CLI, Codex App, Grok Build, OpenCode, Hermes, OpenClaw, and Pi are supported.
-Each adapter creates a session-owned configuration and launches the installed tool as a child
-process. Native tool arguments can be placed after `--`.
+Claude Code, Codex CLI, Codex App, Grok Build, Kilo Code, Oh My Pi, OpenCode, Hermes, OpenClaw, and Pi are supported.
+Each adapter launches the installed tool as a child process with isolated configuration. Most
+session files are temporary; Codex App uses a persistent Zro-owned home so the desktop app can
+reopen. Native tool arguments can be placed after `--`.
 
 ## Installation and upgrades
 
-`zro install <tool>` installs npm-distributed agents globally. Hermes and Grok Build use their
-official shell installers. Add `--upgrade` to update an
-installed agent, or pin an npm version with either `tool@version` or `--version version`.
+Zro requires Node.js 18 or later and supports macOS and Linux. On Windows, use WSL.
+
+`zro install <tool>` installs npm-distributed agents globally. Hermes, Grok Build, and Oh My Pi use
+their official shell installers; Oh My Pi uses its prebuilt binary so Bun is not required. Add
+`--upgrade` to update an installed agent, or pin an npm-distributed agent version with either
+`tool@version` or `--version version`.
 
 `zro <tool> --install` installs a missing agent and opens it in one command. `zro install
 --upgrade` upgrades the Zro CLI itself. Version validation and installer errors are reported directly
@@ -73,14 +70,23 @@ If website login cannot start in an interactive terminal, `zro` immediately fall
 API-key paste prompt. Non-interactive commands still exit with instructions instead of waiting for
 input.
 
-`ZRO_API_KEY` takes precedence over the stored key. Credentials are stored under
-`~/.config/zro/credentials.json`, and the last tool/model pair is stored in
-`~/.config/zro/preferences.json`. Set `ZRO_AUTH_URL` to use a development authentication server.
-For remote development with a browser-side port forward, set `ZRO_PUBLIC_URL` to the forwarded
-website origin.
+`ZRO_API_KEY` takes precedence over the stored key. The primary credential is stored under
+`~/.config/zro/credentials.json`. Codex App also keeps the active key in its isolated app home at
+`~/.config/zro/codex-app/.env`; `zro logout` removes both stored copies. An environment-provided
+`ZRO_API_KEY` remains set in the current shell after logout.
+
+The last tool/model pair is stored in `~/.config/zro/preferences.json`. Set `ZRO_AUTH_URL` to use a
+development authentication server. For remote development with a browser-side port forward, set
+`ZRO_PUBLIC_URL` to the forwarded website origin.
+
 Before starting an agent, `zro` verifies the selected credential with the inference API. Rejected
 credentials and unavailable validation endpoints stop the launch instead of passing the failure to
 the child agent.
+
+When signed in, the CLI fetches the active model catalog from Zro and passes that catalog to every
+supported agent adapter. It caches successful catalogs under `~/.cache/zro/model-catalog.json` for
+offline startup and falls back to bundled defaults only when no valid cache is available. An
+authentication rejection never uses the cache and removes it; `zro logout` removes it as well.
 
 When logged in, `zro status` also shows the current plan allowance, usage-pack balance, total
 available spend, and 30-day request and token activity. JSON output includes the same account data.
@@ -88,23 +94,30 @@ available spend, and 30-day request and token activity. JSON output includes the
 ## Safety
 
 - Normal agent configs are never edited.
-- Per-session files live under `~/.cache/zro/sessions` and are removed when the agent exits.
+- Temporary session files live under `~/.cache/zro/sessions` and are removed when the agent exits.
+- Kilo Code runs with a temporary home and XDG profile. Zro copies only sanitized preferences and
+  safe agent/command/skill assets; provider credentials, MCP definitions, sessions, databases,
+  dependency trees, and symlinks remain outside the profile.
+- Kilo telemetry, OTLP export, automatic updates, model-catalog refresh, cloud session ingest and
+  sharing, remote control, and default vendor plugins are disabled. Model and MCP requests still go
+  to their configured Zro endpoints.
+- Oh My Pi runs with a temporary home, XDG roots, agent directory, and model cache. Zro copies only
+  sanitized display preferences and local agent/command/prompt/skill/theme assets; auth state,
+  databases, sessions, dependency trees, secret files, and symlinks stay outside the profile.
+- Oh My Pi OTLP export, Auto QA reporting, startup update checks, marketplace updates, remote
+  memory, and remote compaction are disabled. Its Zro model and MCP files contain environment
+  variable names rather than API-key values.
+- Codex App uses persistent configuration under `~/.config/zro/codex-app`; logout removes its key.
 - API keys are masked in human and JSON previews.
 - `--dry-run` writes nothing and starts nothing.
 - macOS and Linux are supported; use WSL on Windows.
 
 See [SECURITY.md](SECURITY.md) for the security model and private vulnerability reporting.
 
-## Repository scope
-
-This repository contains only the distributable CLI, its tool adapters, tests, and documentation.
-The Zro website, billing system, API-key issuer, inference control plane, and deployment
-infrastructure are maintained separately.
-
 ## Development
 
 ```bash
-npm install
+npm ci
 npm test
 npm run build
 node dist/cli.js status
@@ -116,5 +129,4 @@ ZRO_API_KEY=sk-... npm run test:live
 
 ## License
 
-No open-source license has been selected yet. Until a license is added, no permission is granted
-to copy, modify, or redistribute this source code.
+Zro is licensed under the [MIT License](LICENSE).

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { yamlSerializer } from "../serializers.js";
 import type { ApiKeySource, ToolModule } from "../types.js";
@@ -12,7 +12,7 @@ export const hermesTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".hermes", "config.yaml");
     const existing = await readConfig(path.join(ctx.homeDir, ".hermes", "config.yaml"), yamlSerializer);
-    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ZRO_MODELS);
+    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models);
     return {
       tool: "hermes",
       label: "Hermes",

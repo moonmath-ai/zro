@@ -11,9 +11,12 @@ const adapters = [
   ["codex-app", "codex"],
   ["grok", "grok"],
   ["hermes", "hermes"],
+  ["kilo", "kilo"],
+  ["omp", "omp"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
-  ["pi", "pi"]
+  ["pi", "pi"],
+  ["prime", "prime-agent"]
 ] as const;
 
 describe("tool adapters", () => {
@@ -27,7 +30,8 @@ describe("tool adapters", () => {
       homeDir: home,
       cwd: home,
       env: { ZRO_API_KEY: "sk-adapter-secret", XDG_CONFIG_HOME: path.join(home, ".config") },
-      platform: "linux"
+      platform: "linux",
+      fetch: async () => new Response(null, { status: 503 }),
     });
 
     expect(code).toBe(0);
@@ -38,7 +42,7 @@ describe("tool adapters", () => {
       model: string;
       environment: Record<string, string>;
     };
-    expect(plan).toMatchObject({ tool, command: executable, model: "minimax-m3" });
+    expect(plan).toMatchObject({ tool, command: executable, model: "glm-5.2" });
     expect(text).not.toContain("sk-adapter-secret");
   });
 });

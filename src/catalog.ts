@@ -18,11 +18,14 @@ export const TOOLS: readonly ToolDescriptor[] = [
   { id: "claude", name: "Claude Code", hint: "Anthropic's coding agent", aliases: ["c", "cc"], executable: "claude", package: "@anthropic-ai/claude-code@latest" },
   { id: "codex", name: "Codex CLI", hint: "OpenAI's terminal agent", aliases: ["cx"], executable: "codex", package: "@openai/codex@latest" },
   { id: "codex-app", name: "Codex App", hint: "OpenAI's desktop app", aliases: ["app"], executable: "codex", package: "@openai/codex@latest" },
+  { id: "kilo", name: "Kilo Code", hint: "Kilo's terminal coding agent", aliases: ["kc", "kilocode"], executable: "kilo", package: "@kilocode/cli@latest" },
+  { id: "omp", name: "Oh My Pi", hint: "Power-user terminal coding agent", aliases: ["oh-my-pi", "ohmypi"], executable: "omp", installer: { url: "https://omp.sh/install", args: ["--binary"], binDir: ".local/bin" } },
   { id: "opencode", name: "OpenCode", hint: "Open source coding agent", aliases: ["oc"], executable: "opencode", package: "opencode-ai@latest" },
   { id: "grok", name: "Grok Build", hint: "xAI's coding agent", aliases: ["gr"], executable: "grok", installer: { url: "https://x.ai/cli/install.sh", binDir: ".local/bin" } },
   { id: "hermes", name: "Hermes", hint: "Nous Research's agent", aliases: ["h"], executable: "hermes", installer: { url: "https://hermes-agent.nousresearch.com/install.sh", args: ["--skip-setup"], binDir: ".local/bin" } },
   { id: "openclaw", name: "OpenClaw", hint: "Personal AI assistant", aliases: ["claw"], executable: "openclaw", package: "openclaw@latest" },
-  { id: "pi", name: "Pi", hint: "Minimal coding agent", aliases: [], executable: "pi", package: "@earendil-works/pi-coding-agent@latest" }
+  { id: "pi", name: "Pi", hint: "Minimal coding agent", aliases: [], executable: "pi", package: "@earendil-works/pi-coding-agent@latest" },
+  { id: "prime", name: "Prime Agent", hint: "Prime Intellect's self-improving RLM agent", aliases: ["pa", "prime-agent"], executable: "prime-agent", installer: { url: "https://app.primeintellect.ai/prime-agent/install.sh", binDir: ".local/bin" } }
 ] as const;
 
 const TOOL_LOOKUP = new Map<string, ToolId>();

@@ -28,35 +28,6 @@ export interface ZroModel {
 
 export const ZRO_MODELS = [
   {
-    id: "minimax-m3",
-    displayName: "MiniMax M3",
-    contextWindow: 1048576,
-    maxOutputTokens: 64000,
-    reasoning: {
-      defaultLevel: "adaptive",
-      levels: [
-        {
-          id: "disabled",
-          description: "Disable reasoning for the lowest latency",
-          piLevel: "off",
-          openCodeOptions: { thinking: { type: "disabled" } }
-        },
-        {
-          id: "adaptive",
-          description: "Reason only when MiniMax determines it is useful",
-          piLevel: "medium",
-          openCodeOptions: { thinking: { type: "adaptive" } }
-        },
-        {
-          id: "enabled",
-          description: "Reason before every response",
-          piLevel: "high",
-          openCodeOptions: { thinking: { type: "enabled" } }
-        }
-      ]
-    }
-  },
-  {
     id: "glm-5.2",
     displayName: "GLM-5.2",
     contextWindow: 524288,
@@ -93,7 +64,7 @@ export const ZRO_MODELS = [
     id: "kimi-k3",
     displayName: "Kimi K3",
     contextWindow: 1048576,
-    maxOutputTokens: 64000,
+    maxOutputTokens: 1048576,
     reasoning: {
       defaultLevel: "high",
       levels: [
@@ -118,9 +89,40 @@ export const ZRO_MODELS = [
         }
       ]
     }
+  },
+  {
+    id: "deepseek-v4-flash-0731",
+    displayName: "DeepSeek V4 Flash",
+    contextWindow: 1048576,
+    maxOutputTokens: 384000,
+    reasoning: {
+      defaultLevel: "high",
+      levels: [
+        {
+          id: "none",
+          description: "Disable reasoning for the lowest latency",
+          codexEffort: "disabled",
+          piLevel: "off",
+          openCodeOptions: { reasoningEffort: "none" }
+        },
+        {
+          id: "high",
+          description: "Use DeepSeek high reasoning effort",
+          piLevel: "high",
+          openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use Kimi maximum reasoning effort",
+          codexEffort: "xhigh",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
   }
 ] as const satisfies readonly ZroModel[];
 
-export const DEFAULT_MODEL = ZRO_MODELS[0].id;
+export const DEFAULT_MODEL = "glm-5.2";
 
-export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "opencode", "hermes", "openclaw", "pi"] as const;
+export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "hermes", "openclaw", "pi", "prime"] as const;
