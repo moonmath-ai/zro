@@ -37,7 +37,16 @@
       },
       {
         "command": "zro.login",
-        "title": "ZRO: Log in"
+        "title": "ZRO: Sign in with browser"
+      },
+      {
+        "command": "zro.dashboard",
+        "title": "ZRO: Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "zro.configureExtensions",
+        "title": "ZRO: Configure in other extensions"
       }
     ]
   },

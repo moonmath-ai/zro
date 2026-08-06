@@ -6,6 +6,8 @@ import { ZRO_ENV_KEY } from "./constants.js";
 
 const SECRET_KEY = "zro.apiKey";
 
+export type CredentialSource = "environment" | "stored" | "credentials-file" | "none";
+
 /**
  * Resolution order mirrors zro/src/engine/key.ts:
  *   1. ZRO_API_KEY env var
@@ -20,6 +22,22 @@ export async function resolveApiKey(context: vscode.ExtensionContext): Promise<s
   if (stored) return stored;
 
   return readCredentialsFile();
+}
+
+/** Return the resolved key together with which source provided it. */
+export async function resolveCredential(
+  context: vscode.ExtensionContext
+): Promise<{ apiKey: string | undefined; source: CredentialSource }> {
+  const envValue = process.env[ZRO_ENV_KEY];
+  if (envValue) return { apiKey: envValue, source: "environment" };
+
+  const stored = await context.secrets.get(SECRET_KEY);
+  if (stored) return { apiKey: stored, source: "stored" };
+
+  const fileKey = await readCredentialsFile();
+  if (fileKey) return { apiKey: fileKey, source: "credentials-file" };
+
+  return { apiKey: undefined, source: "none" };
 }
 
 export async function storeApiKey(context: vscode.ExtensionContext, apiKey: string): Promise<void> {
