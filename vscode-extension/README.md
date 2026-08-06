@@ -15,7 +15,7 @@ inference endpoint with full tool-calling support (file edits, terminal, etc.).
   extension update needed.
 - **Dashboard panel** — run `ZRO: Dashboard` (or `ZRO: Sign in with browser`)
   from the Command Palette to open a single-panel dashboard with tabs for
-  **Overview**, **Models**, **Cost**, **Endpoints**, **Cache**, and **Team**.
+  **Overview**, **Models**, **Cost**, **Cache**, and **Team**.
 - **Browser sign-in (OAuth)** — start a device-authorization login right from
   VS Code, approve it in your browser, and the API key is stored securely in
   SecretStorage — no copying keys.
@@ -31,6 +31,40 @@ inference endpoint with full tool-calling support (file edits, terminal, etc.).
   round-trip through Copilot Chat's agent loop just like any built-in model.
 - **Resilient fallback** — if the control plane is unreachable, a built-in model
   list keeps the picker populated so you're never left without options.
+
+## Dashboard
+
+Run `ZRO: Dashboard` from the Command Palette to open the dashboard panel. It has five tabs, each covered below.
+
+### Overview
+
+![Overview tab](media/screenshots/tab-overview.png)
+
+The Overview tab is the landing page. The **Connection** card shows whether the extension is connected to the control plane, where the API key was resolved from (VS Code storage, CLI credentials file, or `ZRO_API_KEY`), the masked key, and the current billing plan. The **Quick actions** card surfaces the most common commands: sign in, enter an API key, set the default model, and refresh the dashboard.
+
+### Models
+
+![Models & endpoints tab](media/screenshots/tab-models.png)
+
+The Models & endpoints tab lists every model active in the control-plane catalog fetched live on each refresh. Each row shows the model's display name and context window, a **Live** pill confirming it is available on the serving endpoints reachable by your key, and a **Set as default** button to pick the model used by Copilot Chat (the current default shows **Current default**). Endpoints are provisioned out-of-band on serving nodes, so there is no separate endpoints list.
+
+### Cost
+
+![Cost tab](media/screenshots/tab-cost.png)
+
+The Cost tab shows billing and spend at a glance: plan allowance, usage-pack credits, and total remaining credit, plus trailing-30-day activity — requests, tool calls, input/output tokens, cache-read tokens, and spend. A **Top up credits** button opens the account top-up page in your browser.
+
+### Cache
+
+![Cache tab](media/screenshots/tab-cache.png)
+
+The Cache tab isolates prompt-cache usage from the rest of cost. It shows cache-read input tokens over the trailing 30 days as a share of total input — a quick read on how much the cache is saving. The API does not yet expose cache controls, so only observed usage is shown.
+
+### Team
+
+![Team tab](media/screenshots/tab-team.png)
+
+The Team tab shows account-level team information when your plan includes shared access — members and the shared plan/credit pool. For individual accounts it confirms the account holder and plan.
 
 ## Install
 
