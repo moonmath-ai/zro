@@ -31,6 +31,7 @@ import { ompTool } from "./engine/tools/omp.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
 import { opencodeTool } from "./engine/tools/opencode.js";
 import { piTool } from "./engine/tools/pi.js";
+import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
 import { describeTool, TOOLS } from "./catalog.js";
@@ -49,7 +50,8 @@ const tools: Record<ToolId, ToolModule> = {
   omp: ompTool,
   openclaw: openClawTool,
   opencode: opencodeTool,
-  pi: piTool
+  pi: piTool,
+  prime: primeTool
 };
 
 const PACKAGE_VERSION = (

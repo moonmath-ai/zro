@@ -23,7 +23,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-live-report.json");
 const runId = (process.env.ZRO_CI_RUN_ID || `${Date.now()}`).replace(/[^A-Za-z0-9_.-]/g, "-");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -84,6 +84,7 @@ try {
     else if (harness === "omp") await checkOmp();
     else if (harness === "opencode") await checkOpenCode();
     else if (harness === "pi") await checkPi();
+    else if (harness === "prime") await checkPrime();
     else if (SKIPPED_LIVE_HARNESSES.has(harness)) skipped(harness);
     else throw new Error(`No live checks defined for harness "${harness}"`);
   }
@@ -120,7 +121,8 @@ async function collectVersions() {
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
-    openclaw: ["openclaw", "--version"]
+    openclaw: ["openclaw", "--version"],
+    prime: ["prime-agent", "--version"]
   };
   for (const name of harnesses) {
     const command = clientCommands[name];
@@ -358,6 +360,52 @@ async function checkPi() {
   ], "Pi max reasoning", REASONING_TIMEOUT_MS), reasoningMarker);
   assert.ok(max.usage.reasoning > 0, "Pi max effort reported no reasoning tokens");
   passed("pi.reasoning.max", { model: "glm-5.2", reasoningTokens: max.usage.reasoning });
+}
+
+async function checkPrime() {
+  const marker = "ZRO_PRIME_CACHE_OK";
+  const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
+  const cacheArgs = [
+    "launch", "prime", "--model", "minimax-m3", "--", "--print", "--mode", "json",
+    "--no-tools", "--no-session", "--thinking", "off", prompt
+  ];
+
+  const first = primeTurn(await runZro(cacheArgs, "Prime Agent cache warm-up"), marker, { expectThinking: false });
+  const second = primeTurn(await runZro(cacheArgs, "Prime Agent cache read"), marker, { expectThinking: false });
+  assert.ok(second.usage.cacheRead > 0, "Prime Agent reported no cache-read tokens");
+  passed("prime.cache", {
+    model: "minimax-m3",
+    effort: "off",
+    firstCacheRead: first.usage.cacheRead,
+    secondCacheRead: second.usage.cacheRead
+  });
+
+  const reasoningMarker = "ZRO_PRIME_MAX_OK";
+  const max = primeTurn(await runZro([
+    "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
+    "--no-tools", "--no-session", "--thinking", "xhigh",
+    `Think briefly, then include ${reasoningMarker} in the answer.`
+  ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
+  assert.ok(max.hasThinking, "Prime Agent max effort returned no thinking content");
+  passed("prime.reasoning.max", { model: "glm-5.2", thinkingContent: true });
+}
+
+function primeTurn(result, marker, options = {}) {
+  const events = jsonLines(`${result.stdout}\n${result.stderr}`);
+  const completed = events.findLast(
+    (event) => event.type === "message_end" && event.message?.role === "assistant"
+  )?.message;
+  assert.ok(completed?.usage, "Prime Agent emitted no assistant token usage");
+  const text = completed.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+  assert.match(text, new RegExp(marker));
+  const hasThinking = completed.content.some((part) => part.type === "thinking" && typeof part.thinking === "string" && part.thinking.length > 0);
+  if (options.expectThinking === false) {
+    assert.ok(!hasThinking, "Prime Agent returned thinking content when reasoning was disabled");
+  }
+  return { ...completed, hasThinking };
 }
 
 function claudeResult(result) {

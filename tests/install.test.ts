@@ -92,6 +92,7 @@ describe("zro install", () => {
     ["hermes", "hermes-agent.nousresearch.com/install.sh", "--skip-setup"],
     ["grok", "x.ai/cli/install.sh", undefined],
     ["omp", "omp.sh/install", "--binary"],
+    ["prime", "app.primeintellect.ai/prime-agent/install.sh", undefined],
   ])("uses the official installer for %s", async (tool, url, expectedArg) => {
     const { spawn, calls } = recorder();
     const code = await run(["install", tool], io(spawn));

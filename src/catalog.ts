@@ -24,7 +24,8 @@ export const TOOLS: readonly ToolDescriptor[] = [
   { id: "grok", name: "Grok Build", hint: "xAI's coding agent", aliases: ["gr"], executable: "grok", installer: { url: "https://x.ai/cli/install.sh", binDir: ".local/bin" } },
   { id: "hermes", name: "Hermes", hint: "Nous Research's agent", aliases: ["h"], executable: "hermes", installer: { url: "https://hermes-agent.nousresearch.com/install.sh", args: ["--skip-setup"], binDir: ".local/bin" } },
   { id: "openclaw", name: "OpenClaw", hint: "Personal AI assistant", aliases: ["claw"], executable: "openclaw", package: "openclaw@latest" },
-  { id: "pi", name: "Pi", hint: "Minimal coding agent", aliases: [], executable: "pi", package: "@earendil-works/pi-coding-agent@latest" }
+  { id: "pi", name: "Pi", hint: "Minimal coding agent", aliases: [], executable: "pi", package: "@earendil-works/pi-coding-agent@latest" },
+  { id: "prime", name: "Prime Agent", hint: "Prime Intellect's self-improving RLM agent", aliases: ["pa", "prime-agent"], executable: "prime-agent", installer: { url: "https://app.primeintellect.ai/prime-agent/install.sh", binDir: ".local/bin" } }
 ] as const;
 
 const TOOL_LOOKUP = new Map<string, ToolId>();
