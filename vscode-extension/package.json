@@ -44,6 +44,8 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "package": "npx @vscode/vsce package --no-dependencies",
     "prepublish": "npm run compile"
   },
@@ -51,6 +53,7 @@
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.104.0",
     "@vscode/vsce": "^3.6.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
   }
 }

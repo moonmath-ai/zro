@@ -140,7 +140,9 @@ export function buildCodexModelCatalog(modelSpecs: readonly ZroModel[]): Record<
       default_reasoning_summary: "none",
       support_verbosity: false,
       default_verbosity: "medium",
-      apply_patch_tool_type: "freeform",
+      // Freeform (custom) apply_patch tools make litellm return HTTP 500, so
+      // expose apply_patch as a regular function tool instead.
+      apply_patch_tool_type: "function",
       web_search_tool_type: "text_and_image",
       truncation_policy: {
         mode: "tokens",
