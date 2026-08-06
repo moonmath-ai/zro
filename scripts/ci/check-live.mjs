@@ -468,7 +468,7 @@ function run(command, args, label, timeoutMs) {
     let stderr = "";
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error(`${label} timed out after ${timeoutMs / 1000}s`));
+      reject(new Error(`${label} timed out after ${timeoutMs / 1000}s\n${redact(stderr)}\n${redact(stdout)}`.trim()));
     }, timeoutMs);
 
     child.stdout.setEncoding("utf8");
