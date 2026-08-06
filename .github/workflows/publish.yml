@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump level
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -35,10 +45,11 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Bump patch version
+      - name: Bump version
         id: bump
         run: |
-          npm version patch --no-git-tag-version
+          LEVEL="${{ inputs.bump || 'patch' }}"
+          npm version "$LEVEL" --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
