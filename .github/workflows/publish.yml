@@ -2,18 +2,7 @@ name: Publish
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: Version bump level
-        required: true
-        default: patch
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -47,53 +36,25 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Resolve bump level
-        id: bump
+      - name: Verify version matches tag
         run: |
-          if [ -n "${{ inputs.bump }}" ]; then
-            LEVEL="${{ inputs.bump }}"
-          elif git log --format=%B -n 1 | grep -qiF "[release:major]"; then
-            LEVEL="major"
-          elif git log --format=%B -n 1 | grep -qiF "[release:minor]"; then
-            LEVEL="minor"
-          elif git log --format=%B -n 1 | grep -qiE "\[release:none\]|\[skip release\]"; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            LEVEL="none"
-          else
-            LEVEL="patch"
-          fi
-          echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
-          echo "Bump level: $LEVEL"
-
-      - name: Bump version
-        if: steps.bump.outputs.skip != 'true'
-        run: |
-          npm version "${{ steps.bump.outputs.level }}" --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "v$VERSION" != "$TAG" ]]; then
+            echo "Tag $TAG does not match package version v$VERSION"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_ENV"
 
       - name: Build
-        if: steps.bump.outputs.skip != 'true'
         run: npm run build
 
-      - name: Commit version bump and tag
-        if: steps.bump.outputs.skip != 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "v${{ env.version }}"
-          git tag "v${{ env.version }}"
-          git push origin main --tags
-
       - name: Publish to npm
-        if: steps.bump.outputs.skip != 'true'
         run: npm publish --provenance
 
       - name: Create GitHub Release
-        if: steps.bump.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.version }}
+          tag_name: ${{ env.version }}
           name: v${{ env.version }}
           generate_release_notes: true
