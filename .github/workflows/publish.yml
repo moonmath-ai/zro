@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
@@ -86,9 +87,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.bump.outputs.skip != 'true'
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance
 
       - name: Create GitHub Release
         if: steps.bump.outputs.skip != 'true'
