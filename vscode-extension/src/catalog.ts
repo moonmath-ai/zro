@@ -18,6 +18,11 @@ interface RemoteCatalog {
   models?: readonly RemoteCatalogModel[];
 }
 
+export interface CatalogResult {
+  default: string;
+  models: readonly ZroModel[];
+}
+
 /**
  * Fetch the live model catalog from the control plane, authenticated with the
  * same API key used for inference. Falls back to the static `ZRO_MODELS` list
@@ -27,7 +32,7 @@ interface RemoteCatalog {
 export async function fetchModelCatalog(
   apiKey: string,
   signal?: AbortSignal
-): Promise<{ default: string; models: readonly ZroModel[] }> {
+): Promise<CatalogResult> {
   try {
     const response = await fetch(CATALOG_URL, {
       headers: { Authorization: `Bearer ${apiKey}` },

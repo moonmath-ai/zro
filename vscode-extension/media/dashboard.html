@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src {{cspSource}} data:; style-src 'nonce-{{nonce}}'; font-src {{cspSource}}; script-src 'nonce-{{nonce}}';" />
+  <style nonce="{{nonce}}">
+    :root {
+      --bg: #0f1117;
+      --panel: #171a22;
+      --panel-2: #1d2130;
+      --border: #2a2f3f;
+      --text: #e6e9f0;
+      --muted: #8b93a7;
+      --accent: #6ea8fe;
+      --accent-2: #8b5cf6;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; line-height: 1.5; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 18px 20px 40px; }
+
+    /* Header */
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+    .brand .logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; place-items: center; font-size: 12px; }
+    .head-actions { display: flex; gap: 8px; }
+
+    button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; transition: background .15s, border-color .15s; }
+    button:hover { background: #262b3d; border-color: var(--accent); }
+    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: none; color: #0f1117; font-weight: 600; }
+    button.primary:hover { filter: brightness(1.08); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.ghost { background: transparent; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 4px; margin: 16px 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; overflow-x: auto; }
+    .tab { background: transparent; border: none; color: var(--muted); padding: 6px 12px; border-radius: 6px 6px 0 0; border-bottom: 2px solid transparent; font-weight: 500; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .pane { display: none; animation: fade .2s ease; }
+    .pane.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+    .card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .card h4 { margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
+
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .row:last-child { border-bottom: none; }
+    .row .label { color: var(--muted); }
+    .row .value { font-weight: 500; text-align: right; }
+    .row .value.good { color: var(--good); }
+    .row .value.warn { color: var(--warn); }
+    .row .value.bad { color: var(--bad); }
+
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .metric { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .metric .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+    .metric .v { font-size: 20px; font-weight: 700; margin-top: 4px; }
+
+    .bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 6px 0; }
+    .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 4px; }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .pill.good { background: rgba(52,211,153,.15); color: var(--good); }
+    .pill.warn { background: rgba(251,191,36,.15); color: var(--warn); }
+    .pill.bad { background: rgba(248,113,113,.15); color: var(--bad); }
+    .pill.muted { background: var(--panel-2); color: var(--muted); }
+
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: 12px; }
+
+    .model-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .model-item:last-child { border-bottom: none; }
+    .model-item .m-left { min-width: 0; }
+    .model-item .m-name { font-weight: 600; }
+    .model-item .m-id { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+    .model-item .m-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .model-item .select-btn { flex-shrink: 0; }
+    .model-item .select-btn.selected { background: var(--good); color: #0f1117; border: none; font-weight: 600; }
+
+    .login-code { font-family: ui-monospace, Menlo, monospace; font-size: 26px; letter-spacing: .05em; text-align: center; background: var(--panel-2); border: 1px dashed var(--accent); border-radius: 8px; padding: 14px; margin: 14px 0; color: var(--accent); }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .spacer { height: 8px; }
+    .divider { margin: 14px 0; border: none; border-top: 1px solid var(--border); }
+
+    .notice { border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 12px; }
+    .notice.info { background: rgba(110,168,254,.12); color: var(--accent); border: 1px solid rgba(110,168,254,.3); }
+    .notice.warn { background: rgba(251,191,36,.1); color: var(--warn); border: 1px solid rgba(251,191,36,.3); }
+    .notice.error { background: rgba(248,113,113,.1); color: var(--bad); border: 1px solid rgba(248,113,113,.3); }
+
+    .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+    .tag.soon { background: rgba(251,191,36,.15); color: var(--warn); }
+
+    .src { font-size: 11px; color: var(--muted); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div class="brand"><span class="logo">Z</span> ZRO</div>
+      <div class="head-actions">
+        <button id="refresh-btn" title="Refresh">Refresh</button>
+        <button id="openchat-btn" class="ghost" title="Open Copilot Chat">Chat</button>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="overview" role="tab">Overview</button>
+      <button class="tab" data-tab="models" role="tab">Models</button>
+      <button class="tab" data-tab="cost" role="tab">Cost</button>
+      <button class="tab" data-tab="endpoints" role="tab">Endpoints</button>
+      <button class="tab" data-tab="cache" role="tab">Cache</button>
+      <button class="tab" data-tab="team" role="tab">Team</button>
+    </div>
+
+    <!-- Overview -->
+    <section class="pane active" id="pane-overview">
+      <div class="card" id="auth-card">
+        <h3>Connection</h3>
+        <div id="auth-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Quick actions</h3>
+        <div class="actions">
+          <button id="qa-chat" class="primary">Open Copilot Chat</button>
+          <button id="qa-chat-pick">Choose model in Chat</button>
+          <button id="qa-manual">Enter API key</button>
+          <button id="qa-logout" class="ghost">Log out</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Models -->
+    <section class="pane" id="pane-models">
+      <div class="card">
+        <h3>Model picker preferences</h3>
+        <div class="muted small">Select a default ZRO model. This updates Copilot Chat's selected model preference. The catalog is fetched live from the control plane.</div>
+        <div class="spacer"></div>
+        <div id="models-list"></div>
+      </div>
+    </section>
+
+    <!-- Cost -->
+    <section class="pane" id="pane-cost">
+      <div class="card">
+        <h3>Spend &amp; allowance</h3>
+        <div id="cost-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Last 30 days activity</h3>
+        <div id="cost-activity" class="muted">Loading…</div>
+      </div>
+    </section>
+
+    <!-- Endpoints -->
+    <section class="pane" id="pane-endpoints">
+      <div class="card">
+        <h3>Model endpoints</h3>
+        <div class="muted small">Endpoints are provisioned out-of-band on serving nodes. The catalog below is the live set available to this key.</div>
+        <div class="spacer"></div>
+        <div id="endpoints-list"></div>
+      </div>
+    </section>
+
+    <!-- Cache -->
+    <section class="pane" id="pane-cache">
+      <div class="card">
+        <h3>Prompt cache usage</h3>
+        <div id="cache-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Cache controls <span class="tag soon">Not available yet</span></h3>
+        <p class="muted small">The control plane does not yet expose a prompt-cache management API. Read usage is shown live above.</p>
+        <button id="cache-flush" disabled>Flush cache</button>
+      </div>
+    </section>
+
+    <!-- Team -->
+    <section class="pane" id="pane-team">
+      <div class="card">
+        <h3>Account &amp; plan</h3>
+        <div id="team-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Team management <span class="tag soon">Not available yet</span></h3>
+        <p class="muted small">The platform is currently single-user. Team/workspace management is not exposed to the agent CLI yet.</p>
+      </div>
+    </section>
+
+    <div id="notice-slot"></div>
+  </div>
+
+  <script nonce="{{nonce}}">
+    (() => {
+      const vscode = acquireVsCodeApi();
+      const state = { auth: null, data: null, loginSession: null };
+
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+
+      // Tabs
+      $$('.tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          $$('.tab').forEach((t) => t.classList.remove('active'));
+          $$('.pane').forEach((p) => p.classList.remove('active'));
+          tab.classList.add('active');
+          $('#pane-' + tab.dataset.tab).classList.add('active');
+        });
+      });
+
+      function fmtMoney(n, currency) {
+        try {
+          return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(n || 0);
+        } catch { return '$' + (n || 0).toFixed(2); }
+      }
+      function fmtNum(n) { return (n || 0).toLocaleString(); }
+      function pct(a, b) { return b ? Math.min(100, Math.round((a / b) * 100)) : 0; }
+
+      function notice(kind, message) {
+        const slot = $('#notice-slot');
+        const el = document.createElement('div');
+        el.className = 'notice ' + kind;
+        el.textContent = message;
+        slot.prepend(el);
+        setTimeout(() => el.remove(), 5000);
+      }
+
+      // ---- Rendering ----
+
+      function renderConnection(credential, accountStatus) {
+        const body = $('#auth-body');
+        if (!state.credential || !state.credential.hasKey) {
+          body.innerHTML =
+            `<div class="row"><span class="label">Status</span><span class="pill bad">Not connected</span></div>` +
+            `<p class="muted small">Connect with your browser, or paste an API key.</p>` +
+            `<div class="actions"><button id="auth-login" class="primary">Sign in with browser</button><button id="auth-manual">Enter API key</button></div>`;
+          bindVersioned('#auth-login', () => vscode.postMessage({ type: 'login' }));
+          bindVersioned('#auth-manual', () => vscode.postMessage({ type: 'manualKey' }));
+          return;
+        }
+        const c = state.credential;
+        const srcLabels = { environment: 'Environment', stored: 'VS Code storage', 'credentials-file': 'zro login' };
+        const isGood = accountStatus && accountStatus.state === 'available';
+        const isBad = accountStatus && accountStatus.state === 'rejected';
+        const pill = isGood ? 'good' : isBad ? 'bad' : 'warn';
+        const pillText = isGood ? 'Connected' : isBad ? 'Key rejected' : 'Not verified';
+        body.innerHTML = `
+          <div class="row"><span class="label">Status</span><span class="pill ${pill}">${pillText}</span></div>
+          <div class="row"><span class="label">Source</span><span class="value src">${src[c.keySource] || c.keySource}</span></div>
+          <div class="row"><span class="label">Key</span><span class="value"><code>${c.maskedKey}</code></span></div>
+          <div class="row"><span class="label">Plan</span><span class="value">${isGood && accountStatus.account.billing.plan ? accountStatus.account.billing.plan.name : '—'}</span></div>
+        `;
+      }
+
+      function renderModels() {
+        const list = $('#models-list');
+        const data = state.data;
+        if (!data || data.keyless) {
+          list.innerHTML = `<div class="empty">Enter your API key to load the model catalog.</div>`;
+          return;
+        }
+        const models = data.catalog.models;
+        if (!models.length) { list.innerHTML = `<div class="empty">No models available.</div>`; return; }
+        list.innerHTML = models.map((m) => {
+          const sel = m.id === data.selected;
+          return `
+            <div class="model-item">
+              <div class="m-left">
+                <div class="m-name">${m.displayName}${m.id === data.catalog.default ? ' <span class="tag">default</span>' : ''}</div>
+                <div class="m-id">${m.id}</div>
+                <div class="m-sub">${fmtNum(m.contextWindow)} ctx · ${fmtNum(m.maxOutputTokens)} out</div>
+              </div>
+              <button class="select-btn ${sel ? 'selected' : ''}" data-model="${m.id}">${sel ? 'Selected' : 'Select'}</button>
+            </div>`;
+        }).join('');
+        $$('.select-btn').forEach((b) => b.addEventListener('click', () => {
+          vscode.postMessage({ type: 'selectModel', model: b.dataset.model });
+        }));
+      }
+
+      function renderCost() {
+        const data = state.data;
+        if (!data || data.keyless) {
+          $('#cost-body').innerHTML = `<div class="empty">Enter your API key to load cost dashboard.</div>`;
+          $('#cost-activity').innerHTML = '';
+          return;
+        }
+        if (!data.account || data.account.state !== 'available') {
+          $('#cost-body').innerHTML = `<div class="empty">${data.account && data.account.state === 'rejected' ? 'API key rejected.' : 'Cost dashboard unavailable.'}</div>`;
+          return;
+        }
+        const a = data.account.account;
+        const billing = a.billing;
+        const money = (n) => fmtMoney(n, billing.currency);
+        const plan = billing.plan;
+        let planHtml = '';
+        if (plan) {
+          const usedPct = pct(plan.used, plan.allowance);
+          planHtml = `
+            <div class="row"><span class="label">Plan</span><span class="value">${plan.name} (${billing.status})</span></div>
+            <div class="row"><span class="label">Used</span><span class="value">${money(plan.used)} of ${money(plan.allowance)}</span></div>
+            <div class="row"><span class="label">Remaining</span><span class="value ${plan.remaining > 0 ? 'good' : 'bad'}">${money(plan.remaining)}</span></div>
+            <div class="bar"><span style="width:${usedPct}%"></span></div>`;
+        } else {
+          planHtml = `<div class="row"><span class="label">Plan</span><span class="value muted">None</span></div>`;
+        }
+        const packs = billing.usagePacks;
+        $('#cost-body').innerHTML = `
+          <div class="metrics">
+            <div class="metric"><div class="k">Plan remaining</div><div class="v">${money(billing.totalRemaining)}</div></div>
+            <div class="metric"><div class="k">Spend (30d)</div><div class="v">${money(a.activity30d.spend)}</div></div>
+            <div class="metric"><div class="k">Requests (30d)</div><div class="v">${fmtNum(a.activity30d.requests)}</div></div>
+          </div>
+          ${planHtml}
+          <div class="divider"></div>
+          <div class="row"><span class="label">Usage packs</span><span class="value">${money(packs.remaining)} left / ${money(packs.total)}</span></div>
+        `;
+        const act = a.activity30d;
+        $('#cost-activity').innerHTML = `
+          <div class="metrics">
+            <div class="metric"><div class="k">Input tokens</div><div class="v">${fmtNum(act.inputTokens)}</div></div>
+            <div class="metric"><div class="k">Output tokens</div><div class="v">${fmtNum(act.outputTokens)}</div></div>
+            <div class="metric"><div class="k">Total tokens</div><div class="v">${fmtNum(act.totalTokens)}</div></div>
+            <div class="metric"><div class="k">Tool calls</div><div class="v">${fmtNum(act.toolCalls)}</div></div>
+          </div>
+          <div class="row"><span class="label">Cache reads</span><span class="value">${fmtNum(act.cacheReadInputTokens)} tokens</span></div>
+        `;
+      }
+
+      function renderEndpoints() {
+        const data = state.data;
+        const list = $('#endpoints-list');
+        if (!data || data.keyless) {
+          list.innerHTML = `<div class="empty">Enter an API key to view endpoints.</div>`;
+          return;
+        }
+        const models = data.catalog.models;
+        if (!models.length) { list.innerHTML = `<div class="empty">No endpoints available.</div>`; return; }
+        list.innerHTML = models.map((m) => `
+          <div class="row">
+            <div>
+              <div class="m-name">${m.displayName}</div>
+              <div class="m-id">${m.id}</div>
+            </div>
+            <span class="pill good">Live</span>
+          </div>`).join('') +
+          `<div class="notice info">Endpoint provisioning is managed out-of-band. This view reflects the live catalog only.</div>`;
+      }
+
+      function renderCache() {
+        const data = state.data;
+        if (!data || keyless(data)) {
+          $('#cache-body').innerHTML = `<div class="empty">Enter an API key to view cache usage.</div>`;
+          return;
+        }
+        if (!data.account || data.account.state !== 'available') {
+          $('#cache-body').innerHTML = `<div class="empty">Cache usage unavailable.</div>`;
+          return;
+        }
+        const act = data.account.account.activity30d;
+        const pctCached = act.totalTokens ? Math.round((act.cacheReadInputTokens / act.totalTokens) * 100) : 0;
+        $('#cache-body').innerHTML = `
+          <div class="row"><span class="label">Cache reads (30d)</span><span class="value">${fmtNum(act.cacheReadInputTokens)} tokens</span></div>
+          <div class="row"><span class="label">Share of tokens</span><span class="value">${pctCached}%</span></div>
+          <div class="bar"><span style="width:${pctCached}%"></span></div>`;
+      }
+
+      function renderTeam() {
+        const data = state.data;
+        if (!data || keyless(data) || !data.account || data.account.state !== 'available') {
+          $('#team-body').innerHTML = `<div class="empty">${(!data || keyless(data)) ? 'Enter an API key to view your account.' : 'Account details unavailable.'}</div>`;
+          return;
+        }
+        const a = data.account.account;
+        const billing = a.billing;
+        $('#team-body').innerHTML = `
+          <div class="row"><span class="label">Key</span><span class="value"><code>${a.key.alias}</code></span></div>
+          <div class="row"><span class="label">Plan</span><span class="value">${billing.plan ? billing.plan.name : 'None'} (${billing.status})</span></div>
+          <div class="row"><span class="label">Currency</span><span class="value">${billing.currency}</span></div>
+        `;
+      }
+
+      function renderLoginSession(session) {
+        // If null, nothing pending.
+        const conn = $('#auth-body');
+        if (session) {
+          conn.innerHTML = `
+            <p class="muted small">Waiting for approval…</p>
+            <div class="login-code">${session.userCode}</div>
+            <div class="actions">
+              <button id="login-open" class="primary">Open approval page</button>
+              <button id="login-cancel" class="ghost">Cancel</button>
+            </div>
+            <p class="src small">Expires ${new Date(session.expiresAt).toLocaleTimeString()}</p>`;
+          bindVersioned('#login-open', () => vscode.postMessage({ type: 'openBrowser', url: session.approvalUrl }));
+          bindVersioned('#login-cancel', () => vscode.postMessage({ type: 'loginCancel' }));
+        }
+      }
+
+      function keyless(data) { return data && data.keyless; }
+      function bindVersioned(sel, fn) { const el = $(sel); if (el) el.addEventListener('click', fn); }
+
+      function renderAll() {
+        // While a device login is pending, don't clobber the approval UI.
+        if (!state.loginSession) {
+          renderConnection(state.credential, state.data && state.data.account);
+        }
+        renderModels();
+        renderCost();
+        renderEndpoints();
+        renderCache();
+        renderTeam();
+      }
+
+      vscode.postMessage({ type: 'ready' });
+
+      $('#refresh-btn').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
+      $('#openchat-btn').addEventListener('click', () => vscode.postMessage({ type: 'openChat' }));
+      $('#qa-chat').addEventListener('click', () => vscode.postMessage({ type: 'openChat' }));
+      $('#qa-chat-pick').addEventListener('click', () => vscode.postMessage({ type: 'openChat' }));
+      $('#qa-manual').addEventListener('click', () => vscode.postMessage({ type: 'manualKey' }));
+      $('#qa-logout').addEventListener('click', () => vscode.postMessage({ type: 'logout' }));
+      $('#cache-flush').addEventListener('click', () => vscode.postMessage({ type: 'clearCache' }));
+
+      window.addEventListener('message', (e) => {
+        const msg = e.data;
+        if (msg.type === 'credentialState') { state.credential = msg.payload; renderAll(); }
+        else if (msg.type === 'data') { state.data = msg.payload; renderAll(); }
+        else if (msg.type === 'loginSession') { state.loginSession = msg.payload; renderLoginSession(msg.payload); }
+        else if (msg.type === 'loginResult') { notice(msg.payload.state === 'approved' ? 'info' : 'warn', msg.payload.state === 'approved' ? 'Signed in. You can close the browser.' : 'Login ended: ' + msg.payload.state + '.'); }
+        else if (msg.type === 'notice') { notice(msg.kind, msg.message); }
+      });
+    })();
+  </script>
+</body>
+</html>

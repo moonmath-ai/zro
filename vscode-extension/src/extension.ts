@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { ZroModelProvider } from "./provider.js";
 import { deleteApiKey, maskKey, resolveApiKey, storeApiKey } from "./credentials.js";
 import { ZRO_ENV_KEY } from "./constants.js";
+import { configureInExtensions } from "./extensions.js";
+import { ZroDashboard } from "./dashboard.js";
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new ZroModelProvider(context);
@@ -10,7 +12,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("zro.manage", () => promptForApiKey(context)),
-    vscode.commands.registerCommand("zro.login", () => promptForApiKey(context))
+    vscode.commands.registerCommand("zro.login", () => {
+      ZroDashboard.show(context, context.subscriptions, true);
+    }),
+    vscode.commands.registerCommand("zro.dashboard", () => {
+      ZroDashboard.show(context, context.subscriptions);
+    }),
+    vscode.commands.registerCommand("zro.configureExtensions", () =>
+      configureInExtensions(context)
+    )
   );
 }
 
