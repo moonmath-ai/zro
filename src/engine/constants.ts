@@ -28,35 +28,6 @@ export interface ZroModel {
 
 export const ZRO_MODELS = [
   {
-    id: "minimax-m3",
-    displayName: "MiniMax M3",
-    contextWindow: 1048576,
-    maxOutputTokens: 64000,
-    reasoning: {
-      defaultLevel: "adaptive",
-      levels: [
-        {
-          id: "disabled",
-          description: "Disable reasoning for the lowest latency",
-          piLevel: "off",
-          openCodeOptions: { thinking: { type: "disabled" } }
-        },
-        {
-          id: "adaptive",
-          description: "Reason only when MiniMax determines it is useful",
-          piLevel: "medium",
-          openCodeOptions: { thinking: { type: "adaptive" } }
-        },
-        {
-          id: "enabled",
-          description: "Reason before every response",
-          piLevel: "high",
-          openCodeOptions: { thinking: { type: "enabled" } }
-        }
-      ]
-    }
-  },
-  {
     id: "glm-5.2",
     displayName: "GLM-5.2",
     contextWindow: 524288,
@@ -90,16 +61,40 @@ export const ZRO_MODELS = [
     }
   },
   {
-    id: "kimi-k2.7-code",
-    displayName: "Kimi K2.7 Code",
-    contextWindow: 128000,
-    maxOutputTokens: 64000,
+    id: "kimi-k3",
+    displayName: "Kimi K3",
+    contextWindow: 1048576,
+    maxOutputTokens: 1048576,
     reasoning: {
       defaultLevel: "high",
       levels: [
         {
           id: "high",
           description: "Kimi always reasons before responding",
+          piLevel: "high",
+          openCodeOptions: { reasoningEffort: "high" }
+        }
+      ]
+    }
+  },
+  {
+    id: "deepseek-v4-flash-0731",
+    displayName: "DeepSeek V4 Flash",
+    contextWindow: 1048576,
+    maxOutputTokens: 384000,
+    reasoning: {
+      defaultLevel: "high",
+      levels: [
+        {
+          id: "none",
+          description: "Disable reasoning for the lowest latency",
+          codexEffort: "disabled",
+          piLevel: "off",
+          openCodeOptions: { reasoningEffort: "none" }
+        },
+        {
+          id: "high",
+          description: "Use DeepSeek high reasoning effort",
           piLevel: "high",
           openCodeOptions: { reasoningEffort: "high" }
         }

@@ -17,7 +17,7 @@ const OMP_MCP_AUTH_ENV_KEY = "ZRO_MCP_AUTHORIZATION";
 const OMP_MCP_SCHEMA = "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json";
 const OMP_THINKING_LEVELS = new Set(["minimal", "low", "medium", "high", "xhigh", "max"]);
 const OMP_OFF_FALLBACK_LEVEL = "minimal";
-const OMP_ZAI_THINKING_FORMAT_MODELS = new Set(["minimax-m3"]);
+const OMP_ZAI_THINKING_FORMAT_MODELS = new Set<string>();
 const MODEL_ROLES = [
   "default",
   "smol",

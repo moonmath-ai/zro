@@ -41,7 +41,7 @@ describe("tool adapters", () => {
       model: string;
       environment: Record<string, string>;
     };
-    expect(plan).toMatchObject({ tool, command: executable, model: "minimax-m3" });
+    expect(plan).toMatchObject({ tool, command: executable, model: "glm-5.2" });
     expect(text).not.toContain("sk-adapter-secret");
   });
 });

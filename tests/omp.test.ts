@@ -176,17 +176,6 @@ auth:
       });
     }
 
-    const miniMax = provider.models.find((candidate: any) => candidate.id === "minimax-m3");
-    expect(miniMax.thinking).toEqual({
-      mode: "effort",
-      efforts: ["medium", "high"],
-      defaultLevel: "medium",
-    });
-    expect(miniMax.compat).toEqual({
-      reasoningEffortMap: { medium: "adaptive", high: "enabled" },
-      thinkingFormat: "zai",
-    });
-
     const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.2");
     expect(glm.thinking).toEqual({
       mode: "effort",
@@ -197,13 +186,21 @@ auth:
       reasoningEffortMap: { minimal: "none", high: "high", max: "max" },
     });
 
-    const kimi = provider.models.find((candidate: any) => candidate.id === "kimi-k2.7-code");
+    const kimi = provider.models.find((candidate: any) => candidate.id === "kimi-k3");
     expect(kimi.thinking).toEqual({
       mode: "effort",
       efforts: ["high"],
       defaultLevel: "high",
     });
     expect(kimi.compat).toEqual({ reasoningEffortMap: { high: "high" } });
+
+    const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4-flash-0731");
+    expect(deepseek.thinking).toEqual({
+      mode: "effort",
+      efforts: ["minimal", "high"],
+      defaultLevel: "high",
+    });
+    expect(deepseek.compat).toEqual({ reasoningEffortMap: { minimal: "none", high: "high" } });
 
     const mcpFile = findFile(plan.files, "mcp.json");
     const mcp = JSON.parse(String(mcpFile.contents));
@@ -267,7 +264,7 @@ auth:
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "minimax-m3" });
+    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.2" });
     expect(preview.environment.ZRO_API_KEY).not.toContain("preview-secret");
     expect(preview.environment.ZRO_MCP_AUTHORIZATION).not.toContain("preview-secret");
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });

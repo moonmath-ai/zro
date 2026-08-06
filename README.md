@@ -16,7 +16,7 @@ zro claude
 zro                         # interactive agent picker
 zro claude                  # open directly on the default model
 zro codex -m glm-5.2        # choose a model for this session
-zro kilo -m minimax-m3      # launch Kilo Code through Zro
+zro kilo -m glm-5.2          # launch Kilo Code through Zro
 zro omp -m glm-5.2          # launch Oh My Pi through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair

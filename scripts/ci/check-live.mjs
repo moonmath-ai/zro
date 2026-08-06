@@ -135,8 +135,8 @@ async function checkClaude() {
   const marker = "ZRO_CLAUDE_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "claude", "--model", "minimax-m3", "--",
-    "--effort", "low", "--print", "--output-format", "json",
+    "launch", "claude", "--model", "glm-5.2", "--",
+    "--effort", "none", "--print", "--output-format", "json",
     "--tools", "", "--system-prompt", "You are a CI probe. Do not use tools.", prompt
   ];
 
@@ -148,8 +148,8 @@ async function checkClaude() {
   assert.match(second.result, new RegExp(marker));
   assert.ok(second.usage.cache_read_input_tokens > 0, "Claude Code reported no cache-read tokens");
   passed("claude.cache", {
-    model: "minimax-m3",
-    effort: "low",
+    model: "glm-5.2",
+    effort: "none",
     firstCacheRead: first.usage.cache_read_input_tokens,
     secondCacheRead: second.usage.cache_read_input_tokens
   });
@@ -176,7 +176,7 @@ async function checkCodex() {
   const marker = "ZRO_CODEX_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "codex", "--model", "minimax-m3", "--", "exec", "--json",
+    "launch", "codex", "--model", "glm-5.2", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
     "-c", 'model_reasoning_effort="disabled"', prompt
@@ -188,7 +188,7 @@ async function checkCodex() {
   assert.equal(second.usage.reasoning_output_tokens, 0);
   assert.ok(second.usage.cached_input_tokens > 0, "Codex reported no cached input tokens");
   passed("codex.cache", {
-    model: "minimax-m3",
+    model: "glm-5.2",
     effort: "disabled",
     firstCacheRead: first.usage.cached_input_tokens,
     secondCacheRead: second.usage.cached_input_tokens
@@ -213,18 +213,18 @@ async function checkGrok() {
   const marker = "ZRO_GROK_JSON_OK";
   const prompt = `Reply with exactly ${marker}.`;
   const json = grokResult(await runZro([
-    "launch", "grok", "--model", "minimax-m3", "--",
+    "launch", "grok", "--model", "glm-5.2", "--",
     "--no-plan", "--no-subagents", "--max-turns", "1",
     "-p", prompt, "--output-format", "json"
   ], "Grok Build JSON output"), marker);
   passed("grok.json", {
-    model: "minimax-m3",
+    model: "glm-5.2",
     inputTokens: json.usage?.input_tokens
   });
 
   const streamingMarker = "ZRO_GROK_STREAM_OK";
   const events = jsonLines((await runZro([
-    "launch", "grok", "--model", "minimax-m3", "--",
+    "launch", "grok", "--model", "glm-5.2", "--",
     "--no-plan", "--no-subagents", "--max-turns", "1",
     "-p", `Reply with exactly ${streamingMarker}.`, "--output-format", "streaming-json"
   ], "Grok Build streaming JSON output")).stdout);
@@ -233,7 +233,7 @@ async function checkGrok() {
   assert.match(text, new RegExp(streamingMarker));
   assert.ok(end?.usage, "Grok Build streaming output emitted no final usage");
   passed("grok.streaming_json", {
-    model: "minimax-m3",
+    model: "glm-5.2",
     inputTokens: end.usage.input_tokens
   });
 }
@@ -242,8 +242,8 @@ async function checkOpenCode() {
   const marker = "ZRO_OPENCODE_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "opencode", "--model", "minimax-m3", "--", "run", "--pure",
-    "--format", "json", "--model", "zro/minimax-m3", "--variant", "disabled", prompt
+    "launch", "opencode", "--model", "glm-5.2", "--", "run", "--pure",
+    "--format", "json", "--model", "zro/glm-5.2", "--variant", "none", prompt
   ];
 
   const first = openCodeTurn(await runZro(cacheArgs, "OpenCode cache warm-up"), marker);
@@ -252,8 +252,8 @@ async function checkOpenCode() {
   assert.equal(second.tokens.reasoning, 0);
   assert.ok(second.tokens.cache.read > 0, "OpenCode reported no cache-read tokens");
   passed("opencode.cache", {
-    model: "minimax-m3",
-    effort: "disabled",
+    model: "glm-5.2",
+    effort: "none",
     firstCacheRead: first.tokens.cache.read,
     secondCacheRead: second.tokens.cache.read
   });
@@ -272,8 +272,8 @@ async function checkKilo() {
   const marker = "ZRO_KILO_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "kilo", "--model", "minimax-m3", "--", "run", "--pure",
-    "--format", "json", "--model", "zro/minimax-m3", "--variant", "disabled", prompt
+    "launch", "kilo", "--model", "glm-5.2", "--", "run", "--pure",
+    "--format", "json", "--model", "zro/glm-5.2", "--variant", "none", prompt
   ];
 
   const first = kiloTurn(await runZro(cacheArgs, "Kilo Code cache warm-up"), marker);
@@ -282,8 +282,8 @@ async function checkKilo() {
   assert.equal(second.tokens.reasoning, 0);
   assert.ok(second.tokens.cache.read > 0, "Kilo Code reported no cache-read tokens");
   passed("kilo.cache", {
-    model: "minimax-m3",
-    effort: "disabled",
+    model: "glm-5.2",
+    effort: "none",
     firstCacheRead: first.tokens.cache.read,
     secondCacheRead: second.tokens.cache.read
   });
@@ -302,7 +302,7 @@ async function checkOmp() {
   const marker = "ZRO_OMP_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "omp", "--model", "minimax-m3", "--",
+    "launch", "omp", "--model", "glm-5.2", "--",
     "--print", "--mode", "json", "--no-tools", "--no-session",
     "--no-extensions", "--no-skills", "--no-rules", "--no-title",
     "--thinking", "off", prompt
@@ -314,7 +314,7 @@ async function checkOmp() {
   assert.equal(second.usage.reasoningTokens ?? 0, 0);
   assert.ok(second.usage.cacheRead > 0, "Oh My Pi reported no cache-read tokens");
   passed("omp.cache", {
-    model: "minimax-m3",
+    model: "glm-5.2",
     effort: "off",
     firstCacheRead: first.usage.cacheRead,
     secondCacheRead: second.usage.cacheRead
@@ -336,7 +336,7 @@ async function checkPi() {
   const marker = "ZRO_PI_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "pi", "--model", "minimax-m3", "--", "--print", "--mode", "json",
+    "launch", "pi", "--model", "glm-5.2", "--", "--print", "--mode", "json",
     "--no-tools", "--no-session", "--thinking", "off", prompt
   ];
 
@@ -346,7 +346,7 @@ async function checkPi() {
   assert.equal(second.usage.reasoning, 0);
   assert.ok(second.usage.cacheRead > 0, "Pi reported no cache-read tokens");
   passed("pi.cache", {
-    model: "minimax-m3",
+    model: "glm-5.2",
     effort: "off",
     firstCacheRead: first.usage.cacheRead,
     secondCacheRead: second.usage.cacheRead
@@ -366,7 +366,7 @@ async function checkPrime() {
   const marker = "ZRO_PRIME_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "prime", "--model", "minimax-m3", "--", "--print", "--mode", "json",
+    "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
     "--no-tools", "--no-session", "--thinking", "off", prompt
   ];
 
@@ -374,7 +374,7 @@ async function checkPrime() {
   const second = primeTurn(await runZro(cacheArgs, "Prime Agent cache read"), marker, { expectThinking: false });
   assert.ok(second.usage.cacheRead > 0, "Prime Agent reported no cache-read tokens");
   passed("prime.cache", {
-    model: "minimax-m3",
+    model: "glm-5.2",
     effort: "off",
     firstCacheRead: first.usage.cacheRead,
     secondCacheRead: second.usage.cacheRead

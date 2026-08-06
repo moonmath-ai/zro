@@ -231,8 +231,8 @@ try {
       "Pi model list"
     );
     assert.match(piOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
-    assert.match(piOutput, /zro\s+minimax-m3\s+1\.0M\s+64K\s+yes/);
-    assert.match(piOutput, /zro\s+kimi-k2\.7-code\s+128K\s+64K\s+yes/);
+    assert.match(piOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
+    assert.match(piOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
     passed("Pi lists all Zro models with their context limits");
   }
 
@@ -250,16 +250,16 @@ try {
     }
     const primeOutput = (primeResult.stdout + primeResult.stderr).trim();
     assert.match(primeOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
-    assert.match(primeOutput, /zro\s+minimax-m3\s+1\.0M\s+64K\s+yes/);
-    assert.match(primeOutput, /zro\s+kimi-k2\.7-code\s+128K\s+64K\s+yes/);
+    assert.match(primeOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
+    assert.match(primeOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
     passed("Prime Agent lists all Zro models with their context limits");
   }
 
   if (harnesses.includes("claude")) {
     const claudeLabels = {
-      "minimax-m3": "Zro MiniMax M3",
       "glm-5.2": "Zro GLM-5.2",
-      "kimi-k2.7-code": "Zro Kimi K2.7 Code"
+      "kimi-k3": "Zro Kimi K3",
+      "deepseek-v4-flash-0731": "Zro DeepSeek V4 Flash"
     };
     for (const model of Object.keys(claudeLabels)) {
       run(

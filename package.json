@@ -54,7 +54,9 @@
     "omp",
     "openclaw",
     "opencode",
-    "pi"
+    "pi",
+    "prime-agent",
+    "prime-intellect"
   ],
   "license": "MIT"
 }
