@@ -5,7 +5,7 @@ import { fetchModelCatalog, type CatalogResult } from "./catalog.js";
 import { fetchAccountStatus, type AccountStatusResult } from "./account.js";
 import { resolveCredential, storeApiKey, deleteApiKey, maskKey, type CredentialSource } from "./credentials.js";
 import { AuthFlowController } from "./auth.js";
-
+import { ENDPOINT_ROOT } from "./constants.js";
 /**
  * Single-panel dashboard webview with tabs: Overview, Models, Cost, Endpoints,
  * Cache, Team. Backend surfaces mirror the control-plane `/api/cli/*` Bearer
@@ -31,7 +31,11 @@ export class ZroDashboard {
     }
     const dashboard = new ZroDashboard(context, subscriptions);
     ZroDashboard.current = dashboard;
-    void dashboard.initializeAndPush();
+    // Initial data push is driven by the webview's `ready` message (handled
+    // below) rather than here: the panel's html is set asynchronously in the
+    // constructor, so posting now would race and the messages would be dropped
+    // before the webview script can receive them, leaving the dashboard stuck
+    // on "Loading…".
     if (startLogin) void dashboard.startLogin(undefined);
   }
 
@@ -108,6 +112,10 @@ export class ZroDashboard {
     const type = typeof message.type === "string" ? message.type : "";
     switch (type) {
       case "ready":
+        // The webview is now alive and can receive messages. This is the safe
+        // moment to push the initial data (the panel html is set async in the
+        // constructor, so any earlier post would have been dropped).
+        void this.initializeAndPush();
         this.bootstrapRefresh();
         break;
       case "refresh":
@@ -278,7 +286,13 @@ async function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): Pr
   }
   const cspSource = webview.cspSource;
   const nonce = Math.random().toString(36).slice(2);
+  const iconUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "icon.png")
+  );
+  const accountUrl = `${ENDPOINT_ROOT.replace(/\/+$/, "")}/account`;
   return html
     .replace(/\{\{cspSource\}\}/g, cspSource)
-    .replace(/\{\{nonce\}\}/g, nonce);
+    .replace(/\{\{nonce\}\}/g, nonce)
+    .replace(/\{\{iconUri\}\}/g, iconUri.toString())
+    .replace(/\{\{accountUrl\}\}/g, accountUrl);
 }

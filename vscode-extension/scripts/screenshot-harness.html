@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; img-src {{cspSource}} data:; style-src 'nonce-{{nonce}}'; font-src {{cspSource}}; script-src 'nonce-{{nonce}}';" />
-  <style nonce="{{nonce}}">
+  <title>ZRO Dashboard Screenshot Harness</title>
+  <style nonce="RENDER_NONCE">
     :root {
       --bg: #0f1117;
       --panel: #171a22;
@@ -106,7 +105,7 @@
 <body>
   <div class="wrap">
     <div class="head">
-      <div class="brand"><img class="logo" src="{{iconUri}}" alt="ZRO" /> ZRO</div>
+      <div class="brand"><img class="logo" src="../media/icon.png" alt="ZRO" /> ZRO</div>
       <div class="head-actions">
         <button id="refresh-btn" title="Refresh">Refresh</button>
         <button id="openchat-btn" class="ghost" title="Open Copilot Chat">Chat</button>
@@ -192,16 +191,20 @@
     <div id="notice-slot"></div>
   </div>
 
-  <script nonce="{{nonce}}">
+  <script nonce="RENDER_NONCE">
     (() => {
-      const vscode = acquireVsCodeApi();
+      // Stub acquireVsCodeApi so the dashboard script runs standalone.
+      const vscode = {
+        postMessage: () => {},
+        getState: () => null,
+        setState: () => {},
+      };
       const state = { auth: null, data: null, loginSession: null };
-      const ACCOUNT_URL = "{{accountUrl}}";
+      const ACCOUNT_URL = "https://zro.moonmath.ai/account";
 
       const $ = (sel) => document.querySelector(sel);
       const $$ = (sel) => document.querySelectorAll(sel);
 
-      // Tabs
       $$('.tab').forEach((tab) => {
         tab.addEventListener('click', () => {
           $$('.tab').forEach((t) => t.classList.remove('active'));
@@ -228,34 +231,57 @@
         setTimeout(() => el.remove(), 5000);
       }
 
-      // ---- Rendering ----
+      // ---- Mock data ----
+      state.credential = { hasKey: true, keySource: 'stored', maskedKey: 'sk-zro-••••-4f2a' };
+      state.data = {
+        keyless: false,
+        catalog: {
+          default: 'glm-5.2',
+          models: [
+            { id: 'minimax-m3', displayName: 'MiniMax M3', contextWindow: 1048576, maxOutputTokens: 64000 },
+            { id: 'glm-5.2', displayName: 'GLM-5.2', contextWindow: 524288, maxOutputTokens: 64000 },
+            { id: 'deepseek-v4-flash-0731', displayName: 'DeepSeek V4 Flash 0731', contextWindow: 1048576, maxOutputTokens: 384000 },
+            { id: 'kimi-k3', displayName: 'Kimi K3', contextWindow: 1048576, maxOutputTokens: 1048576 },
+          ],
+        },
+        selected: 'glm-5.2',
+        account: {
+          state: 'available',
+          account: {
+            key: { id: 'key_2f8a', alias: 'VS Code' },
+            billing: {
+              status: 'active',
+              currency: 'USD',
+              plan: { id: 'pro', name: 'Pro', allowance: 50, used: 32.14, remaining: 17.86 },
+              usagePacks: { total: 40, used: 18.50, remaining: 21.50 },
+              totalRemaining: 39.36,
+            },
+            activity30d: {
+              requests: 1284,
+              modelRequests: 961,
+              toolCalls: 312,
+              inputTokens: 8421500,
+              outputTokens: 1294300,
+              totalTokens: 9715800,
+              cacheReadInputTokens: 3120400,
+              spend: 32.14,
+            },
+          },
+        },
+      };
 
       function renderConnection(credential, accountStatus) {
         const body = $('#auth-body');
-        // Authoritative source of "are we connected": the data payload already
-        // reflects whether a key resolved (a non-keyless catalog only exists
-        // when a key is present). Fall back to the credential message so a
-        // dropped/raced `credentialState` can never leave Connection stuck on
-        // "Not connected".
-        const hasKey =
-          !!(state.credential && state.credential.hasKey) ||
-          !!(state.data && !state.data.keyless);
+        const hasKey = !!(state.credential && state.credential.hasKey) || !!(state.data && !state.data.keyless);
         if (!hasKey) {
           body.innerHTML =
             `<div class="row"><span class="label">Status</span><span class="pill bad">Not connected</span></div>` +
             `<p class="muted small">Connect with your browser, or paste an API key.</p>` +
             `<div class="actions"><button id="auth-login" class="primary">Sign in with browser</button><button id="auth-manual">Enter API key</button></div>`;
-          bindVersioned('#auth-login', () => vscode.postMessage({ type: 'login' }));
-          bindVersioned('#auth-manual', () => vscode.postMessage({ type: 'manualKey' }));
           return;
         }
-        // A non-null credential only arrives with the credentialState message;
-        // when only `data` has been received, derive a safe display shape from
-        // it rather than reading a possibly-undefined credential object.
         const hasCred = !!(state.credential && state.credential.hasKey);
-        const c = hasCred
-          ? state.credential
-          : { hasKey: true, keySource: 'stored', maskedKey: '•••' };
+        const c = hasCred ? state.credential : { hasKey: true, keySource: 'stored', maskedKey: '•••' };
         const srcLabels = { environment: 'Environment', stored: 'VS Code storage', 'credentials-file': 'zro login' };
         const isGood = accountStatus && accountStatus.state === 'available';
         const isBad = accountStatus && accountStatus.state === 'rejected';
@@ -272,10 +298,7 @@
       function renderModels() {
         const list = $('#models-list');
         const data = state.data;
-        if (!data || data.keyless) {
-          list.innerHTML = `<div class="empty">Enter your API key to load the model catalog.</div>`;
-          return;
-        }
+        if (!data || data.keyless) { list.innerHTML = `<div class="empty">Enter your API key to load the model catalog.</div>`; return; }
         const models = data.catalog.models;
         if (!models.length) { list.innerHTML = `<div class="empty">No models available.</div>`; return; }
         list.innerHTML = models.map((m) => {
@@ -295,22 +318,12 @@
             </div>`;
         }).join('') +
           `<div class="notice info">Endpoints are provisioned out-of-band on serving nodes. The list above reflects the live catalog available to your key.</div>`;
-        $$('.select-btn').forEach((b) => b.addEventListener('click', () => {
-          vscode.postMessage({ type: 'selectModel', model: b.dataset.model });
-        }));
       }
 
       function renderCost() {
         const data = state.data;
-        if (!data || data.keyless) {
-          $('#cost-body').innerHTML = `<div class="empty">Enter your API key to load cost dashboard.</div>`;
-          $('#cost-activity').innerHTML = '';
-          return;
-        }
-        if (!data.account || data.account.state !== 'available') {
-          $('#cost-body').innerHTML = `<div class="empty">${data.account && data.account.state === 'rejected' ? 'API key rejected.' : 'Cost dashboard unavailable.'}</div>`;
-          return;
-        }
+        if (!data || data.keyless) { $('#cost-body').innerHTML = `<div class="empty">Enter your API key to load cost dashboard.</div>`; $('#cost-activity').innerHTML = ''; return; }
+        if (!data.account || data.account.state !== 'available') { $('#cost-body').innerHTML = `<div class="empty">Cost dashboard unavailable.</div>`; return; }
         const a = data.account.account;
         const billing = a.billing;
         const money = (n) => fmtMoney(n, billing.currency);
@@ -351,14 +364,8 @@
 
       function renderCache() {
         const data = state.data;
-        if (!data || keyless(data)) {
-          $('#cache-body').innerHTML = `<div class="empty">Enter an API key to view cache usage.</div>`;
-          return;
-        }
-        if (!data.account || data.account.state !== 'available') {
-          $('#cache-body').innerHTML = `<div class="empty">Cache usage unavailable.</div>`;
-          return;
-        }
+        if (!data || data.keyless) { $('#cache-body').innerHTML = `<div class="empty">Enter an API key to view cache usage.</div>`; return; }
+        if (!data.account || data.account.state !== 'available') { $('#cache-body').innerHTML = `<div class="empty">Cache usage unavailable.</div>`; return; }
         const act = data.account.account.activity30d;
         const pctCached = act.totalTokens ? Math.round((act.cacheReadInputTokens / act.totalTokens) * 100) : 0;
         $('#cache-body').innerHTML = `
@@ -369,8 +376,8 @@
 
       function renderTeam() {
         const data = state.data;
-        if (!data || keyless(data) || !data.account || data.account.state !== 'available') {
-          $('#team-body').innerHTML = `<div class="empty">${(!data || keyless(data)) ? 'Enter an API key to view your account.' : 'Account details unavailable.'}</div>`;
+        if (!data || data.keyless || !data.account || data.account.state !== 'available') {
+          $('#team-body').innerHTML = `<div class="empty">Account details unavailable.</div>`;
           return;
         }
         const a = data.account.account;
@@ -381,26 +388,6 @@
           <div class="row"><span class="label">Currency</span><span class="value">${billing.currency}</span></div>
         `;
       }
-
-      function renderLoginSession(session) {
-        // If null, nothing pending.
-        const conn = $('#auth-body');
-        if (session) {
-          conn.innerHTML = `
-            <p class="muted small">Waiting for approval…</p>
-            <div class="login-code">${session.userCode}</div>
-            <div class="actions">
-              <button id="login-open" class="primary">Open approval page</button>
-              <button id="login-cancel" class="ghost">Cancel</button>
-            </div>
-            <p class="src small">Expires ${new Date(session.expiresAt).toLocaleTimeString()}</p>`;
-          bindVersioned('#login-open', () => vscode.postMessage({ type: 'openBrowser', url: session.approvalUrl }));
-          bindVersioned('#login-cancel', () => vscode.postMessage({ type: 'loginCancel' }));
-        }
-      }
-
-      function keyless(data) { return data && data.keyless; }
-      function bindVersioned(sel, fn) { const el = $(sel); if (el) el.addEventListener('click', fn); }
 
       function renderAll() {
         const sections = [
@@ -415,35 +402,9 @@
         }
       }
 
-      vscode.postMessage({ type: 'ready' });
-
-      $('#refresh-btn').addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
-      $('#openchat-btn').addEventListener('click', () => vscode.postMessage({ type: 'openChat' }));
-      $('#qa-chat').addEventListener('click', () => vscode.postMessage({ type: 'openChat' }));
-      $('#qa-chat-pick').addEventListener('click', () => vscode.postMessage({ type: 'openChat' }));
-      $('#qa-manual').addEventListener('click', () => vscode.postMessage({ type: 'manualKey' }));
-      $('#qa-logout').addEventListener('click', () => vscode.postMessage({ type: 'logout' }));
-      $('#cache-flush').addEventListener('click', () => vscode.postMessage({ type: 'clearCache' }));
-      $('#topup-btn').addEventListener('click', () => vscode.postMessage({ type: 'openBrowser', url: ACCOUNT_URL }));
-
-      window.addEventListener('message', (e) => {
-        const msg = e.data;
-        if (msg.type === 'credentialState') { state.credential = msg.payload; renderAll(); }
-        else if (msg.type === 'data') { state.data = msg.payload; renderAll(); }
-        else if (msg.type === 'loginSession') {
-          state.loginSession = msg.session || null;
-          if (state.loginSession) renderLoginSession(state.loginSession);
-          else renderAll();
-        }
-        else if (msg.type === 'loginResult') {
-          state.loginSession = null;
-          const rs = msg.result || null;
-          const ok = !!(rs && rs.state === 'approved');
-          notice(ok ? 'info' : 'warn', ok ? 'Signed in. You can close the browser.' : 'Login ended: ' + ((rs && rs.state) || 'failed') + '.');
-          renderAll();
-        }
-        else if (msg.type === 'notice') { notice(msg.kind, msg.message); }
-      });
+      renderAll();
+      // Signal that the dashboard is fully rendered for the screenshot driver.
+      window.__DASHBOARD_READY = true;
     })();
   </script>
 </body>
