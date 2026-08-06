@@ -368,7 +368,8 @@ async function checkPrime() {
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--daemon-socket", daemonSocket, "--thinking", "off", prompt
+    "--no-tools", "--no-session", "--cwd", home,
+    "--daemon-socket", daemonSocket, "--thinking", "off", prompt
   ];
 
   const first = primeTurn(await runZro(cacheArgs, "Prime Agent cache warm-up"), marker, { expectThinking: false });
@@ -384,7 +385,8 @@ async function checkPrime() {
   const reasoningMarker = "ZRO_PRIME_MAX_OK";
   const max = primeTurn(await runZro([
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--daemon-socket", daemonSocket, "--thinking", "xhigh",
+    "--no-tools", "--no-session", "--cwd", home,
+    "--daemon-socket", daemonSocket, "--thinking", "xhigh",
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
   assert.ok(max.hasThinking, "Prime Agent max effort returned no thinking content");
