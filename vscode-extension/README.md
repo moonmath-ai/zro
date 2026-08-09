@@ -44,7 +44,7 @@ The Overview tab is the landing page. The **Connection** card shows whether the 
 
 ### Models
 
-![Models & endpoints tab](media/screenshots/tab-models.png)
+![Models &amp; endpoints tab](media/screenshots/tab-models.png)
 
 The Models & endpoints tab lists every model active in the control-plane catalog fetched live on each refresh. Each row shows the model's display name and context window, a **Live** pill confirming it is available on the serving endpoints reachable by your key, and a **Set as default** button to pick the model used by Copilot Chat (the current default shows **Current default**). Endpoints are provisioned out-of-band on serving nodes, so there is no separate endpoints list.
 

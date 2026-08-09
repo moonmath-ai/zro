@@ -3,12 +3,19 @@ import { ZroModelProvider } from "./provider.js";
 import { deleteApiKey, maskKey, resolveApiKey, storeApiKey } from "./credentials.js";
 import { ZRO_ENV_KEY } from "./constants.js";
 import { configureInExtensions } from "./extensions.js";
-import { ZroDashboard } from "./dashboard.js";
+import { ZroDashboard, ZroDashboardViewProvider } from "./dashboard.js";
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new ZroModelProvider(context);
   const disposable = vscode.lm.registerLanguageModelChatProvider("zro", provider);
   context.subscriptions.push(disposable);
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      ZroDashboardViewProvider.viewType,
+      new ZroDashboardViewProvider(context, context.subscriptions)
+    )
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("zro.manage", () => promptForApiKey(context)),
