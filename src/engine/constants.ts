@@ -110,13 +110,6 @@ export const ZRO_MODELS = [
           description: "Use DeepSeek high reasoning effort",
           piLevel: "high",
           openCodeOptions: { reasoningEffort: "high" }
-        },
-        {
-          id: "max",
-          description: "Use Kimi maximum reasoning effort",
-          codexEffort: "xhigh",
-          piLevel: "xhigh",
-          openCodeOptions: { reasoningEffort: "max" }
         }
       ]
     }
