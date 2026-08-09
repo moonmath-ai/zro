@@ -7,80 +7,42 @@ import { resolveCredential, storeApiKey, deleteApiKey, maskKey, type CredentialS
 import { AuthFlowController } from "./auth.js";
 import { ENDPOINT_ROOT } from "./constants.js";
 /**
- * Single-panel dashboard webview with tabs: Overview, Models, Cost, Endpoints,
- * Cache, Team. Backend surfaces mirror the control-plane `/api/cli/*` Bearer
- * endpoints (models + status). Features with no web control-plane API yet
- * (endpoint lifecycle, prompt-cache flush, team management) show live read-only
- * state plus a clear "not available" notice rather than faking write access.
+ * Dashboard webview with tabs: Overview, Models, Cost, Endpoints, Cache, Team.
+ * Rendered both as a floating editor-area panel (`ZroDashboard`) and as a
+ * docked sidebar view (`ZroDashboardViewProvider`). The shared controller logic
+ * lives in `ZroDashboardController`. Backend surfaces mirror the control-plane
+ * `/api/cli/*` Bearer endpoints (models + status). Features with no web
+ * control-plane API yet (endpoint lifecycle, prompt-cache flush, team
+ * management) show live read-only state plus a clear "not available" notice
+ * rather than faking write access.
  */
 
 const VIEW_TYPE = "zro.dashboard";
 const MODEL_SELECT_KEY = "zro.selectedModel";
 
-export class ZroDashboard {
-  private static current: ZroDashboard | undefined;
-
-  /** Show (or focus + refresh) the dashboard panel. Optionally start browser login. */
-  static show(context: vscode.ExtensionContext, subscriptions: vscode.Disposable[], startLogin = false): void {
-    if (ZroDashboard.current) {
-      const existing = ZroDashboard.current;
-      existing.panel.reveal(vscode.ViewColumn.Active);
-      if (startLogin) void existing.startLogin(undefined);
-      else void existing.refresh();
-      return;
-    }
-    const dashboard = new ZroDashboard(context, subscriptions);
-    ZroDashboard.current = dashboard;
-    // Initial data push is driven by the webview's `ready` message (handled
-    // below) rather than here: the panel's html is set asynchronously in the
-    // constructor, so posting now would race and the messages would be dropped
-    // before the webview script can receive them, leaving the dashboard stuck
-    // on "Loading…".
-    if (startLogin) void dashboard.startLogin(undefined);
-  }
-
-  readonly panel: vscode.WebviewPanel;
-
+/**
+ * Shared controller: data fetching, message handling, device-code login, and the
+ * 60-second auto-refresh. Subclasses supply the backing `webview` and wire
+ * `onDidReceiveMessage`/`onDidDispose` to the panel or view lifecycle.
+ */
+abstract class ZroDashboardController {
   private flowController: AuthFlowController | undefined;
   private flowTimer: NodeJS.Timeout | undefined;
   private refreshTimer: NodeJS.Timeout | undefined;
 
-  private constructor(
-    private readonly context: vscode.ExtensionContext,
-    subscriptions: vscode.Disposable[]
-  ) {
-    this.panel = vscode.window.createWebviewPanel(
-      VIEW_TYPE,
-      "ZRO",
-      vscode.ViewColumn.Active,
-      {
-        enableScripts: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")],
-        enableCommandUris: true,
-      }
-    );
-    this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "icon.png");
-    void renderHtml(this.panel.webview, context.extensionUri).then((html) => {
-      this.panel.webview.html = html;
-    });
+  protected constructor(
+    protected readonly context: vscode.ExtensionContext,
+    protected readonly subscriptions: vscode.Disposable[]
+  ) {}
 
-    this.panel.webview.onDidReceiveMessage((message) => {
-      void this.handleMessage(message as Record<string, unknown>);
-    }, undefined, subscriptions);
-
-    this.panel.onDidDispose(() => {
-      this.cancelLogin();
-      if (this.refreshTimer) clearInterval(this.refreshTimer);
-      this.refreshTimer = undefined;
-      if (ZroDashboard.current === this) ZroDashboard.current = undefined;
-    });
-  }
+  /** The webview this controller posts to and listens on. */
+  protected abstract get webview(): vscode.Webview;
 
   async refresh(): Promise<void> {
     await this.initializeAndPush();
   }
 
-  private async initializeAndPush(): Promise<void> {
+  protected async initializeAndPush(): Promise<void> {
     const { apiKey, source } = await resolveCredential(this.context);
     this.post({ type: "credentialState", payload: buildCredentialState(apiKey, source) });
 
@@ -108,13 +70,13 @@ export class ZroDashboard {
 
   // --- Webview message handling ----------------------------------------------
 
-  private async handleMessage(message: Record<string, unknown>): Promise<void> {
+  protected async handleMessage(message: Record<string, unknown>): Promise<void> {
     const type = typeof message.type === "string" ? message.type : "";
     switch (type) {
       case "ready":
         // The webview is now alive and can receive messages. This is the safe
-        // moment to push the initial data (the panel html is set async in the
-        // constructor, so any earlier post would have been dropped).
+        // moment to push the initial data (the html is set async, so any earlier
+        // post would have been dropped).
         void this.initializeAndPush();
         this.bootstrapRefresh();
         break;
@@ -186,20 +148,20 @@ export class ZroDashboard {
     }
   }
 
-  private bootstrapRefresh(): void {
+  protected bootstrapRefresh(): void {
     if (this.refreshTimer) return;
     this.refreshTimer = setInterval(() => {
       void this.refresh().catch(() => {});
     }, 60_000);
   }
 
-  private post(message: unknown): void {
-    void this.panel.webview.postMessage(message);
+  protected post(message: unknown): void {
+    void this.webview.postMessage(message);
   }
 
   // --- Device-code login ------------------------------------------------------
 
-  private async startLogin(deviceName: unknown): Promise<void> {
+  protected async startLogin(deviceName: unknown): Promise<void> {
     if (this.flowController) {
       this.post({ type: "notice", kind: "warn", message: "A login is already in progress." });
       return;
@@ -244,7 +206,7 @@ export class ZroDashboard {
     }
   }
 
-  private cancelLogin(): void {
+  protected cancelLogin(): void {
     this.stopLogin();
     this.post({ type: "loginSession", session: null });
   }
@@ -253,6 +215,114 @@ export class ZroDashboard {
     if (this.flowTimer) clearTimeout(this.flowTimer);
     this.flowTimer = undefined;
     this.flowController = undefined;
+  }
+
+  /** Stop timers and clear login state. Called by subclasses on dispose. */
+  protected disposeController(): void {
+    this.cancelLogin();
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    this.refreshTimer = undefined;
+  }
+}
+
+/** Floating editor-area webview panel. */
+export class ZroDashboard extends ZroDashboardController {
+  private static current: ZroDashboard | undefined;
+
+  /** Show (or focus + refresh) the dashboard panel. Optionally start browser login. */
+  static show(context: vscode.ExtensionContext, subscriptions: vscode.Disposable[], startLogin = false): void {
+    if (ZroDashboard.current) {
+      const existing = ZroDashboard.current;
+      existing.panel.reveal(vscode.ViewColumn.Active);
+      if (startLogin) void existing.startLogin(undefined);
+      else void existing.refresh();
+      return;
+    }
+    const dashboard = new ZroDashboard(context, subscriptions);
+    ZroDashboard.current = dashboard;
+    // Initial data push is driven by the webview's `ready` message (handled
+    // below) rather than here: the panel's html is set asynchronously in the
+    // constructor, so posting now would race and the messages would be dropped
+    // before the webview script can receive them, leaving the dashboard stuck
+    // on "Loading…".
+    if (startLogin) void dashboard.startLogin(undefined);
+  }
+
+  readonly panel: vscode.WebviewPanel;
+
+  protected get webview(): vscode.Webview {
+    return this.panel.webview;
+  }
+
+  private constructor(context: vscode.ExtensionContext, subscriptions: vscode.Disposable[]) {
+    super(context, subscriptions);
+    this.panel = vscode.window.createWebviewPanel(
+      VIEW_TYPE,
+      "ZRO",
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "media")],
+        enableCommandUris: true,
+      }
+    );
+    this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "icon.png");
+    void renderHtml(this.panel.webview, context.extensionUri).then((html) => {
+      this.panel.webview.html = html;
+    });
+
+    this.panel.webview.onDidReceiveMessage((message) => {
+      void this.handleMessage(message as Record<string, unknown>);
+    }, undefined, subscriptions);
+
+    this.panel.onDidDispose(() => {
+      this.disposeController();
+      if (ZroDashboard.current === this) ZroDashboard.current = undefined;
+    });
+  }
+}
+
+/**
+ * Sidebar webview view, docked in the ZRO activity-bar container. Renders the
+ * same dashboard HTML and shares the controller logic with the panel form.
+ */
+export class ZroDashboardViewProvider extends ZroDashboardController implements vscode.WebviewViewProvider {
+  public static readonly viewType = "zro.dashboardView";
+
+  private view: vscode.WebviewView | undefined;
+
+  constructor(context: vscode.ExtensionContext, subscriptions: vscode.Disposable[]) {
+    super(context, subscriptions);
+  }
+
+  protected get webview(): vscode.Webview {
+    if (!this.view) throw new Error("ZroDashboardViewProvider resolved before view was set");
+    return this.view.webview;
+  }
+
+  resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ): void {
+    this.view = webviewView;
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
+      enableCommandUris: true,
+    };
+    void renderHtml(webviewView.webview, this.context.extensionUri).then((html) => {
+      webviewView.webview.html = html;
+    });
+
+    webviewView.webview.onDidReceiveMessage((message) => {
+      void this.handleMessage(message as Record<string, unknown>);
+    }, undefined, this.subscriptions);
+
+    webviewView.onDidDispose(() => {
+      this.disposeController();
+      this.view = undefined;
+    });
   }
 }
 
