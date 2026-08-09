@@ -155,20 +155,30 @@ async function checkClaude() {
   });
 
   const reasoningMarker = "ZRO_CLAUDE_MAX_OK";
-  const reasoning = jsonLines((await runZro([
-    "launch", "claude", "--model", "glm-5.2", "--",
-    "--effort", "max", "--print", "--output-format", "stream-json", "--verbose",
-    "--tools", "", "--system-prompt", "You are a CI probe. Do not use tools.",
-    `Think briefly, then include ${reasoningMarker} in the answer.`
-  ], "Claude Code max reasoning", REASONING_TIMEOUT_MS)).stdout);
-  const thinking = reasoning.some((event) =>
-    event.type === "assistant" && event.message?.content?.some(
-      (part) => part.type === "thinking" && typeof part.thinking === "string" && part.thinking.length > 0
-    )
-  );
-  const final = reasoning.findLast((event) => event.type === "result");
+  // GLM sometimes answers at max effort without emitting a thinking block.
+  // A missing thinking part is model-side flakiness, so retry the probe a
+  // few times (later attempts are cheap thanks to prompt caching).
+  const maxAttempts = 3;
+  let thinking = false;
+  for (let attempt = 1; attempt <= maxAttempts && !thinking; attempt++) {
+    const reasoning = jsonLines((await runZro([
+      "launch", "claude", "--model", "glm-5.2", "--",
+      "--effort", "max", "--print", "--output-format", "stream-json", "--verbose",
+      "--tools", "", "--system-prompt", "You are a CI probe. Do not use tools.",
+      `Think briefly, then include ${reasoningMarker} in the answer.`
+    ], `Claude Code max reasoning (attempt ${attempt}/${maxAttempts})`, REASONING_TIMEOUT_MS)).stdout);
+    thinking = reasoning.some((event) =>
+      event.type === "assistant" && event.message?.content?.some(
+        (part) => part.type === "thinking" && typeof part.thinking === "string" && part.thinking.length > 0
+      )
+    );
+    const final = reasoning.findLast((event) => event.type === "result");
+    assert.match(final?.result || "", new RegExp(reasoningMarker));
+    if (!thinking && attempt < maxAttempts) {
+      console.log(`  Claude Code max reasoning returned no thinking content (attempt ${attempt}/${maxAttempts}), retrying...`);
+    }
+  }
   assert.ok(thinking, "Claude Code max effort returned no thinking content");
-  assert.match(final?.result || "", new RegExp(reasoningMarker));
   passed("claude.reasoning.max", { model: "glm-5.2", thinkingContent: true });
 }
 
@@ -179,11 +189,16 @@ async function checkCodex() {
     "launch", "codex", "--model", "glm-5.2", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
+    // Codex's default is 5 reconnects of ~35s each (~3 min) per request when
+    // the endpoint is saturated. Fail fast and let runZroRetry handle
+    // retries with short backoffs instead.
+    "-c", "model_providers.zro.stream_max_retries=1",
+    "-c", "model_providers.zro.request_max_retries=1",
     "-c", 'model_reasoning_effort="disabled"', prompt
   ];
 
-  const first = codexTurn(await runZro(cacheArgs, "Codex cache warm-up"), marker);
-  const second = codexTurn(await runZro(cacheArgs, "Codex cache read"), marker);
+  const first = codexTurn(await runZroRetry(cacheArgs, "Codex cache warm-up"), marker);
+  const second = codexTurn(await runZroRetry(cacheArgs, "Codex cache read"), marker);
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
   const firstCached = first.usage.cached_input_tokens ?? first.usage.cache_read_input_tokens ?? 0;
@@ -200,13 +215,15 @@ async function checkCodex() {
   });
 
   const reasoningMarker = "ZRO_CODEX_MAX_OK";
-  const max = codexTurn(await runZro([
+  const max = codexTurn(await runZroRetry([
     "launch", "codex", "--model", "deepseek-v4-flash-0731", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
+    "-c", "model_providers.zro.stream_max_retries=1",
+    "-c", "model_providers.zro.request_max_retries=1",
     "-c", 'model_reasoning_effort="high"',
     `Think briefly, then include ${reasoningMarker} in the answer.`
-  ], "Codex max reasoning", REASONING_TIMEOUT_MS), reasoningMarker);
+  ], "Codex max reasoning", 3, REASONING_TIMEOUT_MS), reasoningMarker);
   passed("codex.reasoning.max", {
     model: "deepseek-v4-flash-0731",
     acceptedEffort: "high",
@@ -387,11 +404,16 @@ async function checkPrime() {
   });
 
   const reasoningMarker = "ZRO_PRIME_MAX_OK";
+  // Restart the daemon so a wedged session from the cache probes cannot
+  // stall the reasoning turn.
+  await run("prime-agent", ["shutdown", "--force"], "Prime Agent daemon shutdown", 15_000).catch(() => {});
+  // Max-effort GLM turns regularly exceed 300s end-to-end, so give Prime
+  // fewer attempts with a longer per-attempt deadline (job budget: 30 min).
   const max = primeTurn(await runZroRetry([
     "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
     "--no-tools", "--no-session", "--thinking", "xhigh",
     `Think briefly, then include ${reasoningMarker} in the answer.`
-  ], "Prime Agent max reasoning"), reasoningMarker, { expectThinking: true });
+  ], "Prime Agent max reasoning", 2, 420_000), reasoningMarker, { expectThinking: true });
   assert.ok(max.hasThinking, "Prime Agent max effort returned no thinking content");
   passed("prime.reasoning.max", { model: "glm-5.2", thinkingContent: true });
 }
@@ -423,6 +445,8 @@ function claudeResult(result) {
 
 function codexTurn(result, marker) {
   const events = jsonLines(result.stdout);
+  const failed = events.findLast((event) => event.type === "turn.failed");
+  assert.ok(!failed, `Codex turn failed: ${failed?.error?.message || "unknown error"}`);
   const text = events
     .filter((event) => event.type === "item.completed" && event.item?.type === "agent_message")
     .map((event) => event.item.text)
