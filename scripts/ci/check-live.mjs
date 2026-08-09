@@ -182,12 +182,18 @@ async function checkCodex() {
     "-c", 'model_reasoning_effort="disabled"', prompt
   ];
 
-  const first = codexTurn(await runZroRetry(cacheArgs, "Codex cache warm-up"), marker);
-  const second = codexTurn(await runZroRetry(cacheArgs, "Codex cache read"), marker);
+  let first, second, firstCached = 0, secondCached = 0;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    first = codexTurn(await runZroRetry(cacheArgs, `Codex cache warm-up (attempt ${attempt}/3)`), marker);
+    second = codexTurn(await runZroRetry(cacheArgs, `Codex cache read (attempt ${attempt}/3)`), marker);
+    firstCached = first.usage.cached_input_tokens ?? first.usage.cache_read_input_tokens ?? 0;
+    secondCached = second.usage.cached_input_tokens ?? second.usage.cache_read_input_tokens ?? 0;
+    if (secondCached > 0) break;
+    console.error(`Codex cache probe attempt ${attempt} returned no cached tokens, retrying...`);
+    if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+  }
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
-  const firstCached = first.usage.cached_input_tokens ?? first.usage.cache_read_input_tokens ?? 0;
-  const secondCached = second.usage.cached_input_tokens ?? second.usage.cache_read_input_tokens ?? 0;
   if (!(secondCached > 0)) {
     console.error("Codex cache probe returned unexpected usage:", JSON.stringify({ first: first.usage, second: second.usage }, null, 2));
   }
