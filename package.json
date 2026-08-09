@@ -19,7 +19,7 @@
     "!win32"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
