@@ -176,30 +176,24 @@ async function checkCodex() {
   const marker = "ZRO_CODEX_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "codex", "--model", "deepseek-v4-flash-0731", "--", "exec", "--json",
+    "launch", "codex", "--model", "glm-5.2", "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
     "-c", 'model_reasoning_effort="disabled"', prompt
   ];
 
-  let first, second, firstCached = 0, secondCached = 0;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    first = codexTurn(await runZroRetry(cacheArgs, `Codex cache warm-up (attempt ${attempt}/3)`), marker);
-    second = codexTurn(await runZroRetry(cacheArgs, `Codex cache read (attempt ${attempt}/3)`), marker);
-    firstCached = first.usage.cached_input_tokens ?? first.usage.cache_read_input_tokens ?? 0;
-    secondCached = second.usage.cached_input_tokens ?? second.usage.cache_read_input_tokens ?? 0;
-    if (secondCached > 0) break;
-    console.error(`Codex cache probe attempt ${attempt} returned no cached tokens, retrying...`);
-    if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
-  }
+  const first = codexTurn(await runZro(cacheArgs, "Codex cache warm-up"), marker);
+  const second = codexTurn(await runZro(cacheArgs, "Codex cache read"), marker);
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
+  const firstCached = first.usage.cached_input_tokens ?? first.usage.cache_read_input_tokens ?? 0;
+  const secondCached = second.usage.cached_input_tokens ?? second.usage.cache_read_input_tokens ?? 0;
   if (!(secondCached > 0)) {
     console.error("Codex cache probe returned unexpected usage:", JSON.stringify({ first: first.usage, second: second.usage }, null, 2));
   }
   assert.ok(secondCached > 0, "Codex reported no cached input tokens");
   passed("codex.cache", {
-    model: "deepseek-v4-flash-0731",
+    model: "glm-5.2",
     effort: "disabled",
     firstCacheRead: firstCached,
     secondCacheRead: secondCached
@@ -517,15 +511,15 @@ async function runZro(args, label, timeoutMs = 120_000, env = childEnv) {
   return run(zroBin, args, label, timeoutMs, env);
 }
 
-async function runZroRetry(args, label, maxAttempts = 3) {
+async function runZroRetry(args, label, maxAttempts = 3, timeoutMs = 180_000) {
   let lastError;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await run(zroBin, args, `${label} (attempt ${attempt}/${maxAttempts})`, REASONING_TIMEOUT_MS);
+      return await run(zroBin, args, `${label} (attempt ${attempt}/${maxAttempts})`, timeoutMs);
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
-      if (attempt < maxAttempts && /high demand|Reconnecting|exited 1/i.test(message)) {
+      if (attempt < maxAttempts && /high demand|Reconnecting|exited 1|timed out/i.test(message)) {
         console.log(`  ${label} failed (attempt ${attempt}), retrying...`);
         await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
         continue;
