@@ -186,12 +186,17 @@ async function checkCodex() {
   const second = codexTurn(await runZroRetry(cacheArgs, "Codex cache read"), marker);
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
-  assert.ok(second.usage.cached_input_tokens > 0, "Codex reported no cached input tokens");
+  const firstCached = first.usage.cached_input_tokens ?? first.usage.cache_read_input_tokens ?? 0;
+  const secondCached = second.usage.cached_input_tokens ?? second.usage.cache_read_input_tokens ?? 0;
+  if (!(secondCached > 0)) {
+    console.error("Codex cache probe returned unexpected usage:", JSON.stringify({ first: first.usage, second: second.usage }, null, 2));
+  }
+  assert.ok(secondCached > 0, "Codex reported no cached input tokens");
   passed("codex.cache", {
     model: "deepseek-v4-flash-0731",
     effort: "disabled",
-    firstCacheRead: first.usage.cached_input_tokens,
-    secondCacheRead: second.usage.cached_input_tokens
+    firstCacheRead: firstCached,
+    secondCacheRead: secondCached
   });
 
   const reasoningMarker = "ZRO_CODEX_MAX_OK";
