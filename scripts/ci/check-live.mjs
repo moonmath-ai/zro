@@ -183,6 +183,7 @@ async function checkClaude() {
 }
 
 async function checkCodex() {
+  await codexUpstreamPreflight();
   const marker = "ZRO_CODEX_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
@@ -443,6 +444,60 @@ function claudeResult(result) {
   return event;
 }
 
+// Codex puts a tools array on every turn (hardcoded upstream, no config
+// toggle). If the zro Responses endpoint is rejecting tool-bearing requests —
+// observed 2026-08-09/10: ANY request with `tools` returned
+// 500 "Request failed." while tool-less requests succeeded — every codex call
+// fails and codex masks it as "high demand". Probe that path once up front so
+// the failure names the real cause in seconds instead of after many retries.
+async function codexUpstreamPreflight() {
+  const payload = {
+    model: "glm-5.2",
+    input: "Upstream preflight. Reply with exactly OK.",
+    store: false,
+    stream: true,
+    tools: [
+      {
+        type: "function",
+        name: "ping",
+        description: "Reply pong.",
+        strict: false,
+        parameters: { type: "object", properties: {} }
+      }
+    ]
+  };
+  let response;
+  try {
+    response = await fetch("https://zro.moonmath.ai/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "text/event-stream",
+        authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    assert.fail(
+      `Codex upstream preflight: POST /v1/responses did not respond (${message}). ` +
+        "The zro endpoint is unreachable or hanging — codex cannot work either."
+    );
+  }
+  if (response.ok) {
+    await response.body?.cancel().catch(() => {});
+    return;
+  }
+  const body = redact((await response.text().catch(() => "")).slice(0, 400));
+  assert.fail(
+    `Codex upstream preflight: POST /v1/responses with a single function tool returned ` +
+      `${response.status} ${body} — the zro Responses API is rejecting tool-bearing ` +
+      "requests (service-side outage; every codex turn sends tools). This is not a " +
+      "codex or zro-cli bug: retry CI once the endpoint stops 500ing /v1/responses with tools."
+  );
+}
+
 function codexTurn(result, marker) {
   const events = jsonLines(result.stdout);
   const failed = events.findLast((event) => event.type === "turn.failed");
@@ -544,8 +599,11 @@ async function runZroRetry(args, label, maxAttempts = 3, timeoutMs = 180_000) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
       if (attempt < maxAttempts && /high demand|Reconnecting|exited 1|timed out/i.test(message)) {
+        // 5s backoffs never survive upstream saturation windows (observed:
+        // 30+ min of persistent "high demand" errors for one request shape).
+        // 30s/60s gives short blips a chance without blowing the job budget.
         console.log(`  ${label} failed (attempt ${attempt}), retrying...`);
-        await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+        await new Promise(resolve => setTimeout(resolve, 30_000 * attempt));
         continue;
       }
       throw error;
