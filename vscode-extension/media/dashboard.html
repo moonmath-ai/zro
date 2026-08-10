@@ -62,6 +62,16 @@
     .metric { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
     .metric .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
     .metric .v { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .metric.hero { padding: 16px; margin-bottom: 12px; }
+    .metric.hero .v { font-size: 28px; }
+    .metric.hero .v.good { color: var(--good); }
+    .metric.hero .v.bad { color: var(--bad); }
+
+    .plantrack { display: flex; align-items: center; gap: 10px; padding: 4px 0 10px; }
+    .plantrack .bar { flex: 1; margin: 0; }
+    .plantrack .value { font-weight: 600; white-space: nowrap; }
+    .plantrack .value.good { color: var(--good); }
+    .plantrack .value.bad { color: var(--bad); }
 
     .bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 6px 0; }
     .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 4px; }
@@ -151,7 +161,7 @@
     <!-- Cost -->
     <section class="pane" id="pane-cost">
       <div class="card">
-        <h3>Spend &amp; allowance</h3>
+        <h3>Balance</h3>
         <div id="cost-body" class="muted">Loading…</div>
         <div class="divider"></div>
         <div class="actions">
@@ -315,34 +325,26 @@
         const billing = a.billing;
         const money = (n) => fmtMoney(n, billing.currency);
         const plan = billing.plan;
-        let planHtml = '';
-        if (plan) {
-          const usedPct = pct(plan.used, plan.allowance);
-          planHtml = `
-            <div class="row"><span class="label">Plan</span><span class="value">${plan.name} (${billing.status})</span></div>
-            <div class="row"><span class="label">Used</span><span class="value">${money(plan.used)} of ${money(plan.allowance)}</span></div>
-            <div class="row"><span class="label">Remaining</span><span class="value ${plan.remaining > 0 ? 'good' : 'bad'}">${money(plan.remaining)}</span></div>
-            <div class="bar"><span style="width:${usedPct}%"></span></div>`;
-        } else {
-          planHtml = `<div class="row"><span class="label">Plan</span><span class="value muted">None</span></div>`;
-        }
+        const remainingPct = plan && plan.allowance > 0 ? +((plan.remaining / plan.allowance) * 100).toFixed(1) : 0;
+        const planHtml = plan
+          ? `
+            <div class="metric hero"><div class="k">Plan remaining</div><div class="v ${plan.remaining > 0 ? 'good' : 'bad'}">${remainingPct}%</div></div>
+            <div class="plantrack">
+              <div class="bar"><span style="width:${remainingPct}%"></span></div>
+            </div>`
+          : `<div class="row"><span class="label">Plan</span><span class="value muted">None</span></div>`;
         const packs = billing.usagePacks;
         $('#cost-body').innerHTML = `
-          <div class="metrics">
-            <div class="metric"><div class="k">Plan remaining</div><div class="v">${money(billing.totalRemaining)}</div></div>
-            <div class="metric"><div class="k">Spend (30d)</div><div class="v">${money(a.activity30d.spend)}</div></div>
-            <div class="metric"><div class="k">Requests (30d)</div><div class="v">${fmtNum(a.activity30d.requests)}</div></div>
-          </div>
           ${planHtml}
-          <div class="divider"></div>
-          <div class="row"><span class="label">Usage packs</span><span class="value">${money(packs.remaining)} left / ${money(packs.total)}</span></div>
+          <div class="row"><span class="label">Usage packs</span><span class="value ${packs.remaining > 0 ? 'good' : 'muted'}">${money(packs.remaining)} left</span></div>
         `;
         const act = a.activity30d;
         $('#cost-activity').innerHTML = `
           <div class="metrics">
+            <div class="metric"><div class="k">Requests</div><div class="v">${fmtNum(act.requests)}</div></div>
+            <div class="metric"><div class="k">Spend</div><div class="v">${money(act.spend)}</div></div>
             <div class="metric"><div class="k">Input tokens</div><div class="v">${fmtNum(act.inputTokens)}</div></div>
             <div class="metric"><div class="k">Output tokens</div><div class="v">${fmtNum(act.outputTokens)}</div></div>
-            <div class="metric"><div class="k">Total tokens</div><div class="v">${fmtNum(act.totalTokens)}</div></div>
             <div class="metric"><div class="k">Tool calls</div><div class="v">${fmtNum(act.toolCalls)}</div></div>
           </div>
           <div class="row"><span class="label">Cache reads</span><span class="value">${fmtNum(act.cacheReadInputTokens)} tokens</span></div>
