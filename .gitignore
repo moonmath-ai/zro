@@ -1,2 +1,8 @@
 dist
+dist-cjs
 node_modules
+artifacts
+# VS Code extension build artifacts (source lives on feat/vscode-extension)
+vscode-extension/node_modules/
+vscode-extension/out/
+**/*.vsix

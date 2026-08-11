@@ -10,6 +10,18 @@ zro login
 zro claude
 ```
 
+No Node.js? Install the standalone binary instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/moonmath-ai/zro/main/scripts/install.sh | sh
+```
+
+The script detects macOS / Linux and your CPU architecture, downloads the matching
+binary from the [latest release](https://github.com/moonmath-ai/zro/releases/latest),
+verifies its SHA-256 checksum, and installs it as `zro`. On Windows, run it inside
+WSL. Pass `--version X.Y.Z` to install a specific release or `--dir PATH` to change
+the install location.
+
 ## Usage
 
 ```bash
@@ -44,7 +56,8 @@ reopen. Native tool arguments can be placed after `--`.
 
 ## Installation and upgrades
 
-Zro requires Node.js 18 or later and supports macOS and Linux. On Windows, use WSL.
+Zro supports macOS and Linux. On Windows, use WSL. The npm package requires
+Node.js 18 or later; the standalone binary has no runtime requirements.
 
 `zro install <tool>` installs npm-distributed agents globally. Hermes, Grok Build, and Oh My Pi use
 their official shell installers; Oh My Pi uses its prebuilt binary so Bun is not required. Add

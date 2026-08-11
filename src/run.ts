@@ -60,9 +60,14 @@ const tools: Record<ToolId, ToolModule> = {
   prime: primeTool
 };
 
-const PACKAGE_VERSION = (
-  JSON.parse(fsSync.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
-).version;
+// In the standalone SEA binary the version is baked in at bundle time via a
+// `globalThis.__ZRO_PACKAGE_VERSION__` define; otherwise read package.json
+// relative to this module (dist/run.js -> ../package.json).
+const PACKAGE_VERSION =
+  (globalThis as { __ZRO_PACKAGE_VERSION__?: string }).__ZRO_PACKAGE_VERSION__ ??
+  (
+    JSON.parse(fsSync.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
+  ).version;
 
 export async function run(argv: string[], io: RunIo = defaultIo()): Promise<number> {
   if ((io.platform ?? process.platform) === "win32") {

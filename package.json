@@ -23,6 +23,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "build:binary": "node scripts/build-binary.mjs",
     "prepack": "npm run build",
     "test": "vitest run",
     "test:clients": "node scripts/ci/check-clients.mjs",
@@ -35,6 +36,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vitest": "^3.2.4"
