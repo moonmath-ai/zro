@@ -1,6 +1,6 @@
 {
   "name": "@moonmath-ai/zro",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Open coding agents on Zro with isolated, Zro-owned configuration.",
   "type": "module",
   "bin": {
