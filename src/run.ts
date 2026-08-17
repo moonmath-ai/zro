@@ -44,7 +44,7 @@ import {
   type ModelCatalog,
 } from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
-import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, theme } from "./ui.js";
+import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -96,6 +96,7 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
   if (request.command === "logout") return logout(request.output, io, env);
   if (request.command === "status") return status(request.output, io, env, colors);
   if (request.command === "models") return models(request.output, io, env, colors);
+  if (request.command === "feedback") return feedback(request, io, env, colors);
 
   if (request.command === "home") {
     if (!isTty(io.stdin) || !isTty(io.stdout)) {
@@ -772,6 +773,76 @@ async function models(
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }
   io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.2\n");
+  return 0;
+}
+
+async function feedback(
+  request: Extract<CliRequest, { command: "feedback" }>,
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+  colors: ReturnType<typeof theme>,
+): Promise<number> {
+  let message = request.message;
+  if (!message) {
+    if (isTty(io.stdin) && isTty(io.stdout)) {
+      try {
+        message = await promptLine("What's on your mind? ", io.stdin, io.stdout);
+      } catch (error) {
+        if (messageOf(error) !== "Cancelled.") io.stderr.write(`${messageOf(error)}\n`);
+        return 1;
+      }
+    }
+  }
+  message = message?.trim();
+  if (!message) {
+    io.stderr.write('No feedback provided. Pass a message, for example: zro feedback "I love it".\n');
+    return 1;
+  }
+
+  let apiKey: string;
+  try {
+    apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
+  } catch {
+    io.stderr.write("Log in to send feedback. Run zro login first.\n");
+    return 1;
+  }
+
+  const endpointRoot = getAuthRoot(env);
+  const payload: Record<string, unknown> = {
+    message,
+    version: io.version ?? PACKAGE_VERSION,
+    timestamp: new Date().toISOString(),
+    os: io.platform ?? process.platform,
+    arch: process.arch,
+    nodeVersion: process.version,
+    deviceType: "desktop",
+  };
+  if (env.ZRO_DEVICE_NAME) payload.deviceName = env.ZRO_DEVICE_NAME;
+
+  const fetcher = io.fetch ?? globalThis.fetch;
+  try {
+    const response = await fetcher(`${endpointRoot}/api/cli/feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    await response.body?.cancel().catch(() => {});
+    if (!response.ok) {
+      io.stderr.write(`Could not send feedback (HTTP ${response.status}). Please try again later.\n`);
+      return 1;
+    }
+  } catch (error) {
+    io.stderr.write(`Could not send feedback: ${messageOf(error)}\n`);
+    return 1;
+  }
+
+  io.stdout.write(request.output === "json"
+    ? `${JSON.stringify({ sent: true })}\n`
+    : `${colors.good("Thanks!")} Your feedback is on its way.\n`);
   return 0;
 }
 

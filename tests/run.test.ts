@@ -390,6 +390,84 @@ describe("zro experience", () => {
     await expect(fs.stat(path.join(codexAppDir, ".env")))
       .rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it("sends feedback with the stored key and confirms in JSON", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-feedback-"));
+    const credentialDir = path.join(home, ".config", "zro");
+    await fs.mkdir(credentialDir, { recursive: true });
+    await fs.writeFile(
+      path.join(credentialDir, "credentials.json"),
+      JSON.stringify({ apiKey: "sk-feedback" }),
+    );
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let body: Record<string, unknown> | undefined;
+
+    const code = await run(["feedback", "I love it", "--json"], {
+      ...io(home, stdout),
+      stderr,
+      env: { ZRO_DEVICE_NAME: "work-laptop" },
+      fetch: async (input, init) => {
+        expect(String(input)).toBe("https://zro.moonmath.ai/api/cli/feedback");
+        expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-feedback");
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json({ ok: true });
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(body).toMatchObject({
+      message: "I love it",
+      version: "0.0.1",
+      deviceName: "work-laptop",
+      deviceType: "desktop",
+      os: "linux",
+    });
+    expect(typeof body?.timestamp).toBe("string");
+    expect(typeof body?.arch).toBe("string");
+    expect(typeof body?.nodeVersion).toBe("string");
+    expect(JSON.parse(await streamText(stdout))).toEqual({ sent: true });
+    expect(JSON.stringify(body)).not.toContain("sk-feedback");
+    expect(await streamText(stderr)).toBe("");
+  });
+
+  it("requires a credential before sending feedback", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-feedback-auth-"));
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let fetched = false;
+
+    const code = await run(["feedback", "nice tool"], {
+      ...io(home, stdout),
+      stderr,
+      fetch: async () => { fetched = true; return Response.json({ ok: true }); },
+    });
+
+    expect(code).toBe(1);
+    expect(fetched).toBe(false);
+    expect(await streamText(stderr)).toContain("Log in to send feedback");
+  });
+
+  it("reports a failure to send feedback without exiting silently", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-feedback-fail-"));
+    const credentialDir = path.join(home, ".config", "zro");
+    await fs.mkdir(credentialDir, { recursive: true });
+    await fs.writeFile(
+      path.join(credentialDir, "credentials.json"),
+      JSON.stringify({ apiKey: "sk-feedback-fail" }),
+    );
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+
+    const code = await run(["feedback", "hello"], {
+      ...io(home, stdout),
+      stderr,
+      fetch: async () => new Response(null, { status: 500 }),
+    });
+
+    expect(code).toBe(1);
+    expect(await streamText(stderr)).toContain("Could not send feedback (HTTP 500)");
+  });
 });
 
 function io(home: string, stdout: PassThrough) {

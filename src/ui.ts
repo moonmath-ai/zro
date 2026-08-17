@@ -1,4 +1,4 @@
-import { clearScreenDown, emitKeypressEvents, moveCursor } from "node:readline";
+import { clearScreenDown, createInterface, emitKeypressEvents, moveCursor } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { ZRO_MODELS, type ZroModel } from "./engine/constants.js";
 import { TOOLS } from "./catalog.js";
@@ -44,6 +44,7 @@ ${colors.strong("Make it yours")}
   zro install claude         Install a supported agent
   zro claude --install       Install if missing, then open
   zro install --upgrade      Upgrade zro itself
+  zro feedback               Send feedback to the Zro team
   zro claude --dry-run       Preview without launching
 
 ${colors.strong("Tools")}
@@ -158,4 +159,20 @@ async function choose(options: {
 
 export function isTty(stream: Readable | Writable): boolean {
   return Boolean((stream as { isTTY?: boolean }).isTTY);
+}
+
+export function promptLine(prompt: string, stdin: Readable, stdout: Writable): Promise<string> {
+  if (!isTty(stdin) || !isTty(stdout)) {
+    throw new Error("No feedback message. Pass one as an argument, for example: zro feedback \"I love it\".");
+  }
+  const rl = createInterface({ input: stdin, output: stdout });
+  rl.setPrompt(prompt);
+  rl.prompt();
+  return new Promise((resolve, reject) => {
+    rl.once("line", (line) => {
+      rl.close();
+      resolve(line);
+    });
+    rl.once("close", () => reject(new Error("No feedback provided.")));
+  });
 }

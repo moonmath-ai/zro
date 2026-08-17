@@ -31,6 +31,7 @@ zro claude --install        # install if missing, then open
 zro install claude@2.1.105  # install a pinned agent version
 zro install claude --upgrade # upgrade one agent
 zro install --upgrade       # upgrade zro itself
+zro feedback                # send feedback to the Zro team
 zro claude --dry-run        # secret-safe session preview
 zro codex --json            # machine-readable preview
 ```
