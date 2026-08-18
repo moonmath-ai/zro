@@ -73,7 +73,9 @@ function buildHermesConfig(
   }
 
   const mcpServers = { ...(asPlainObject(next.mcp_servers) ?? {}) };
-  const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
+  const existingMcpServer = { ...(asPlainObject(mcpServers[PROVIDER_ID]) ?? {}) };
+  const existingTools = { ...(asPlainObject(existingMcpServer.tools) ?? {}) };
+  delete existingTools.include;
   mcpServers[PROVIDER_ID] = {
     ...existingMcpServer,
     url: MCP_URL,
@@ -83,8 +85,7 @@ function buildHermesConfig(
       Authorization: `Bearer \${${ZRO_ENV_KEY}}`
     },
     tools: {
-      ...(asPlainObject(existingMcpServer.tools) ?? {}),
-      include: ["zro-web_search"],
+      ...existingTools,
       resources: false,
       prompts: false
     }

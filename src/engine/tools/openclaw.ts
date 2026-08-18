@@ -91,7 +91,8 @@ function buildOpenClawConfig(
   };
 
   const mcpServers = objectAt(objectAt(next, "mcp"), "servers");
-  const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
+  const existingMcpServer = { ...(asPlainObject(mcpServers[PROVIDER_ID]) ?? {}) };
+  delete existingMcpServer.toolFilter;
   mcpServers[PROVIDER_ID] = {
     ...existingMcpServer,
     url: MCP_URL,
@@ -100,9 +101,6 @@ function buildOpenClawConfig(
     headers: {
       ...(asPlainObject(existingMcpServer.headers) ?? {}),
       Authorization: `Bearer \${${ZRO_ENV_KEY}}`
-    },
-    toolFilter: {
-      include: ["zro-web_search"]
     }
   };
 
