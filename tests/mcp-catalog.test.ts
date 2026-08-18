@@ -16,7 +16,7 @@ import type { LaunchContext, LaunchPlan } from "../src/engine/types.js";
 
 describe("dynamic MCP catalog", () => {
   it("uses the aggregate MCP endpoint by default", () => {
-    expect(MCP_URL).toBe(`${ENDPOINT_ROOT}/mcp`);
+    expect(MCP_URL).toBe(`${ENDPOINT_ROOT}/mcp/`);
   });
 
   it("removes Hermes' legacy Brave-only allowlist", async () => {
