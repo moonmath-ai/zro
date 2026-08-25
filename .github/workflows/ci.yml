@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   version-check:
-    name: Version is greater than latest release
+    name: Version bump check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -30,7 +30,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
