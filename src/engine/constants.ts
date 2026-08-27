@@ -64,7 +64,7 @@ export const ZRO_MODELS = [
     id: "kimi-k3",
     displayName: "Kimi K3",
     contextWindow: 1048576,
-    maxOutputTokens: 1048576,
+    maxOutputTokens: 64000,
     reasoning: {
       defaultLevel: "high",
       levels: [
