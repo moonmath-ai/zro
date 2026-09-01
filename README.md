@@ -169,7 +169,3 @@ guidelines.
 ## License
 
 Zro is licensed under the [MIT License](LICENSE).
-
-<p align="center">
-  <a href="https://zro.moonmath.ai">zro.moonmath.ai</a>
-</p>
