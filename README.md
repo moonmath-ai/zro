@@ -13,8 +13,7 @@ Zro-owned configuration that never touches your normal agent setup.
 `zro` is a thin, dependency-light CLI that opens supported coding agents (Claude Code, Codex,
 Kilo Code, OpenCode, and more) against the [Zro](https://zro.moonmath.ai) inference platform. Each
 agent runs as a child process with its own temporary profile, so your everyday agent
-configuration, credentials, and session history are left completely untouched. Website login is
-started automatically when needed.
+configuration, credentials, and session history are left completely untouched.
 
 ```bash
 npm install --global @moonmath-ai/zro
