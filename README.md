@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/zro-logo.svg" alt="zro" width="120" />
+  <img src="./docs/zro-logo.png" alt="zro" width="160" />
 </p>
 
 # zro
