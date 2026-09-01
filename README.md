@@ -120,7 +120,7 @@ tool/model pair is remembered and reopened with `zro again`.
 
 ---
 
-## Supported tools
+## Supported agents
 
 | Agent | Install | Notes |
 | --- | --- | --- |
