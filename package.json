@@ -3,6 +3,10 @@
   "version": "0.2.3",
   "description": "Open coding agents on Zro with isolated, Zro-owned configuration.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moonmath-ai/zro.git"
+  },
   "bin": {
     "zro": "dist/cli.js"
   },
