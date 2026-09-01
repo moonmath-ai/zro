@@ -1,0 +1,207 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: Run live reasoning and cache checks
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version-check:
+    name: Version bump check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check version is a new release
+        run: node scripts/ci/check-version.mjs
+
+  test:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        node-version: [22, 24, 26]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and pack package
+        run: pnpm pack --silent
+
+      - name: Upload package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zro-package
+          path: "*.tgz"
+          if-no-files-found: error
+          retention-days: 1
+
+  discover:
+    name: Discover harnesses
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      harnesses: ${{ steps.set.outputs.harnesses }}
+      os: ${{ steps.set.outputs.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Download package artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: zro-package
+          path: .
+
+      - name: Install package
+        run: npm install --global ./*.tgz
+
+      - name: Read harness matrix from package
+        id: set
+        run: |
+          harnesses=$(node scripts/ci/list-harnesses.mjs | jq -c 'map({id, label: .label, package, installer})')
+          echo "harnesses=$harnesses" >> "$GITHUB_OUTPUT"
+          echo 'os=["ubuntu-latest","macos-latest"]' >> "$GITHUB_OUTPUT"
+
+  harness:
+    name: ${{ matrix.harness.label }} (${{ matrix.os }})
+    needs: discover
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(needs.discover.outputs.os) }}
+        harness: ${{ fromJson(needs.discover.outputs.harnesses) }}
+    env:
+      ZRO_CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Download package artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: zro-package
+          path: .
+
+      - name: Install Zro package
+        run: npm install --global ./*.tgz
+
+      - name: Install ${{ matrix.harness.label }}
+        if: matrix.harness.package != ''
+        run: npm install --global "${{ matrix.harness.package }}"
+
+      - name: Install ${{ matrix.harness.label }} (curl installer)
+        if: matrix.harness.installer != ''
+        run: |
+          curl -fsSL "${{ matrix.harness.installer.url }}" | bash -s -- ${{ matrix.harness.installer.args }}
+          echo "$HOME/${{ matrix.harness.installer.binDir }}" >> "$GITHUB_PATH"
+
+      - name: Install Claude Code test dependency
+        if: matrix.harness.id == 'claude'
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install pexpect==4.9.0
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Check compatibility
+        env:
+          ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
+          ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-compatibility.json
+        run: npm run test:clients -- ${{ matrix.harness.id }}
+
+      - name: Check live API
+        if: >-
+          (github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && inputs.run_live)
+        env:
+          ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
+          ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-live.json
+        run: npm run test:live -- ${{ matrix.harness.id }}
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zro-${{ matrix.harness.id }}-${{ matrix.os }}-${{ github.run_attempt }}
+          path: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-*.json
+          if-no-files-found: warn
+          retention-days: 14
