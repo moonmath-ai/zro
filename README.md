@@ -160,7 +160,8 @@ See [SECURITY.md](SECURITY.md) for the security model and private vulnerability 
 
 ## Contributing
 
-Zro is a small, dependency-free TypeScript CLI. Bug reports, feature requests, and pull requests
+Zro is a small, dependency-light TypeScript CLI (runtime deps: `json5` and `yaml`). Bug reports,
+feature requests, and pull requests
 are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, checks, and contribution
 guidelines.
 
