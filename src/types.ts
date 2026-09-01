@@ -21,6 +21,7 @@ export type CliRequest =
   | { command: "models"; output: OutputMode }
   | { command: "install"; tool?: string; upgrade: boolean; version?: string }
   | { command: "again"; dryRun: boolean; output: OutputMode }
+  | { command: "feedback"; message?: string; output: OutputMode }
   | {
       command: "launch";
       tool: ToolId;

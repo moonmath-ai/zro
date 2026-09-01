@@ -54,6 +54,11 @@ export function parseArgs(argv: string[]): CliRequest {
     assertNoExtraArgs(parsed.extraArgs, command);
     return { command: "again", dryRun: parsed.dryRun, output: parsed.output };
   }
+  if (command === "feedback") {
+    const parsed = parseOptions(argv.slice(1), false);
+    const message = parsed.extraArgs.join(" ").trim() || undefined;
+    return { command: "feedback", message, output: parsed.output };
+  }
 
   if (command === "launch" || command === "run") {
     const value = argv[1];

@@ -115,4 +115,22 @@ describe("the direct command language", () => {
   it("returns a useful error for an unknown tool", () => {
     expect(() => parseArgs(["cursor"])).toThrow('Unknown command "cursor"');
   });
+
+  it("parses feedback with an optional message and JSON output", () => {
+    expect(parseArgs(["feedback", "it is great"])).toEqual({
+      command: "feedback",
+      message: "it is great",
+      output: "human",
+    });
+    expect(parseArgs(["feedback"])).toEqual({
+      command: "feedback",
+      message: undefined,
+      output: "human",
+    });
+    expect(parseArgs(["feedback", "--json"])).toEqual({
+      command: "feedback",
+      message: undefined,
+      output: "json",
+    });
+  });
 });

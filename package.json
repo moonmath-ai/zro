@@ -1,6 +1,6 @@
 {
   "name": "@moonmath-ai/zro",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Open coding agents on Zro with isolated, Zro-owned configuration.",
   "type": "module",
   "bin": {
@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "semver": "^7.8.5",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vitest": "^3.2.4"
