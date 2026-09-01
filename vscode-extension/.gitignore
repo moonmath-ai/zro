@@ -1,0 +1,6 @@
+node_modules/
+out/
+*.vsix
+
+# local capture proxy traffic (may contain real credentials)
+scripts/capture-log.jsonl

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZRO Dashboard Screenshot Harness</title>
+  <style nonce="RENDER_NONCE">
+    :root {
+      --bg: #0f1117;
+      --panel: #171a22;
+      --panel-2: #1d2130;
+      --border: #2a2f3f;
+      --text: #e6e9f0;
+      --muted: #8b93a7;
+      --accent: #6ea8fe;
+      --accent-2: #8b5cf6;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; line-height: 1.5; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 18px 20px 40px; }
+
+    /* Header */
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+    .brand img.logo { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+    .head-actions { display: flex; gap: 8px; }
+
+    button { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; transition: background .15s, border-color .15s; }
+    button:hover { background: #262b3d; border-color: var(--accent); }
+    button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: none; color: #0f1117; font-weight: 600; }
+    button.primary:hover { filter: brightness(1.08); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.ghost { background: transparent; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 4px; margin: 16px 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; overflow-x: auto; }
+    .tab { background: transparent; border: none; color: var(--muted); padding: 6px 12px; border-radius: 6px 6px 0 0; border-bottom: 2px solid transparent; font-weight: 500; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    .pane { display: none; animation: fade .2s ease; }
+    .pane.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+    .card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .card h4 { margin: 12px 0 6px; font-size: 13px; font-weight: 600; }
+
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .row:last-child { border-bottom: none; }
+    .row .label { color: var(--muted); }
+    .row .value { font-weight: 500; text-align: right; }
+    .row .value.good { color: var(--good); }
+    .row .value.warn { color: var(--warn); }
+    .row .value.bad { color: var(--bad); }
+
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .metric { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .metric .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+    .metric .v { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .metric.hero { padding: 16px; margin-bottom: 12px; }
+    .metric.hero .v { font-size: 28px; }
+    .metric.hero .v.good { color: var(--good); }
+    .metric.hero .v.bad { color: var(--bad); }
+
+    .plantrack { display: flex; align-items: center; gap: 10px; padding: 4px 0 10px; }
+    .plantrack .bar { flex: 1; margin: 0; }
+    .plantrack .value { font-weight: 600; white-space: nowrap; }
+    .plantrack .value.good { color: var(--good); }
+    .plantrack .value.bad { color: var(--bad); }
+
+    .bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 6px 0; }
+    .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 4px; }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .pill.good { background: rgba(52,211,153,.15); color: var(--good); }
+    .pill.warn { background: rgba(251,191,36,.15); color: var(--warn); }
+    .pill.bad { background: rgba(248,113,113,.15); color: var(--bad); }
+    .pill.muted { background: var(--panel-2); color: var(--muted); }
+
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: 12px; }
+
+    .model-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .model-item:last-child { border-bottom: none; }
+    .model-item .m-left { min-width: 0; }
+    .model-item .m-name { font-weight: 600; }
+    .model-item .m-id { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+    .model-item .m-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .model-item .m-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .model-item .select-btn { flex-shrink: 0; }
+    .model-item .select-btn.selected { background: var(--good); color: #0f1117; border: none; font-weight: 600; }
+
+    .login-code { font-family: ui-monospace, Menlo, monospace; font-size: 26px; letter-spacing: .05em; text-align: center; background: var(--panel-2); border: 1px dashed var(--accent); border-radius: 8px; padding: 14px; margin: 14px 0; color: var(--accent); }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .spacer { height: 8px; }
+    .divider { margin: 14px 0; border: none; border-top: 1px solid var(--border); }
+
+    .notice { border-radius: 8px; padding: 10px 12px; margin: 10px 0; font-size: 12px; }
+    .notice.info { background: rgba(110,168,254,.12); color: var(--accent); border: 1px solid rgba(110,168,254,.3); }
+    .notice.warn { background: rgba(251,191,36,.1); color: var(--warn); border: 1px solid rgba(251,191,36,.3); }
+    .notice.error { background: rgba(248,113,113,.1); color: var(--bad); border: 1px solid rgba(248,113,113,.3); }
+
+    .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+    .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+    .tag.soon { background: rgba(251,191,36,.15); color: var(--warn); }
+
+    .src { font-size: 11px; color: var(--muted); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div class="brand"><img class="logo" src="../media/icon.png" alt="ZRO" /> ZRO</div>
+      <div class="head-actions">
+        <button id="refresh-btn" title="Refresh">Refresh</button>
+        <button id="openchat-btn" class="ghost" title="Open Copilot Chat">Chat</button>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="overview" role="tab">Overview</button>
+      <button class="tab" data-tab="models" role="tab">Models</button>
+      <button class="tab" data-tab="cost" role="tab">Cost</button>
+      <button class="tab" data-tab="cache" role="tab">Cache</button>
+      <button class="tab" data-tab="team" role="tab">Team</button>
+    </div>
+
+    <!-- Overview -->
+    <section class="pane active" id="pane-overview">
+      <div class="card" id="auth-card">
+        <h3>Connection</h3>
+        <div id="auth-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Quick actions</h3>
+        <div class="actions">
+          <button id="qa-chat" class="primary">Open Copilot Chat</button>
+          <button id="qa-chat-pick">Choose model in Chat</button>
+          <button id="qa-manual">Enter API key</button>
+          <button id="qa-logout" class="ghost">Log out</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Models -->
+    <section class="pane" id="pane-models">
+      <div class="card">
+        <h3>Models &amp; endpoints</h3>
+        <div class="muted small">The catalog is fetched live from the control plane. Set a default to use in Copilot Chat. Endpoints are provisioned out-of-band on serving nodes.</div>
+        <div class="spacer"></div>
+        <div id="models-list"></div>
+      </div>
+    </section>
+
+    <!-- Cost -->
+    <section class="pane" id="pane-cost">
+      <div class="card">
+        <h3>Balance</h3>
+        <div id="cost-body" class="muted">Loading…</div>
+        <div class="divider"></div>
+        <div class="actions">
+          <button id="topup-btn" class="primary" title="Open the account top-up page in your browser">Top up credits</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Last 30 days activity</h3>
+        <div id="cost-activity" class="muted">Loading…</div>
+      </div>
+    </section>
+
+    <!-- Cache -->
+    <section class="pane" id="pane-cache">
+      <div class="card">
+        <h3>Prompt cache usage</h3>
+        <div id="cache-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Cache controls <span class="tag soon">Not available yet</span></h3>
+        <p class="muted small">The control plane does not yet expose a prompt-cache management API. Read usage is shown live above.</p>
+        <button id="cache-flush" disabled>Flush cache</button>
+      </div>
+    </section>
+
+    <!-- Team -->
+    <section class="pane" id="pane-team">
+      <div class="card">
+        <h3>Account &amp; plan</h3>
+        <div id="team-body" class="muted">Loading…</div>
+      </div>
+      <div class="card">
+        <h3>Team management <span class="tag soon">Not available yet</span></h3>
+        <p class="muted small">The platform is currently single-user. Team/workspace management is not exposed to the agent CLI yet.</p>
+      </div>
+    </section>
+
+    <div id="notice-slot"></div>
+  </div>
+
+  <script nonce="RENDER_NONCE">
+    (() => {
+      // Stub acquireVsCodeApi so the dashboard script runs standalone.
+      const vscode = {
+        postMessage: () => {},
+        getState: () => null,
+        setState: () => {},
+      };
+      const state = { auth: null, data: null, loginSession: null };
+      const ACCOUNT_URL = "https://zro.moonmath.ai/account";
+
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+
+      $$('.tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          $$('.tab').forEach((t) => t.classList.remove('active'));
+          $$('.pane').forEach((p) => p.classList.remove('active'));
+          tab.classList.add('active');
+          $('#pane-' + tab.dataset.tab).classList.add('active');
+        });
+      });
+
+      function fmtMoney(n, currency) {
+        try {
+          return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(n || 0);
+        } catch { return '$' + (n || 0).toFixed(2); }
+      }
+      function fmtNum(n) { return (n || 0).toLocaleString(); }
+      function pct(a, b) { return b ? Math.min(100, Math.round((a / b) * 100)) : 0; }
+
+      function notice(kind, message) {
+        const slot = $('#notice-slot');
+        const el = document.createElement('div');
+        el.className = 'notice ' + kind;
+        el.textContent = message;
+        slot.prepend(el);
+        setTimeout(() => el.remove(), 5000);
+      }
+
+      // ---- Mock data ----
+      state.credential = { hasKey: true, keySource: 'stored', maskedKey: 'sk-zro-••••-4f2a' };
+      state.data = {
+        keyless: false,
+        catalog: {
+          default: 'glm-5.2',
+          models: [
+            { id: 'minimax-m3', displayName: 'MiniMax M3', contextWindow: 1048576, maxOutputTokens: 64000 },
+            { id: 'glm-5.2', displayName: 'GLM-5.2', contextWindow: 524288, maxOutputTokens: 64000 },
+            { id: 'deepseek-v4-flash-0731', displayName: 'DeepSeek V4 Flash 0731', contextWindow: 1048576, maxOutputTokens: 384000 },
+            { id: 'kimi-k3', displayName: 'Kimi K3', contextWindow: 1048576, maxOutputTokens: 1048576 },
+          ],
+        },
+        selected: 'glm-5.2',
+        account: {
+          state: 'available',
+          account: {
+            key: { id: 'key_2f8a', alias: 'VS Code' },
+            billing: {
+              status: 'active',
+              currency: 'USD',
+              plan: { id: 'pro', name: 'Pro', allowance: 50, used: 32.14, remaining: 17.86 },
+              usagePacks: { total: 40, used: 18.50, remaining: 21.50 },
+              totalRemaining: 39.36,
+            },
+            activity30d: {
+              requests: 1284,
+              modelRequests: 961,
+              toolCalls: 312,
+              inputTokens: 8421500,
+              outputTokens: 1294300,
+              totalTokens: 9715800,
+              cacheReadInputTokens: 3120400,
+              spend: 32.14,
+            },
+          },
+        },
+      };
+
+      function renderConnection(credential, accountStatus) {
+        const body = $('#auth-body');
+        const hasKey = !!(state.credential && state.credential.hasKey) || !!(state.data && !state.data.keyless);
+        if (!hasKey) {
+          body.innerHTML =
+            `<div class="row"><span class="label">Status</span><span class="pill bad">Not connected</span></div>` +
+            `<p class="muted small">Connect with your browser, or paste an API key.</p>` +
+            `<div class="actions"><button id="auth-login" class="primary">Sign in with browser</button><button id="auth-manual">Enter API key</button></div>`;
+          return;
+        }
+        const hasCred = !!(state.credential && state.credential.hasKey);
+        const c = hasCred ? state.credential : { hasKey: true, keySource: 'stored', maskedKey: '•••' };
+        const srcLabels = { environment: 'Environment', stored: 'VS Code storage', 'credentials-file': 'zro login' };
+        const isGood = accountStatus && accountStatus.state === 'available';
+        const isBad = accountStatus && accountStatus.state === 'rejected';
+        const pill = isGood ? 'good' : isBad ? 'bad' : 'warn';
+        const pillText = isGood ? 'Connected' : isBad ? 'Key rejected' : 'Not verified';
+        body.innerHTML = `
+          <div class="row"><span class="label">Status</span><span class="pill ${pill}">${pillText}</span></div>
+          <div class="row"><span class="label">Source</span><span class="value src">${srcLabels[c.keySource] || c.keySource}</span></div>
+          <div class="row"><span class="label">Key</span><span class="value"><code>${c.maskedKey}</code></span></div>
+          <div class="row"><span class="label">Plan</span><span class="value">${isGood && accountStatus.account.billing.plan ? accountStatus.account.billing.plan.name : '—'}</span></div>
+        `;
+      }
+
+      function renderModels() {
+        const list = $('#models-list');
+        const data = state.data;
+        if (!data || data.keyless) { list.innerHTML = `<div class="empty">Enter your API key to load the model catalog.</div>`; return; }
+        const models = data.catalog.models;
+        if (!models.length) { list.innerHTML = `<div class="empty">No models available.</div>`; return; }
+        list.innerHTML = models.map((m) => {
+          const sel = m.id === data.selected;
+          const catalogDefault = m.id === data.catalog.default;
+          return `
+            <div class="model-item">
+              <div class="m-left">
+                <div class="m-name">${m.displayName}${catalogDefault ? ' <span class="tag">catalog default</span>' : ''}</div>
+                <div class="m-id">${m.id}</div>
+                <div class="m-sub">${fmtNum(m.contextWindow)} ctx · ${fmtNum(m.maxOutputTokens)} out</div>
+              </div>
+              <div class="m-right">
+                <span class="pill good" title="This model is live on the serving endpoints available to your key.">Live</span>
+                <button class="select-btn ${sel ? 'selected' : ''}" data-model="${m.id}" title="Use this model as the default in Copilot Chat." ${sel ? 'disabled' : ''}>${sel ? 'Current default' : 'Set as default'}</button>
+              </div>
+            </div>`;
+        }).join('') +
+          `<div class="notice info">Endpoints are provisioned out-of-band on serving nodes. The list above reflects the live catalog available to your key.</div>`;
+      }
+
+      function renderCost() {
+        const data = state.data;
+        if (!data || data.keyless) { $('#cost-body').innerHTML = `<div class="empty">Enter your API key to load cost dashboard.</div>`; $('#cost-activity').innerHTML = ''; return; }
+        if (!data.account || data.account.state !== 'available') { $('#cost-body').innerHTML = `<div class="empty">Cost dashboard unavailable.</div>`; return; }
+        const a = data.account.account;
+        const billing = a.billing;
+        const money = (n) => fmtMoney(n, billing.currency);
+        const plan = billing.plan;
+        const remainingPct = plan ? pct(plan.remaining, plan.allowance) : 0;
+        const planHtml = plan
+          ? `
+            <div class="row"><span class="label">Plan</span><span class="value">${plan.name} (${billing.status})</span></div>
+            <div class="plantrack">
+              <div class="bar"><span style="width:${remainingPct}%"></span></div>
+              <div class="value ${plan.remaining > 0 ? 'good' : 'bad'}">${remainingPct}% remaining</div>
+            </div>`
+          : `<div class="row"><span class="label">Plan</span><span class="value muted">None</span></div>`;
+        const packs = billing.usagePacks;
+        $('#cost-body').innerHTML = `
+          <div class="metric hero"><div class="k">Credits left</div><div class="v ${billing.totalRemaining > 0 ? 'good' : 'bad'}">${money(billing.totalRemaining)}</div></div>
+          ${planHtml}
+          <div class="row"><span class="label">Usage packs</span><span class="value ${packs.remaining > 0 ? 'good' : 'muted'}">${money(packs.remaining)} left</span></div>
+        `;
+        const act = a.activity30d;
+        $('#cost-activity').innerHTML = `
+          <div class="metrics">
+            <div class="metric"><div class="k">Requests</div><div class="v">${fmtNum(act.requests)}</div></div>
+            <div class="metric"><div class="k">Spend</div><div class="v">${money(act.spend)}</div></div>
+            <div class="metric"><div class="k">Input tokens</div><div class="v">${fmtNum(act.inputTokens)}</div></div>
+            <div class="metric"><div class="k">Output tokens</div><div class="v">${fmtNum(act.outputTokens)}</div></div>
+            <div class="metric"><div class="k">Tool calls</div><div class="v">${fmtNum(act.toolCalls)}</div></div>
+          </div>
+          <div class="row"><span class="label">Cache reads</span><span class="value">${fmtNum(act.cacheReadInputTokens)} tokens</span></div>
+        `;
+      }
+
+      function renderCache() {
+        const data = state.data;
+        if (!data || data.keyless) { $('#cache-body').innerHTML = `<div class="empty">Enter an API key to view cache usage.</div>`; return; }
+        if (!data.account || data.account.state !== 'available') { $('#cache-body').innerHTML = `<div class="empty">Cache usage unavailable.</div>`; return; }
+        const act = data.account.account.activity30d;
+        const pctCached = act.totalTokens ? Math.round((act.cacheReadInputTokens / act.totalTokens) * 100) : 0;
+        $('#cache-body').innerHTML = `
+          <div class="row"><span class="label">Cache reads (30d)</span><span class="value">${fmtNum(act.cacheReadInputTokens)} tokens</span></div>
+          <div class="row"><span class="label">Share of tokens</span><span class="value">${pctCached}%</span></div>
+          <div class="bar"><span style="width:${pctCached}%"></span></div>`;
+      }
+
+      function renderTeam() {
+        const data = state.data;
+        if (!data || data.keyless || !data.account || data.account.state !== 'available') {
+          $('#team-body').innerHTML = `<div class="empty">Account details unavailable.</div>`;
+          return;
+        }
+        const a = data.account.account;
+        const billing = a.billing;
+        $('#team-body').innerHTML = `
+          <div class="row"><span class="label">Key</span><span class="value"><code>${a.key.alias}</code></span></div>
+          <div class="row"><span class="label">Plan</span><span class="value">${billing.plan ? billing.plan.name : 'None'} (${billing.status})</span></div>
+          <div class="row"><span class="label">Currency</span><span class="value">${billing.currency}</span></div>
+        `;
+      }
+
+      function renderAll() {
+        const sections = [
+          () => { if (!state.loginSession) renderConnection(state.credential, state.data && state.data.account); },
+          renderModels,
+          renderCost,
+          renderCache,
+          renderTeam,
+        ];
+        for (const render of sections) {
+          try { render(); } catch { /* Keep the other panes alive. */ }
+        }
+      }
+
+      renderAll();
+      // Signal that the dashboard is fully rendered for the screenshot driver.
+      window.__DASHBOARD_READY = true;
+    })();
+  </script>
+</body>
+</html>
