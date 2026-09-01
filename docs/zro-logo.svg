@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="32" viewBox="0 0 120 32" role="img" aria-label="zro">
+  <!-- Placeholder wordmark. Replace with the official Zro logo asset. -->
+  <rect width="120" height="32" rx="6" fill="#111827"/>
+  <text x="16" y="22" font-family="system-ui, sans-serif" font-size="18" font-weight="700" fill="#ffffff">zro</text>
+</svg>

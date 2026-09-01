@@ -9,6 +9,21 @@ Include the affected version, reproduction steps, impact, and any suggested miti
 acknowledge a complete report as soon as practical and coordinate disclosure after a fix is
 available.
 
+## Scope
+
+This policy covers the `zro` CLI in this repository.
+
+Out of scope:
+
+- The Zro inference API and web platform at zro.moonmath.ai
+- Third-party coding agents and their SDKs
+- Operator or system misconfiguration
+
+## Supported versions
+
+We support security fixes on the current `main` branch and the latest npm release. There is no bug
+bounty program at this time.
+
 ## Security model
 
 Zro stores credentials with user-only filesystem permissions and creates isolated configuration
@@ -33,3 +48,6 @@ and remote-compaction controls through a temporary high-precedence settings over
 Browser login uses a short-lived device code. The CLI generates an ephemeral RSA keypair, and the
 website encrypts the issued credential to that public key. The private key remains in CLI memory
 and is not written to disk.
+
+API keys are masked in all human and JSON output. `zro --dry-run` writes nothing and starts
+nothing.
