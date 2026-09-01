@@ -23,7 +23,6 @@ Guidance for coding agents (Claude Code, Codex, OpenCode, etc.) working in this 
 - New commands: wire them through `src/args.ts` → the `CliRequest` union in `src/types.ts` →
   dispatch in `src/run.ts` → `ui.ts` help text. Add `tests/args.test.ts` and `tests/run.test.ts`
   coverage.
-- The CI script `scripts/ci/check-version.mjs` uses the `semver` dev dependency; keep it.
 
 ## Security-sensitive areas
 
