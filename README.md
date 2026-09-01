@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="./docs/zro-logo.png" alt="zro" width="160" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/zro-logo-white.png">
+    <img src="./docs/zro-logo.png" alt="zro" width="160" />
+  </picture>
 </p>
 
 # zro
