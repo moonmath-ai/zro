@@ -107,7 +107,10 @@ def main() -> int:
             child.send("\x1bP>|XTerm(370)\x1b\\\x1b[?1;2c")
             child.send("/model\r")
 
-            child.expect("Enter selection")
+            # Claude's model picker prompt has drifted across versions ("Enter
+            # selection" → "Select with numbers [1-5]. Then Enter to submit...").
+            # Match a stable fragment shared by both so the check is version-tolerant.
+            child.expect("Enter selection|Enter to submit|Select with numbers")
             transcript += child.before + child.after
 
             plain = strip_terminal_sequences(transcript)
