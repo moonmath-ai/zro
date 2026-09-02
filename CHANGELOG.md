@@ -38,5 +38,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### CI & releases
 
 - Releases are **tag-based** (`v*` tags) and published by the `Publish` workflow.
-- A **version gate** rejects a PR unless its `package.json` version exceeds the latest version on
-  npm, using node-semver.

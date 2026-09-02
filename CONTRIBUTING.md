@@ -8,7 +8,7 @@ stay focused, minimal, and easy to review.
 ```
 src/            CLI source (arg parsing, engine, per-agent adapters, UI)
 src/engine/     agent adapters + shared launch plumbing
-scripts/ci/     CI scripts (client/live checks, version gate)
+scripts/ci/     CI scripts (client/live checks)
 tests/          unit tests (vitest)
 ```
 
