@@ -18,6 +18,7 @@ const dynamicCatalog = {
       displayName: "Future Model",
       contextWindow: 200_000,
       maxOutputTokens: 20_000,
+      modalities: { input: ["text"], output: ["text"] },
       reasoning: {
         defaultLevel: "high",
         levels: [

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, supportsAttachments, type ZroModel } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
 import type { LaunchFile, ToolModule } from "../types.js";
 import { asPlainObject, objectAt } from "./helpers.js";
@@ -149,7 +149,7 @@ function isMissingPathError(error: unknown): error is NodeJS.ErrnoException {
     (error.code === "ENOENT" || error.code === "ENOTDIR");
 }
 
-function buildOpenCodeConfig(
+export function buildOpenCodeConfig(
   existing: Record<string, unknown>,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
@@ -198,6 +198,8 @@ function openAiCompatibleProvider(
       ...existingModel,
       name: model.id,
       reasoning: true,
+      attachment: supportsAttachments(model),
+      modalities: { input: model.modalities.input, output: model.modalities.output },
       limit: {
         ...(asPlainObject(existingModel.limit) ?? {}),
         context: model.contextWindow,

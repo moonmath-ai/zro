@@ -1,6 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_MODELS, DEFAULT_MODEL, type ZroModel } from "./engine/constants.js";
+import {
+  ENDPOINT_ROOT,
+  ZRO_MODELS,
+  DEFAULT_MODEL,
+  type ZroModel,
+  type ZroModality,
+  type ZroModalities,
+} from "./engine/constants.js";
 
 export interface ModelCatalog {
   version: 1;
@@ -151,8 +158,34 @@ function parseModel(value: unknown): ZroModel {
     displayName: requiredString(model.displayName, "model display name"),
     contextWindow: positiveInteger(model.contextWindow, "context window"),
     maxOutputTokens: positiveInteger(model.maxOutputTokens, "max output tokens"),
+    modalities: parseModalities(model.modalities),
     reasoning: { defaultLevel, levels },
   };
+}
+
+const KNOWN_MODALITIES = new Set<string>(["text", "image", "video", "audio", "pdf"]);
+
+function parseModalities(value: unknown): ZroModalities {
+  // Older catalogs may omit the field entirely; default to text-only rather
+  // than rejecting cached catalogs on disk.
+  if (value === undefined) return { input: ["text"], output: ["text"] };
+
+  const modalities = asRecord(value, "model modalities");
+  const input = parseModalityList(modalities.input, "input");
+  const output = parseModalityList(modalities.output, "output");
+  return { input, output };
+}
+
+function parseModalityList(value: unknown, label: string): readonly ZroModality[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`A model has no ${label} modalities.`);
+  }
+  return value.map((entry) => {
+    if (typeof entry !== "string" || !KNOWN_MODALITIES.has(entry)) {
+      throw new Error(`A model has an invalid ${label} modality.`);
+    }
+    return entry as ZroModality;
+  });
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {
