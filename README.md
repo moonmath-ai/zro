@@ -5,15 +5,24 @@
   </picture>
 </p>
 
-# zro
+<div align="center">
 
-Launch the coding agent of your choice through the Zro inference endpoint — with isolated,
-Zro-owned configuration that never touches your normal agent setup.
+# Private, fast inference for coding agents
 
-`zro` is a thin, dependency-light CLI that opens supported coding agents (Claude Code, Codex,
-Kilo Code, OpenCode, and more) against the [Zro](https://zro.moonmath.ai) inference platform. Each
-agent runs as a child process with its own temporary profile, so your everyday agent
-configuration, credentials, and session history are left completely untouched.
+**Open-weight models. Zero data retention. Zero training. Long-context, multi-region speed.**
+
+[zro.moonmath.ai](https://zro.moonmath.ai) · [Pricing](https://zro.moonmath.ai/pricing) · [Integrations](https://zro.moonmath.ai/integrations)
+
+</div>
+
+`zro` is the CLI that connects your coding agent to the [Zro](https://zro.moonmath.ai)
+inference endpoint. It launches the agent of your choice with isolated, Zro-owned
+configuration — so it never touches your everyday agent setup, credentials, or session
+history.
+
+> No training on your prompts or completions. Zero request retention. Runs on
+> privacy-forward, multi-region infrastructure. Optimized for the long-context,
+> tool-heavy workloads coding agents depend on.
 
 ```bash
 npm install --global @moonmath-ai/zro
@@ -21,112 +30,58 @@ zro login
 zro claude
 ```
 
----
-
-## Installation and upgrades
-
-### Requirements
-
-- **Node.js 22 or later**
-- **macOS** or **Linux** (on Windows, use [WSL](https://learn.microsoft.com/en-us/windows/wsl/))
-
-### Install
-
-```bash
-npm install --global @moonmath-ai/zro
-```
-
-Zro is also on [pnpm](https://pnpm.io/):
-
-```bash
-pnpm add --global @moonmath-ai/zro
-```
-
-### Upgrades
-
-- `zro install --upgrade` upgrades the Zro CLI itself.
-- `zro install <tool> --upgrade` upgrades one installed agent.
-- `zro install claude@2.1.105` or `zro install claude --version 2.1.105` pins an npm-distributed
-  agent version.
-
-`zro install <tool>` installs npm-distributed agents globally. Hermes, Grok Build, and Oh My Pi use
-their official shell installers; Oh My Pi ships a prebuilt binary so Bun is not required. Version
-validation and installer errors are reported directly by npm or the tool's official installer.
-
-### Authentication
-
-Sign in once with `zro login`, then launch any supported agent:
-
-```bash
-zro login                        # choose website or API key login
-zro login --manual               # enter an API key directly
-zro login --no-browser           # print an approval URL (e.g. for a remote box)
-zro logout                       # remove the stored login
-```
-
-- **Website login** creates a revocable API key after approval. The generated key is encrypted to an
-  ephemeral public key belonging to the CLI, so the device-login record never holds a usable
-  plaintext credential. The CLI sends a generic device label unless `ZRO_DEVICE_NAME` is set.
-- **Fallback:** if website login can't start in an interactive terminal, `zro` falls back to a
-  masked API-key paste prompt. Non-interactive commands exit with instructions instead of waiting.
-- **Environment key:** `ZRO_API_KEY` takes precedence over the stored key. The primary credential
-  lives at `~/.config/zro/credentials.json`; Codex App keeps its own copy under
-  `~/.config/zro/codex-app/.env`, and `zro logout` removes both.
-- Before launching, `zro` verifies the credential with the inference API. Rejected keys and
-  unavailable validation endpoints stop the launch rather than passing the failure to the child
-  agent.
+Available now: **GLM-5.2, GLM-5.3 Flash, DeepSeek V4 Flash 0731, and Kimi K3**.
+Region availability is shown when you create an API key.
 
 ---
 
 ## Quick start
 
 ```bash
-zro login
-zro claude            # open Claude Code on the default model
-zro codex -m glm-5.2  # pick a model for this session
+zro login                 # website or API key login
+zro claude                # open Claude Code on the default model
+zro codex -m glm-5.2      # pick a model for this session
+zro models                # browse the model catalog
+zro status                # connection, installed tools, last session, usage
 ```
 
 `zro <tool> --install` installs a missing agent and opens it in one step.
 
 ---
 
-## Usage
+## Installation
+
+- **Requirements:** Node.js 22 or later, macOS or Linux (WSL on Windows).
+- **Install:** `npm install --global @moonmath-ai/zro` (also `pnpm add --global @moonmath-ai/zro`).
+- **Upgrade:** `zro install --upgrade` (upgrade zro); `zro install <tool> --upgrade`
+  or `zro install claude@2.1.105` / `zro install claude --version 2.1.105` for an agent.
+
+### Authentication
+
+Sign in once, then launch any supported agent:
 
 ```bash
-zro                         # interactive agent picker
-zro claude                  # open directly on the default model
-zro codex -m glm-5.2        # choose a model for this session
-zro kilo -m glm-5.2         # launch Kilo Code through Zro
-zro omp -m glm-5.2          # launch Oh My Pi through Zro
-zro oc -- --help            # short aliases + native tool arguments
-zro again                   # reopen the last tool/model pair
-zro login                   # choose website or API key login
-zro login --no-browser      # print an approval URL for a remote machine
-zro login --manual          # enter an API key manually
-zro logout                  # remove the stored login
-zro status                  # connection, installed tools, last session, usage
-zro models                  # readable model catalog
-zro install claude          # install a supported agent
-zro claude --install        # install if missing, then open
-zro install claude@2.1.105  # install a pinned agent version
-zro install --upgrade       # upgrade zro itself
-zro feedback                # send feedback to the Zro team
-zro claude --dry-run        # secret-safe session preview
-zro codex --json            # machine-readable preview
+zro login                    # website or API key login
+zro login --manual           # enter an API key directly
+zro login --no-browser       # print an approval URL (e.g. remote box)
+zro logout                   # remove the stored login
 ```
 
-Pass native tool arguments after `--` (for example `zro oc -- --help`). The last
-tool/model pair is remembered and reopened with `zro again`.
+- Website login creates a revocable API key after approval, encrypted to an ephemeral
+  CLI-held public key. Set `ZRO_DEVICE_NAME` to label the device.
+- `ZRO_API_KEY` takes precedence over the stored key at `~/.config/zro/credentials.json`;
+  Codex App keeps its own copy under `~/.config/zro/codex-app/.env`; `zro logout` removes both.
+- The credential is verified against the inference API before any launch.
 
 ---
 
-## Supported agents
+## Supported coding agents
 
 | Agent | Install | Notes |
 | --- | --- | --- |
 | [Claude Code](https://www.anthropic.com/claude-code) | `zro install claude` | Anthropic's coding agent |
 | [Codex CLI](https://developers.openai.com/codex/) | `zro install codex` | OpenAI's terminal agent |
-| [Codex App](https://developers.openai.com/codex/) | `zro install codex-app` | OpenAI's desktop app (persistent Zro-owned home) |
+| [Codex App](https://developers.openai.com/codex/) | `zro install codex-app` | OpenAI's desktop app |
 | [Kilo Code](https://kilocode.ai/) | `zro install kilo` | Kilo's terminal coding agent |
 | [Oh My Pi](https://ohmy.ai) | `zro install omp` | Power-user terminal agent |
 | [OpenCode](https://opencode.ai) | `zro install opencode` | Open-source coding agent |
@@ -136,9 +91,45 @@ tool/model pair is remembered and reopened with `zro again`.
 | [Pi](https://github.com/earendil-works/pi) | `zro install pi` | Minimal coding agent |
 | [Prime Agent](https://primeintellect.ai) | `zro install prime` | Prime Intellect's self-improving RLM agent |
 
-Each adapter launches the installed tool as a child process with isolated configuration. Most
-session files are temporary; Codex App uses a persistent Zro-owned home so the desktop app can
-reopen. Pass native tool arguments after `--`.
+Each adapter launches the installed tool as a child process with isolated, Zro-owned
+configuration. Session files are temporary; Codex App uses a persistent Zro-owned home.
+Pass native tool arguments after `--` (for example `zro oc -- --help`). The last
+tool/model pair is remembered and reopened with `zro again`.
+
+---
+
+## Usage
+
+```bash
+zro                         # interactive agent picker
+zro claude                  # open directly on the default model
+zro codex -m glm-5.2        # choose a model for this session
+zro omp -m glm-5.2          # launch Oh My Pi through Zro
+zro kilo -m glm-5.2         # launch Kilo Code through Zro
+zro oc -- --help            # short aliases + native tool arguments
+zro again                   # reopen the last tool/model pair
+zro models                  # readable model catalog
+zro install claude@2.1.105  # pin an agent version
+zro feedback                # send feedback to the Zro team
+zro claude --dry-run        # secret-safe session preview
+zro codex --json            # machine-readable preview
+```
+
+---
+
+## Pricing
+
+Plans are spend-based with expected usage, so actual totals vary by model mix, prompt
+shape, output length, and cache reads. [See the live pricing page](https://zro.moonmath.ai/pricing).
+
+| Plan | Per month | Yearly | Expected usage |
+| --- | --- | --- | --- |
+| **Pro** | $20 | $16/mo | ~1B tokens |
+| **Max** | $60 | $48/mo | ~5B tokens |
+
+- Usage packs are available with or without a subscription and expire after 90 days.
+- Monthly spend resets on the same calendar cadence for monthly and yearly subscribers.
+- There are no prorated refunds on cancellation; access stays active to the end of the period.
 
 ---
 
@@ -146,9 +137,9 @@ reopen. Pass native tool arguments after `--`.
 
 - Normal agent configs are never edited.
 - Temporary session files live under `~/.cache/zro/sessions` and are removed when the agent exits.
-- Kilo Code and Oh My Pi run with a temporary home and XDG profile. Only sanitized preferences and
-  safe assets are copied in; provider credentials, MCP definitions, sessions, databases,
-  dependency trees, and secret files stay outside the profile.
+- Kilo Code and Oh My Pi run with a temporary home and XDG profile; only sanitized
+  preferences and safe assets are copied in. Provider credentials, MCP definitions, sessions,
+  databases, dependency trees, and secret files stay outside the profile.
 - Kilo and Oh My Pi telemetry, OTLP export, automatic updates, sharing, and remote control are
   disabled; model and MCP requests still go to the configured Zro endpoints.
 - API keys are masked in human and JSON previews. `--dry-run` writes nothing and starts nothing.
@@ -160,10 +151,8 @@ See [SECURITY.md](SECURITY.md) for the security model and private vulnerability 
 
 ## Contributing
 
-Zro is a small, dependency-light TypeScript CLI (runtime deps: `json5` and `yaml`). Bug reports,
-feature requests, and pull requests
-are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, checks, and contribution
-guidelines.
+Zro is a small, dependency-light TypeScript CLI (runtime deps: `json5` and `yaml`). Bug
+reports, feature requests, and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
