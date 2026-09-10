@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_ENV_KEY } from "./engine/constants.js";
+import { ENDPOINT_ROOT, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -228,7 +228,7 @@ async function launch(
   }
 
   if (request.dryRun) {
-    printPreview(plan, request.output, io, key.apiKey, colors);
+    printPreview(plan, request.output, io, key.apiKey, colors, catalog.models);
     await fs.rm(tempDir, { recursive: true, force: true });
     return 0;
   }
@@ -772,7 +772,7 @@ async function models(
     io.stdout.write(`\n  ${isDefault ? colors.accent("◆") : colors.muted("◇")} ${colors.strong(model.displayName)}  ${colors.muted(model.id)}${isDefault ? colors.accent("  default") : ""}\n`);
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }
-  io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.2\n");
+  io.stdout.write(`\nChoose per session with -m, for example: zro codex -m ${catalog.default}\n`);
   return 0;
 }
 
@@ -851,7 +851,8 @@ function printPreview(
   output: "human" | "json",
   io: RunIo,
   secret: string,
-  colors: ReturnType<typeof theme>
+  colors: ReturnType<typeof theme>,
+  models: readonly ZroModel[]
 ): void {
   const safeEnv = Object.fromEntries(
     Object.entries(plan.env ?? {}).map(([key, value]) => [key, redact(key, value, secret)])
@@ -870,7 +871,7 @@ function printPreview(
   }
   io.stdout.write(`${banner(colors)}\n\n${colors.strong("Session preview")}\n`);
   io.stdout.write(`  Tool     ${describeTool(plan.tool).name}\n`);
-  io.stdout.write(`  Model    ${modelName(plan.model)} ${colors.muted(`· ${plan.model}`)}\n`);
+  io.stdout.write(`  Model    ${modelName(plan.model, models)} ${colors.muted(`· ${plan.model}`)}\n`);
   io.stdout.write(`  Command  ${shellPreview([plan.command, ...plan.args])}\n`);
   const entries = Object.entries(safeEnv);
   if (entries.length) {

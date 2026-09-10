@@ -2,11 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   ENDPOINT_ROOT,
-  ZRO_MODELS,
-  DEFAULT_MODEL,
   type ZroModel,
   type ZroModality,
   type ZroModalities,
+  type ZroReasoningConfig,
+  type ZroReasoningLevel,
 } from "./engine/constants.js";
 
 export interface ModelCatalog {
@@ -30,16 +30,10 @@ export class CatalogAuthenticationError extends Error {
   }
 }
 
-export const BUNDLED_MODEL_CATALOG: ModelCatalog = {
-  version: 1,
-  default: DEFAULT_MODEL,
-  models: ZRO_MODELS,
-};
-
 export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
   if (options.apiKey) {
     try {
-      const catalog = await fetchModelCatalog(options);
+      const catalog = await fetchAuthenticatedCatalog(options, options.apiKey);
       if (options.cacheRemote !== false) {
         await writeCachedCatalog(options, catalog).catch(() => {});
       }
@@ -52,7 +46,17 @@ export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCa
     }
   }
 
-  return await readCachedCatalog(options) ?? BUNDLED_MODEL_CATALOG;
+  const cached = await readCachedCatalog(options);
+  if (cached) return cached;
+
+  const catalog = await fetchPublicCatalog(options);
+  // Only persist the public fallback for signed-out users. When a key was
+  // present but the control plane was transiently unavailable, leave the
+  // cache untouched so the next run retries the full authenticated catalog.
+  if (!options.apiKey && options.cacheRemote !== false) {
+    await writeCachedCatalog(options, catalog).catch(() => {});
+  }
+  return catalog;
 }
 
 export async function invalidateModelCatalog(
@@ -71,15 +75,8 @@ export function modelCatalogCachePath(options: Pick<CatalogOptions, "env" | "hom
   return path.join(cacheRoot, "zro", "model-catalog.json");
 }
 
-async function fetchModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
-  const fetcher = options.fetch ?? globalThis.fetch;
-  const endpointRoot = (
-    options.env.ZRO_AUTH_URL || options.env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT
-  ).replace(/\/+$/, "");
-  const response = await fetcher(`${endpointRoot}/api/cli/models`, {
-    headers: { Authorization: `Bearer ${options.apiKey}` },
-    signal: AbortSignal.timeout(5_000),
-  });
+async function fetchAuthenticatedCatalog(options: CatalogOptions, apiKey: string): Promise<ModelCatalog> {
+  const response = await requestCatalog(options, "/api/cli/models", apiKey);
 
   if (response.status === 401 || response.status === 403) {
     await response.body?.cancel().catch(() => {});
@@ -91,6 +88,28 @@ async function fetchModelCatalog(options: CatalogOptions): Promise<ModelCatalog>
   }
 
   return parseModelCatalog(await response.json());
+}
+
+async function fetchPublicCatalog(options: CatalogOptions): Promise<ModelCatalog> {
+  const response = await requestCatalog(options, "/models");
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Model catalog request failed with HTTP ${response.status}.`);
+  }
+  return parsePublicCatalog(await response.json());
+}
+
+function requestCatalog(options: CatalogOptions, pathname: string, apiKey?: string): Promise<Response> {
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const endpointRoot = catalogRoot(options.env);
+  return fetcher(`${endpointRoot}${pathname}`, {
+    ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
+    signal: AbortSignal.timeout(5_000),
+  });
+}
+
+function catalogRoot(env: NodeJS.ProcessEnv): string {
+  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
 }
 
 async function readCachedCatalog(options: CatalogOptions): Promise<ModelCatalog | null> {
@@ -160,6 +179,77 @@ function parseModel(value: unknown): ZroModel {
     maxOutputTokens: positiveInteger(model.maxOutputTokens, "max output tokens"),
     modalities: parseModalities(model.modalities),
     reasoning: { defaultLevel, levels },
+  };
+}
+
+type PublicModel = {
+  id: string;
+  name: string;
+  context_length: number;
+  max_output_length: number;
+  input_modalities: string[];
+  output_modalities: string[];
+  supported_features?: string[];
+};
+
+export function parsePublicCatalog(value: unknown): ModelCatalog {
+  const root = asRecord(value, "catalog");
+  if (!Array.isArray(root.data) || root.data.length === 0) {
+    throw new Error("The model catalog is empty.");
+  }
+
+  const models = root.data.map(parsePublicModel);
+  // The public endpoint does not name a default; the server controls the
+  // ordering, so the first model is the default.
+  return { version: 1, default: models[0].id, models };
+}
+
+function parsePublicModel(value: unknown): ZroModel {
+  const model = asRecord(value, "model") as Partial<PublicModel>;
+  return {
+    id: requiredString(model.id, "model ID"),
+    displayName: requiredString(model.name, "model display name"),
+    contextWindow: positiveInteger(model.context_length, "context length"),
+    maxOutputTokens: positiveInteger(model.max_output_length, "max output length"),
+    modalities: {
+      input: parseModalityList(model.input_modalities, "input"),
+      output: parseModalityList(model.output_modalities, "output"),
+    },
+    reasoning: synthesizeReasoningConfig(model.supported_features),
+  };
+}
+
+function synthesizeReasoningConfig(supportedFeatures: string[] | undefined): ZroReasoningConfig {
+  const reasoning = Array.isArray(supportedFeatures) && supportedFeatures.includes("reasoning");
+  if (!reasoning) {
+    return {
+      defaultLevel: "none",
+      levels: [reasoningLevel("none", "off", "none")],
+    };
+  }
+  return {
+    defaultLevel: "high",
+    levels: [
+      reasoningLevel("none", "off", "none", "disabled"),
+      reasoningLevel("low", "low", "low"),
+      reasoningLevel("high", "high", "high"),
+      reasoningLevel("max", "xhigh", "max", "xhigh"),
+    ],
+  };
+}
+
+function reasoningLevel(
+  id: string,
+  piLevel: ZroReasoningLevel["piLevel"],
+  effort: string,
+  codexEffort?: string,
+): ZroReasoningLevel {
+  return {
+    id,
+    description: `Use ${id} reasoning effort`,
+    ...(codexEffort ? { codexEffort } : {}),
+    piLevel,
+    openCodeOptions: { reasoningEffort: effort },
   };
 }
 

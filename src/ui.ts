@@ -1,6 +1,6 @@
 import { clearScreenDown, createInterface, emitKeypressEvents, moveCursor } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { ZRO_MODELS, type ZroModel } from "./engine/constants.js";
+import type { ZroModel } from "./engine/constants.js";
 import { TOOLS } from "./catalog.js";
 import type { ToolId } from "./engine/types.js";
 
@@ -31,7 +31,7 @@ export function helpText(colors: Theme): string {
 
 ${colors.strong("Open an agent")}
   zro claude                 Open Claude Code on the default model
-  zro codex -m glm-5.2       Pick a model for this session
+  zro codex -m <model>       Pick a model for this session
   zro oc -- --help           Use an alias and pass native arguments
   zro again                  Reopen the last tool and model
 
@@ -55,7 +55,7 @@ Credentials saved by earlier zro versions remain compatible.
 `;
 }
 
-export function modelName(modelId: string, models: readonly ZroModel[] = ZRO_MODELS): string {
+export function modelName(modelId: string, models: readonly ZroModel[]): string {
   return models.find((model) => model.id === modelId)?.displayName ?? modelId;
 }
 

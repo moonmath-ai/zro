@@ -1,29 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseModelCatalog } from "../src/model-catalog.js";
+import { parseModelCatalog, parsePublicCatalog } from "../src/model-catalog.js";
 import { buildCodexModelCatalog } from "../src/engine/tools/codex.js";
 import { buildOpenCodeConfig } from "../src/engine/tools/opencode.js";
-import { ZRO_MODELS, type ZroModel, type ZroModalities } from "../src/engine/constants.js";
-
-function model(id: string, modalities: ZroModalities): ZroModel {
-  return {
-    id,
-    displayName: id,
-    contextWindow: 200_000,
-    maxOutputTokens: 20_000,
-    modalities,
-    reasoning: {
-      defaultLevel: "high",
-      levels: [
-        {
-          id: "high",
-          description: "Reason carefully",
-          piLevel: "high",
-          openCodeOptions: { reasoningEffort: "high" },
-        },
-      ],
-    },
-  };
-}
+import { TEST_MODELS, testModel as model } from "./fixtures.js";
 
 describe("model modalities parsing", () => {
   it("carries image modalities through the catalog parser", () => {
@@ -116,28 +95,60 @@ describe("model modalities parsing", () => {
   });
 });
 
-describe("bundled ZRO_MODELS carry the verified modality mapping", () => {
-  // Corrected per Eitan's image-capability verification (path-relevant models only):
-  // vision (input text+image): kimi-k3, glm-5.3-flash, minimax-m3, dolly1 (alias of glm-5.3-flash)
-  // text-only: glm-5.3, glm-5.2, deepseek-v4-flash-0731
-  // NOTE: the offline CLI bundle only carries kimi-k3, glm-5.2, deepseek-v4-flash-0731;
-  // dolly1 / glm-5.3* / minimax-m3 arrive via the remote catalog (which is authoritative).
-  const byId = new Map(ZRO_MODELS.map((m) => [m.id, m]));
+describe("public catalog parsing carries modalities and synthesizes reasoning", () => {
+  const catalog = parsePublicCatalog({
+    data: [
+      {
+        id: "kimi-k3",
+        name: "Kimi K3",
+        context_length: 1_048_576,
+        max_output_length: 1_048_576,
+        input_modalities: ["text", "image"],
+        output_modalities: ["text"],
+        supported_features: ["tools", "reasoning"],
+      },
+      {
+        id: "plain-model",
+        name: "Plain Model",
+        context_length: 200_000,
+        max_output_length: 20_000,
+        input_modalities: ["text"],
+        output_modalities: ["text"],
+        supported_features: ["tools"],
+      },
+    ],
+  });
+  const byId = new Map(catalog.models.map((m) => [m.id, m]));
 
-  it("kimi-k3 is image-aware", () => {
-    expect(byId.get("kimi-k3")?.modalities.input).toEqual(["text", "image"]);
+  it("maps input/output modalities", () => {
+    expect(byId.get("kimi-k3")?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
   });
 
-  it("glm-5.2 and deepseek-v4-flash-0731 are text-only", () => {
-    expect(byId.get("glm-5.2")?.modalities.input).toEqual(["text"]);
-    expect(byId.get("deepseek-v4-flash-0731")?.modalities.input).toEqual(["text"]);
+  it("gives reasoning models a reasoning level set", () => {
+    expect(byId.get("kimi-k3")?.reasoning.levels.map((level) => level.id)).toEqual([
+      "none",
+      "low",
+      "high",
+      "max",
+    ]);
+  });
+
+  it("gives non-reasoning models a single off level", () => {
+    expect(byId.get("plain-model")?.reasoning).toMatchObject({
+      defaultLevel: "none",
+      levels: [{ id: "none", piLevel: "off" }],
+    });
+  });
+
+  it("defaults to the first model returned", () => {
+    expect(catalog.default).toBe("kimi-k3");
   });
 });
 
 describe("codex emitter derives input_modalities from the model", () => {
   it("marks image-aware models with image input and text models as text-only", () => {
     const catalog = buildCodexModelCatalog([
-      ...ZRO_MODELS,
+      ...TEST_MODELS,
       model("glm-5.3-flash", { input: ["text", "image"], output: ["text"] }),
     ]);
     const models = catalog.models as Array<Record<string, unknown>>;
@@ -156,7 +167,7 @@ describe("opencode emitter enables attachments for image-capable models", () => 
     {},
     "sk-test",
     [
-      ...ZRO_MODELS,
+      ...TEST_MODELS,
       model("glm-5.3-flash", { input: ["text", "image"], output: ["text"] }),
     ],
     false,
@@ -175,7 +186,7 @@ describe("opencode emitter enables attachments for image-capable models", () => 
     expect(models["deepseek-v4-flash-0731"]?.modalities).toEqual({ input: ["text"], output: ["text"] });
   });
 
-  it("still honors the kimi-k3 bundled vision flag", () => {
+  it("honors the kimi-k3 vision flag", () => {
     expect(models["kimi-k3"]?.attachment).toBe(true);
     expect(models["kimi-k3"]?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
   });

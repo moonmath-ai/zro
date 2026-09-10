@@ -6,7 +6,6 @@ import {
   PROVIDER_ID,
   PROVIDER_NAME,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
   type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
@@ -149,7 +148,7 @@ export const kiloTool: ToolModule = {
 
 export function buildKiloConfigOverlay(
   model: string,
-  modelSpecs: readonly ZroModel[] = ZRO_MODELS,
+  modelSpecs: readonly ZroModel[],
 ): Record<string, unknown> {
   const models = Object.fromEntries(modelSpecs.map((spec) => [
     spec.id,

@@ -38,7 +38,32 @@ function launchIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv): Ru
     cwd: home,
     env,
     spawn,
-    fetch: async () => new Response(null, { status: 200 }),
+    fetch: async (input) => String(input).endsWith("/api/cli/models")
+      ? Response.json({
+        version: 1,
+        default: "glm-5.2",
+        models: [
+          {
+            id: "glm-5.2",
+            displayName: "GLM-5.2",
+            contextWindow: 524_288,
+            maxOutputTokens: 64_000,
+            modalities: { input: ["text"], output: ["text"] },
+            reasoning: {
+              defaultLevel: "high",
+              levels: [
+                {
+                  id: "high",
+                  description: "Reason carefully",
+                  piLevel: "high",
+                  openCodeOptions: { reasoningEffort: "high" },
+                },
+              ],
+            },
+          },
+        ],
+      })
+      : new Response(null, { status: 200 }),
   };
 }
 

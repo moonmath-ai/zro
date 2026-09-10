@@ -11,8 +11,8 @@ import {
   PROVIDER_ID,
   PROVIDER_NAME,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
 } from "../src/engine/constants.js";
+import { TEST_MODELS } from "./fixtures.js";
 import { kiloTool } from "../src/engine/tools/kilo.js";
 import type { LaunchContext } from "../src/engine/types.js";
 import { run } from "../src/run.js";
@@ -146,8 +146,8 @@ describe("Kilo Code adapter", () => {
     expect(JSON.stringify(overlay)).not.toContain("sk-kilo-secret");
 
     const models = overlay.provider[PROVIDER_ID].models;
-    expect(Object.keys(models).sort()).toEqual(ZRO_MODELS.map((model) => model.id).sort());
-    for (const model of ZRO_MODELS) {
+    expect(Object.keys(models).sort()).toEqual(TEST_MODELS.map((model) => model.id).sort());
+    for (const model of TEST_MODELS) {
       expect(models[model.id]).toEqual({
         name: model.displayName,
         tool_call: true,
@@ -233,7 +233,7 @@ describe("Kilo Code adapter", () => {
         XDG_CONFIG_HOME: path.join(home, "config"),
       },
       platform: "linux",
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: catalogFetch,
     });
 
     expect(code).toBe(0);
@@ -276,7 +276,7 @@ describe("Kilo Code adapter", () => {
       },
       platform: "linux",
       spawn,
-      fetch: async () => new Response(null, { status: 200 }),
+      fetch: catalogFetch,
     };
 
     expect(await run(["kilo"], io)).toBe(expectedCode);
@@ -296,6 +296,7 @@ function context(
     apiKeySource: "env",
     env,
     model: "glm-5.2",
+    models: TEST_MODELS,
     extraArgs: ["run", "hello"],
     homeDir,
     cwd: homeDir,
@@ -320,4 +321,34 @@ async function readOptionalDirectory(directory: string): Promise<string[]> {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
+}
+
+async function catalogFetch(input: string | URL | Request): Promise<Response> {
+  if (String(input).endsWith("/api/cli/models")) {
+    return Response.json({
+      version: 1,
+      default: "glm-5.2",
+      models: [
+        {
+          id: "glm-5.2",
+          displayName: "GLM-5.2",
+          contextWindow: 524_288,
+          maxOutputTokens: 64_000,
+          modalities: { input: ["text"], output: ["text"] },
+          reasoning: {
+            defaultLevel: "high",
+            levels: [
+              {
+                id: "high",
+                description: "Reason carefully",
+                piLevel: "high",
+                openCodeOptions: { reasoningEffort: "high" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  }
+  return new Response(null, { status: 200 });
 }

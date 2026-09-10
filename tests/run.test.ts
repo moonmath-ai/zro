@@ -182,6 +182,9 @@ describe("zro experience", () => {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-new-secret" },
       fetch: async (input, init) => {
+        if (String(input).endsWith("/api/cli/models")) {
+          return Response.json(glmCatalogResponse());
+        }
         expect(String(input)).toBe("https://zro.moonmath.ai/v1/models");
         expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-new-secret");
         return Response.json({ data: [] });
@@ -238,7 +241,9 @@ describe("zro experience", () => {
       ...io(home, stdout),
       stderr,
       env: { ZRO_API_KEY: "sk-unverified-secret" },
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: async (input) => String(input).endsWith("/api/cli/models")
+        ? Response.json(dynamicCatalogResponse())
+        : new Response(null, { status: 503 }),
       spawn: fakeExitSpawn(() => { spawned = true; }),
     });
 
@@ -256,7 +261,9 @@ describe("zro experience", () => {
     const code = await run(["claude", "--json"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-preview-secret" },
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: async (input) => String(input).endsWith("/api/cli/models")
+        ? Response.json(dynamicCatalogResponse())
+        : new Response(null, { status: 503 }),
       spawn: fakeExitSpawn(() => { spawned = true; })
     });
 
@@ -538,6 +545,36 @@ function dynamicCatalogResponse() {
         displayName: "Future Model",
         contextWindow: 200_000,
         maxOutputTokens: 20_000,
+        modalities: {
+          input: ["text"] as const,
+          output: ["text"] as const,
+        },
+        reasoning: {
+          defaultLevel: "high",
+          levels: [
+            {
+              id: "high",
+              description: "Reason carefully",
+              piLevel: "high",
+              openCodeOptions: { reasoningEffort: "high" },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function glmCatalogResponse() {
+  return {
+    version: 1,
+    default: "glm-5.2",
+    models: [
+      {
+        id: "glm-5.2",
+        displayName: "GLM-5.2",
+        contextWindow: 524_288,
+        maxOutputTokens: 64_000,
         modalities: {
           input: ["text"] as const,
           output: ["text"] as const,

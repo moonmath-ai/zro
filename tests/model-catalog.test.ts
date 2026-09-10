@@ -3,10 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  BUNDLED_MODEL_CATALOG,
   CatalogAuthenticationError,
   loadModelCatalog,
   modelCatalogCachePath,
+  parsePublicCatalog,
 } from "../src/model-catalog.js";
 
 const dynamicCatalog = {
@@ -30,6 +30,20 @@ const dynamicCatalog = {
           },
         ],
       },
+    },
+  ],
+};
+
+const publicCatalog = {
+  data: [
+    {
+      id: "public-model",
+      name: "Public Model",
+      context_length: 200_000,
+      max_output_length: 20_000,
+      input_modalities: ["text", "image"],
+      output_modalities: ["text"],
+      supported_features: ["tools", "reasoning"],
     },
   ],
 };
@@ -74,10 +88,41 @@ describe("dynamic model catalog", () => {
     expect(catalog.default).toBe("future-model");
   });
 
-  it("uses bundled models when signed out with no cache", async () => {
-    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-bundled-"));
+  it("fetches the public catalog when signed out with no cache", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-public-"));
+    const catalog = await loadModelCatalog({
+      env: {},
+      homeDir,
+      fetch: async (input, init) => {
+        expect(String(input)).toBe("https://zro.moonmath.ai/models");
+        expect(init?.headers).toBeUndefined();
+        return Response.json(publicCatalog);
+      },
+    });
 
-    await expect(loadModelCatalog({ env: {}, homeDir })).resolves.toBe(BUNDLED_MODEL_CATALOG);
+    expect(catalog.default).toBe("public-model");
+    expect(catalog.models[0].modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    expect(catalog.models[0].reasoning.levels.map((level) => level.id)).toEqual([
+      "none",
+      "low",
+      "high",
+      "max",
+    ]);
+  });
+
+  it("does not cache the public fallback when a key was supplied", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-nocache-"));
+    await loadModelCatalog({
+      apiKey: "sk-secret",
+      env: {},
+      homeDir,
+      fetch: async (input) => String(input).endsWith("/api/cli/models")
+        ? new Response(null, { status: 503 })
+        : Response.json(publicCatalog),
+    });
+
+    await expect(fs.stat(modelCatalogCachePath({ env: {}, homeDir })))
+      .rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("never hides an explicit authentication rejection behind a cache", async () => {
@@ -95,15 +140,17 @@ describe("dynamic model catalog", () => {
     await expect(fs.stat(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("rejects malformed remote catalogs and falls back safely", async () => {
-    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-invalid-"));
-    const catalog = await loadModelCatalog({
-      apiKey: "sk-secret",
+  it("rejects a malformed public catalog", async () => {
+    await expect(loadModelCatalog({
       env: {},
-      homeDir,
-      fetch: async () => Response.json({ version: 1, default: "missing", models: [] }),
-    });
+      homeDir: await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-invalid-")),
+      fetch: async () => Response.json({ version: 1, data: [] }),
+    })).rejects.toThrow("empty");
+  });
+});
 
-    expect(catalog).toBe(BUNDLED_MODEL_CATALOG);
+describe("public catalog parsing", () => {
+  it("rejects an empty catalog", () => {
+    expect(() => parsePublicCatalog({ data: [] })).toThrow("empty");
   });
 });
