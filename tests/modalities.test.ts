@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseModelCatalog, parsePublicCatalog } from "../src/model-catalog.js";
+import { parseModelCatalog } from "../src/model-catalog.js";
 import { buildCodexModelCatalog } from "../src/engine/tools/codex.js";
 import { buildOpenCodeConfig } from "../src/engine/tools/opencode.js";
 import { TEST_MODELS, testModel as model } from "./fixtures.js";
@@ -92,56 +92,6 @@ describe("model modalities parsing", () => {
         ],
       }),
     ).toThrow("invalid input modality");
-  });
-});
-
-describe("public catalog parsing carries modalities and synthesizes reasoning", () => {
-  const catalog = parsePublicCatalog({
-    data: [
-      {
-        id: "kimi-k3",
-        name: "Kimi K3",
-        context_length: 1_048_576,
-        max_output_length: 1_048_576,
-        input_modalities: ["text", "image"],
-        output_modalities: ["text"],
-        supported_features: ["tools", "reasoning"],
-      },
-      {
-        id: "plain-model",
-        name: "Plain Model",
-        context_length: 200_000,
-        max_output_length: 20_000,
-        input_modalities: ["text"],
-        output_modalities: ["text"],
-        supported_features: ["tools"],
-      },
-    ],
-  });
-  const byId = new Map(catalog.models.map((m) => [m.id, m]));
-
-  it("maps input/output modalities", () => {
-    expect(byId.get("kimi-k3")?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
-  });
-
-  it("gives reasoning models a reasoning level set", () => {
-    expect(byId.get("kimi-k3")?.reasoning.levels.map((level) => level.id)).toEqual([
-      "none",
-      "low",
-      "high",
-      "max",
-    ]);
-  });
-
-  it("gives non-reasoning models a single off level", () => {
-    expect(byId.get("plain-model")?.reasoning).toMatchObject({
-      defaultLevel: "none",
-      levels: [{ id: "none", piLevel: "off" }],
-    });
-  });
-
-  it("defaults to the first model returned", () => {
-    expect(catalog.default).toBe("kimi-k3");
   });
 });
 

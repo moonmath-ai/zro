@@ -747,7 +747,7 @@ async function models(
   try {
     apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
   } catch {
-    // A cached or bundled catalog remains useful before the user signs in.
+    // A cached catalog remains useful before the user signs in.
   }
 
   let catalog: ModelCatalog;
