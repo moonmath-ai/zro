@@ -175,4 +175,6 @@ them up.
   Chat's model picker, which has no reasoning-effort UI for extension-provided
   models. The chosen level is sent as `reasoning_effort` on each request; see
   [Reasoning effort](#reasoning-effort).
+- A level a model doesn't support is clamped to that model's default rather than
+  rejected, so a global setting is always safe to apply.
 - Image input is not advertised (`imageInput: false`).
