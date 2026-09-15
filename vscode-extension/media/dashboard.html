@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; img-src {{cspSource}} data:; style-src 'nonce-{{nonce}}'; font-src {{cspSource}}; script-src 'nonce-{{nonce}}';" />
+        content="default-src 'nonce-{{nonce}}'; img-src {{cspSource}} data: https:; style-src 'nonce-{{nonce}}'; font-src {{cspSource}}; script-src 'nonce-{{nonce}}';" />
   <style nonce="{{nonce}}">
     :root {
       --bg: #0f1117;
@@ -111,6 +111,13 @@
 
     .src { font-size: 11px; color: var(--muted); }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Reasoning-effort controls */
+    .effort-select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; cursor: pointer; }
+    .effort-select:hover { border-color: var(--accent); }
+    .effort-select:focus { outline: none; border-color: var(--accent); }
+    .m-effort { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .m-effort .label { font-size: 11px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -150,6 +157,12 @@
 
     <!-- Models -->
     <section class="pane" id="pane-models">
+      <div class="card">
+        <h3>Reasoning effort</h3>
+        <div class="muted small">How hard ZRO models think before answering. <code>Default</code> uses each model's native level. A per-model choice overrides the global one. Applied to the next request in Copilot Chat.</div>
+        <div class="spacer"></div>
+        <div id="effort-global"></div>
+      </div>
       <div class="card">
         <h3>Models &amp; endpoints</h3>
         <div class="muted small">The catalog is fetched live from the control plane. Set a default to use in Copilot Chat. Endpoints are provisioned out-of-band on serving nodes.</div>
@@ -279,6 +292,42 @@
         `;
       }
 
+      // Reasoning-effort controls. The webview never sends raw free text: every
+      // value comes from the live catalog's per-model reasoning levels, and the
+      // controller ignores a level that no model advertises.
+      function effortSourceLabel(source) {
+        return source === 'model' ? 'per-model' : source === 'global' ? 'global' : 'server default';
+      }
+
+      function renderEffortGlobal() {
+        const host = $('#effort-global');
+        const data = state.data;
+        if (!data || data.keyless) {
+          host.innerHTML = `<div class="empty">Enter your API key to configure reasoning effort.</div>`;
+          return;
+        }
+        const effort = data.effort;
+        if (!effort || !effort.models.length) {
+          host.innerHTML = `<div class="empty">The current catalog advertises no reasoning levels.</div>`;
+          return;
+        }
+        const opts = [`<option value="default"${effort.global === 'default' ? ' selected' : ''}>Default — use each model's native level</option>`]
+          .concat(effort.globalLevels.map((l) =>
+            `<option value="${l.id}"${effort.global === l.id ? ' selected' : ''}>${l.id}</option>`));
+        host.innerHTML = `
+          <div class="row">
+            <span class="label">All models</span>
+            <span class="value"><select id="effort-global-select" class="effort-select">${opts.join('')}</select></span>
+          </div>
+          <div class="muted small">${effort.global === 'default'
+            ? 'Each model uses the level the control plane recommends.'
+            : `Sending <code>reasoning_effort: "${effort.global}"</code> for every model that supports it.`}</div>`;
+        const sel = $('#effort-global-select');
+        if (sel) sel.addEventListener('change', () => {
+          vscode.postMessage({ type: 'setEffort', model: null, level: sel.value });
+        });
+      }
+
       function renderModels() {
         const list = $('#models-list');
         const data = state.data;
@@ -287,16 +336,27 @@
           return;
         }
         const models = data.catalog.models;
-        if (!models.length) { list.innerHTML = `<div class="empty">No models available.</div>`; return; }
+        if (!models.length) { list.innerHTML = ''; list.innerHTML = `<div class="empty">No models available.</div>`; return; }
+        const byId = new Map((data.effort ? data.effort.models : []).map((e) => [e.id, e]));
         list.innerHTML = models.map((m) => {
           const sel = m.id === data.selected;
           const catalogDefault = m.id === data.catalog.default;
+          const e = byId.get(m.id);
+          const effortRow = e ? `
+                <div class="m-effort">
+                  <span class="label">Effort</span>
+                  <select class="effort-select" data-model="${m.id}" title="Reasoning effort for ${m.displayName}.">
+                    <option value="default"${e.override ? '' : ' selected'}>Default (${e.defaultLevel})</option>
+                    ${e.levels.map((l) => `<option value="${l.id}"${e.override === l.id ? ' selected' : ''}>${l.id}</option>`).join('')}
+                  </select>
+                  <span class="pill ${e.source === 'server' ? '' : 'good'}" title="${e.source === 'server' ? 'Using the model default from the control plane.' : 'Overridden by your ZRO setting.'}">${effortSourceLabel(e.source)}</span>
+                </div>` : '';
           return `
             <div class="model-item">
               <div class="m-left">
                 <div class="m-name">${m.displayName}${catalogDefault ? ' <span class="tag">catalog default</span>' : ''}</div>
                 <div class="m-id">${m.id}</div>
-                <div class="m-sub">${fmtNum(m.contextWindow)} ctx · ${fmtNum(m.maxOutputTokens)} out</div>
+                <div class="m-sub">${fmtNum(m.contextWindow)} ctx · ${fmtNum(m.maxOutputTokens)} out</div>${effortRow}
               </div>
               <div class="m-right">
                 <span class="pill good" title="This model is live on the serving endpoints available to your key.">Live</span>
@@ -307,6 +367,9 @@
           `<div class="notice info">Endpoints are provisioned out-of-band on serving nodes. The list above reflects the live catalog available to your key.</div>`;
         $$('.select-btn').forEach((b) => b.addEventListener('click', () => {
           vscode.postMessage({ type: 'selectModel', model: b.dataset.model });
+        }));
+        $$('.effort-select').forEach((s) => s.addEventListener('change', () => {
+          vscode.postMessage({ type: 'setEffort', model: s.dataset.model, level: s.value });
         }));
       }
 
@@ -407,6 +470,7 @@
       function renderAll() {
         const sections = [
           () => { if (!state.loginSession) renderConnection(state.credential, state.data && state.data.account); },
+          renderEffortGlobal,
           renderModels,
           renderCost,
           renderCache,

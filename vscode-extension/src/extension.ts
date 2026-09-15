@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { ZroModelProvider } from "./provider.js";
 import { deleteApiKey, maskKey, resolveApiKey, storeApiKey } from "./credentials.js";
 import { ZRO_ENV_KEY } from "./constants.js";
+import { fetchModelCatalog } from "./catalog.js";
+import { promptForEffort } from "./reasoning.js";
 import { configureInExtensions } from "./extensions.js";
 import { ZroDashboard, ZroDashboardViewProvider } from "./dashboard.js";
 
@@ -19,6 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("zro.manage", () => promptForApiKey(context)),
+    vscode.commands.registerCommand("zro.setReasoningEffort", () => setReasoningEffort(context)),
     vscode.commands.registerCommand("zro.login", () => {
       ZroDashboard.show(context, context.subscriptions, true);
     }),
@@ -33,6 +36,27 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   // Nothing to clean up beyond the disposables in context.subscriptions.
+}
+
+/**
+ * Interactive reasoning-effort picker. Fetches the live catalog so the level
+ * choices come from the models' advertised reasoning blocks, then writes
+ * `zro.reasoningEffort` / `zro.reasoningEffortByModel` for the next request.
+ */
+async function setReasoningEffort(context: vscode.ExtensionContext): Promise<void> {
+  const apiKey = await resolveApiKey(context);
+  if (!apiKey) {
+    const pick = "[ZRO: Enter API key]";
+    vscode.window.showInformationMessage(
+      "Set an API key first so the model catalog (with reasoning levels) can be fetched.",
+      pick
+    ).then((chosen) => {
+      if (chosen === pick) void vscode.commands.executeCommand("zro.manage");
+    });
+    return;
+  }
+  const { models } = await fetchModelCatalog(apiKey);
+  await promptForEffort(models);
 }
 
 async function promptForApiKey(context: vscode.ExtensionContext): Promise<void> {

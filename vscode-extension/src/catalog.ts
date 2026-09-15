@@ -1,16 +1,29 @@
-import { CATALOG_URL, ZRO_MODELS, type ZroModel } from "./constants.js";
+import { CATALOG_URL, ZRO_MODELS, type ZroModel, type ZroReasoningConfig } from "./constants.js";
 
 /**
  * Shape returned by the control-plane `/api/cli/models` endpoint. Mirrors
- * `CliModelCatalog` in control-plane/web/lib/cli-model-catalog.ts. Only the
- * fields the extension needs are modeled; `reasoning` is ignored here because
- * Copilot Chat's model picker has no reasoning-effort UI.
+ * `CliModelCatalog` in control-plane/web/lib/cli-model-catalog.ts. The
+ * `reasoning` block carries the effort levels a model supports (`id` is the
+ * native token the proxy accepts, e.g. "none"/"high"/"max"); the harness-specific
+ * mappings next to each level (codexEffort, piLevel, openCodeOptions) are only
+ * relevant to the CLI and are ignored here.
  */
+interface RemoteReasoningLevel {
+  id?: string;
+  description?: string;
+}
+
+interface RemoteReasoning {
+  defaultLevel?: string;
+  levels?: readonly RemoteReasoningLevel[];
+}
+
 interface RemoteCatalogModel {
   id: string;
   displayName?: string;
   contextWindow?: number;
   maxOutputTokens?: number;
+  reasoning?: RemoteReasoning;
 }
 
 interface RemoteCatalog {
@@ -48,6 +61,7 @@ export async function fetchModelCatalog(
         displayName: model.displayName ?? model.id,
         contextWindow: model.contextWindow ?? 128_000,
         maxOutputTokens: model.maxOutputTokens ?? 64_000,
+        reasoning: parseReasoning(model.reasoning),
       }));
 
     if (models.length === 0) {
@@ -64,4 +78,25 @@ export async function fetchModelCatalog(
   } catch {
     return { default: ZRO_MODELS[0].id, models: ZRO_MODELS };
   }
+}
+
+/**
+ * Normalize a catalog `reasoning` block. Returns undefined when the model has
+ * no usable levels (reasoning control then stays hidden for that model).
+ */
+export function parseReasoning(
+  reasoning: RemoteReasoning | undefined
+): ZroReasoningConfig | undefined {
+  const levels = (reasoning?.levels ?? [])
+    .filter((level): level is RemoteReasoningLevel & { id: string } => typeof level?.id === "string" && level.id.length > 0)
+    .map((level) => ({
+      id: level.id,
+      description: typeof level.description === "string" && level.description ? level.description : level.id,
+    }));
+  if (levels.length === 0) return undefined;
+  const defaultLevel = reasoning?.defaultLevel;
+  return {
+    defaultLevel: levels.some((level) => level.id === defaultLevel) ? (defaultLevel as string) : levels[0].id,
+    levels,
+  };
 }
