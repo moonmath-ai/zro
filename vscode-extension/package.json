@@ -1,9 +1,9 @@
 {
   "name": "zro",
-  "publisher": "moonmath-ai",
+  "publisher": "MoonMathAi",
   "displayName": "ZRO",
   "description": "Use ZRO models as a Copilot Chat model provider in VS Code.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "UNLICENSED",
   "icon": "media/icon.png",
   "repository": {
@@ -11,6 +11,15 @@
     "url": "https://github.com/moonmath-ai/zro.git",
     "directory": "vscode-extension"
   },
+  "homepage": "https://moonmath.ai",
+  "keywords": [
+    "zro",
+    "copilot",
+    "chat",
+    "language model",
+    "ai",
+    "llm"
+  ],
   "engines": {
     "vscode": "^1.104.0"
   },
@@ -45,6 +54,7 @@
           "type": "webview",
           "id": "zro.dashboardView",
           "name": "Dashboard",
+          "icon": "media/icon.svg",
           "visibility": "visible"
         }
       ]
@@ -70,8 +80,62 @@
         "command": "zro.configureExtensions",
         "title": "Configure in other extensions",
         "category": "ZRO"
+      },
+      {
+        "command": "zro.setReasoningEffort",
+        "title": "Set reasoning effort",
+        "category": "ZRO",
+        "icon": "$(sparkle)"
       }
     ],
+    "configuration": {
+      "title": "ZRO",
+      "properties": {
+        "zro.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "default",
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "enumDescriptions": [
+            "Use each model's native server-side reasoning level (the default).",
+            "Disable reasoning for the lowest latency.",
+            "Use minimal reasoning effort.",
+            "Use low reasoning effort.",
+            "Use medium reasoning effort.",
+            "Use high reasoning effort.",
+            "Use extra-high reasoning effort.",
+            "Use maximum reasoning effort."
+          ],
+          "default": "default",
+          "markdownDescription": "Reasoning effort for ZRO models in Copilot Chat. `default` uses the model's native level. A level the selected model does not support falls back to that model's default. Override per model with `#zro.reasoningEffortByModel#`, or run **ZRO: Set reasoning effort**."
+        },
+        "zro.reasoningEffortByModel": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "default",
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "default": {},
+          "markdownDescription": "Per-model reasoning-effort overrides, keyed by model id (for example `{ \"glm-5.2\": \"high\" }`). Takes precedence over `#zro.reasoningEffort#`."
+        }
+      }
+    },
     "menus": {
       "view/title": [
         {
@@ -93,6 +157,11 @@
           "command": "zro.configureExtensions",
           "when": "view == zro.dashboardView",
           "group": "zro@3"
+        },
+        {
+          "command": "zro.setReasoningEffort",
+          "when": "view == zro.dashboardView",
+          "group": "zro@4"
         }
       ]
     }
@@ -102,7 +171,8 @@
     "watch": "tsc -watch -p ./",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "npx @vscode/vsce package --no-dependencies --baseContentUrl https://github.com/moonmath-ai/zro/blob/main/vscode-extension --baseImagesUrl https://github.com/moonmath-ai/zro/raw/main/vscode-extension",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "publish": "node scripts/publish.mjs",
     "prepublish": "npm run compile"
   },
   "devDependencies": {

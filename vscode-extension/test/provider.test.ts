@@ -1,12 +1,15 @@
-import { describe, it, expect } from "vitest";
-import { toChatInfo, buildRequestBody, toOpenAiMessages } from "../src/provider.js";
+import { describe, it, expect, beforeEach } from "vitest";
+import { toChatInfo, buildRequestBody, toOpenAiMessages, applyReasoningEffort } from "../src/provider.js";
 import {
   LanguageModelChatMessageRole,
   LanguageModelChatToolMode,
   LanguageModelTextPart,
   LanguageModelToolCallPart,
-  LanguageModelToolResultPart
+  LanguageModelToolResultPart,
+  __setConfig,
+  __resetConfig
 } from "./mocks/vscode.js";
+import { CONFIG_SECTION, SETTING_REASONING_EFFORT, type ZroReasoningConfig } from "../src/constants.js";
 import type { LanguageModelChatInformation, LanguageModelChatRequestMessage } from "vscode";
 
 const DEFAULT_MODEL: ZroModelInput = {
@@ -104,6 +107,47 @@ describe("buildRequestBody", () => {
     const msg = makeMessage(LanguageModelChatMessageRole.User, [new LanguageModelTextPart("hi")]);
     const body = buildRequestBody(chatInfo(), [msg], {});
     expect(body.messages).toEqual([{ role: "user", content: "hi" }]);
+  });
+});
+
+describe("applyReasoningEffort", () => {
+  const REASONING: ZroReasoningConfig = {
+    defaultLevel: "max",
+    levels: [
+      { id: "none", description: "off" },
+      { id: "max", description: "top" }
+    ]
+  };
+
+  beforeEach(() => {
+    __resetConfig();
+  });
+
+  it("omits reasoning_effort when nothing is configured", () => {
+    const body = buildRequestBody(chatInfo(), [], {});
+    applyReasoningEffort(body, REASONING);
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("sends the configured global level", () => {
+    __setConfig(CONFIG_SECTION, { [SETTING_REASONING_EFFORT]: "none" });
+    const body = buildRequestBody(chatInfo(), [], {});
+    applyReasoningEffort(body, REASONING);
+    expect(body.reasoning_effort).toBe("none");
+  });
+
+  it("does nothing for a model with no reasoning levels", () => {
+    __setConfig(CONFIG_SECTION, { [SETTING_REASONING_EFFORT]: "max" });
+    const body = buildRequestBody(chatInfo(), [], {});
+    applyReasoningEffort(body, undefined);
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("does not overwrite a caller-supplied reasoning_effort", () => {
+    __setConfig(CONFIG_SECTION, { [SETTING_REASONING_EFFORT]: "none" });
+    const body = buildRequestBody(chatInfo(), [], { modelOptions: { reasoning_effort: "high" } });
+    applyReasoningEffort(body, REASONING);
+    expect(body.reasoning_effort).toBe("high");
   });
 });
 

@@ -1,7 +1,11 @@
 import * as vscode from "vscode";
-import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, type ZroModel } from "./constants.js";
+import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, type ZroModel, type ZroReasoningConfig } from "./constants.js";
 import { fetchModelCatalog } from "./catalog.js";
 import { resolveApiKey } from "./credentials.js";
+import { resolveEffort } from "./reasoning.js";
+
+/** Model ids advertised by the last `provideLanguageModelChatInformation` refresh. */
+const advertisedReasoning = new Map<string, ZroReasoningConfig | undefined>();
 
 /**
  * Registers ZRO models with VS Code's Copilot Chat model picker and
@@ -27,6 +31,10 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider {
     }
 
     const { models } = await fetchModelCatalog(apiKey);
+    advertisedReasoning.clear();
+    for (const model of models) {
+      advertisedReasoning.set(model.id, model.reasoning);
+    }
     return models.map((model) => toChatInfo(model));
   }
 
@@ -44,6 +52,7 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider {
     }
 
     const body = buildRequestBody(model, messages, options);
+    applyReasoningEffort(body, advertisedReasoning.get(model.id));
     const response = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -161,6 +170,26 @@ export function buildRequestBody(
   }
 
   return body;
+}
+
+/**
+ * Add `reasoning_effort` to a chat request when the user has configured one
+ * (`zro.reasoningEffort` / `zro.reasoningEffortByModel`). With no configured
+ * effort the key is omitted, so the proxy applies the model's native
+ * `defaultLevel`. A value the current model doesn't advertise is clamped to
+ * the closest supported level (see resolveEffort). Caller-supplied
+ * `modelOptions.reasoning_effort` always wins over the extension setting.
+ */
+export function applyReasoningEffort(
+  body: Record<string, unknown>,
+  reasoning: ZroReasoningConfig | undefined
+): void {
+  if (body.reasoning_effort !== undefined) return;
+  if (!reasoning?.levels.length) return;
+  const effort = resolveEffort(String(body.model ?? ""), reasoning);
+  if (effort.level) {
+    body.reasoning_effort = effort.level;
+  }
 }
 
 /**

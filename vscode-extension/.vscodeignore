@@ -8,3 +8,10 @@ package-lock.json
 out/**/*.map
 scripts/capture-log.jsonl
 scripts/capture-proxy.py
+scripts/publish.mjs
+scripts/screenshot-harness.html
+scripts/screenshot.mjs
+**/.DS_Store
+*.vsix
+.gitignore
+PUBLISH-TODO.md

@@ -5,8 +5,25 @@ Steps to publish the ZRO extension to the Visual Studio Code Marketplace.
 ## 1. Create a Publisher on the Marketplace
 
 - [ ] Go to https://marketplace.visualstudio.com/manage and sign in with the Microsoft account (or AAD/Entra ID) that will own the extension.
-- [ ] Click **Create publisher**, pick a publisher ID — must match `moonmath-ai` in `package.json:3` exactly.
+- [ ] Click **Create publisher**, pick a publisher ID — must match `MoonMathAi` in `package.json:3` exactly.
 - [ ] Verify your domain if prompted.
+
+> **Publisher ID vs Name.** The Marketplace form has two fields: **ID** (used in
+> `package.json` and in extension URLs, immutable once created) and **Name** (the
+> human-friendly brand shown on your listing).
+>
+> | Field | Value |
+> | --- | --- |
+> | ID | `MoonMathAi` |
+> | Name | `MoonMath.Ai` |
+>
+> `vsce` only accepts `[a-z0-9-]` for the ID, so a dotted value such as
+> `MoonMath.Ai` is rejected outright:
+>
+> ```
+> ERROR  Invalid extension "publisher": "MoonMath.Ai" in package.json.
+>        Expected the identifier of a publisher, not its human-friendly name.
+> ```
 
 ## 2. Generate a Personal Access Token (PAT)
 
@@ -46,20 +63,43 @@ The Marketplace rejects extensions missing required metadata.
 
 ## 6. Publish
 
+The `publish` script runs the whole pipeline: preflight checks → compile →
+tests → package → confirm → upload.
+
+```bash
+cd vscode-extension
+npm run publish                    # publish the version in package.json
+```
+
+Useful variants:
+
+```bash
+npm run publish -- --dry-run       # validate + package, but don't upload
+npm run publish -- patch           # bump patch, then publish
+npm run publish -- minor --yes     # bump minor, skip the confirmation prompt
+```
+
+Preflight flags a missing publisher ID, a malformed one, missing icon assets,
+a dirty working tree, missing `keywords`/`repository`/`CHANGELOG.md`, and a
+version that is already live. It also validates the extension name and
+publisher ID against the same pattern `vsce` uses.
+
+For CI, export the PAT instead of logging in:
+
+```bash
+VSCE_PAT=<YOUR_PAT> npm run publish -- --yes
+```
+
+### Manual equivalent
+
 ```bash
 cd vscode-extension
 npm run compile
-npx @vscode/vsce login moonmath-ai   # paste the PAT from step 2
+npx @vscode/vsce login MoonMathAi   # paste the PAT from step 2
 npx @vscode/vsce publish
 ```
 
-Or with the PAT inline (useful for CI):
-
-```bash
-npx @vscode/vsce publish -p <YOUR_PAT>
-```
-
-The `prepublish` script (`package.json:50`) already runs `npm run compile`, so the build happens automatically.
+The `prepublish` script (`package.json`) already runs `npm run compile`, so the build happens automatically.
 
 - [ ] Log in to vsce
 - [ ] Publish
@@ -81,7 +121,7 @@ Extend the existing workflow to publish automatically on tagged releases.
 
 ## Quick pre-publish checklist
 
-- [ ] Create publisher `moonmath-ai` on the Marketplace
+- [ ] Create publisher `MoonMathAi` on the Marketplace
 - [ ] Generate Azure DevOps PAT with **Marketplace → Acquire + Manage** scope, **All orgs**
 - [ ] Add `keywords`, `bugs.url`, `homepage` to package.json
 - [ ] Create `CHANGELOG.md`

@@ -45,4 +45,50 @@ export class Progress<T> {
   ) {}
 }
 
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3
+}
+
+/**
+ * In-memory configuration store. Tests seed values with `__setConfig` and read
+ * back what the sources wrote, so settings-driven code can be exercised without
+ * a VS Code host.
+ */
+const configStore = new Map<string, unknown>();
+
+export function __setConfig(section: string, values: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(values)) {
+    configStore.set(`${section}.${key}`, value);
+  }
+}
+
+export function __resetConfig(): void {
+  configStore.clear();
+}
+
+export function __getConfigSnapshot(): Record<string, unknown> {
+  return Object.fromEntries(configStore);
+}
+
+class WorkspaceConfiguration {
+  constructor(private readonly section: string) {}
+
+  get<T>(key: string, fallback?: T): T | undefined {
+    const value = configStore.get(`${this.section}.${key}`);
+    return value === undefined ? fallback : (value as T);
+  }
+
+  async update(key: string, value: unknown): Promise<void> {
+    const full = `${this.section}.${key}`;
+    if (value === undefined) configStore.delete(full);
+    else configStore.set(full, value);
+  }
+}
+
+export const workspace = {
+  getConfiguration: (section: string) => new WorkspaceConfiguration(section)
+};
+
 export const lm = {};

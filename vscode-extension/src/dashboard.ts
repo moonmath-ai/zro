@@ -5,7 +5,8 @@ import { fetchModelCatalog, type CatalogResult } from "./catalog.js";
 import { fetchAccountStatus, type AccountStatusResult } from "./account.js";
 import { resolveCredential, storeApiKey, deleteApiKey, maskKey, type CredentialSource } from "./credentials.js";
 import { AuthFlowController } from "./auth.js";
-import { ENDPOINT_ROOT } from "./constants.js";
+import { setEffort, resolveEffort, readEffortSettings } from "./reasoning.js";
+import { EFFORT_DEFAULT, ENDPOINT_ROOT, type ZroModel } from "./constants.js";
 /**
  * Dashboard webview with tabs: Overview, Models, Cost, Endpoints, Cache, Team.
  * Rendered both as a floating editor-area panel (`ZroDashboard`) and as a
@@ -64,6 +65,7 @@ abstract class ZroDashboardController {
         catalog,
         account,
         selected,
+        effort: buildEffortState(catalog.models),
       },
     });
   }
@@ -88,6 +90,15 @@ abstract class ZroDashboardController {
           await this.context.globalState.update(MODEL_SELECT_KEY, message.model);
           await this.refresh();
         }
+        break;
+      }
+      case "setEffort": {
+        // `model` is a model id, or null/absent for the global default.
+        const modelId = typeof message.model === "string" && message.model ? message.model : null;
+        const level = typeof message.level === "string" ? message.level : "";
+        if (!level) break;
+        await setEffort(modelId, level);
+        await this.refresh();
         break;
       }
       case "openChat": {
@@ -333,6 +344,53 @@ function getSelectedModel(context: vscode.ExtensionContext, catalog: CatalogResu
   const saved = context.globalState.get<string>(MODEL_SELECT_KEY);
   if (saved && catalog.models.some((m) => m.id === saved)) return saved;
   return catalog.default ?? catalog.models[0]?.id ?? null;
+}
+
+/** Reasoning-effort state pushed to the webview's Models tab. */
+interface EffortState {
+  /** Global setting (EFFORT_DEFAULT when unset). */
+  global: string;
+  /** Effort levels advertised across all models, with descriptions. */
+  globalLevels: Array<{ id: string; description: string }>;
+  /** Per-model view: effective level, its source, and the model's own levels. */
+  models: Array<{
+    id: string;
+    effective: string;
+    source: string;
+    defaultLevel: string;
+    override: string | null;
+    levels: Array<{ id: string; description: string }>;
+  }>;
+}
+
+function buildEffortState(models: readonly ZroModel[]): EffortState {
+  const settings = readEffortSettings();
+  const globalLevels = new Map<string, string>();
+  for (const model of models) {
+    for (const level of model.reasoning?.levels ?? []) {
+      if (!globalLevels.has(level.id)) globalLevels.set(level.id, level.description);
+    }
+  }
+  return {
+    global: settings.global,
+    globalLevels: [...globalLevels.entries()].map(([id, description]) => ({ id, description })),
+    models: models
+      .filter((model) => (model.reasoning?.levels.length ?? 0) > 0)
+      .map((model) => {
+        const effective = resolveEffort(model.id, model.reasoning, settings);
+        return {
+          id: model.id,
+          effective: effective.level ?? model.reasoning?.defaultLevel ?? EFFORT_DEFAULT,
+          source: effective.source,
+          defaultLevel: model.reasoning?.defaultLevel ?? EFFORT_DEFAULT,
+          override: settings.perModel[model.id] ?? null,
+          levels: (model.reasoning?.levels ?? []).map((level) => ({
+            id: level.id,
+            description: level.description,
+          })),
+        };
+      }),
+  };
 }
 
 interface CredentialState {

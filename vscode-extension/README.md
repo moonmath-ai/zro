@@ -27,6 +27,10 @@ inference endpoint with full tool-calling support (file edits, terminal, etc.).
 - **Zero-config if you already use the CLI** — the extension reads the same
   `~/.config/zro/credentials.json` file written by `zro login`, so existing users
   are ready to go immediately after install.
+- **Reasoning-effort control** — choose how hard reasoning models think
+  (`none` / `high` / `max`, per model), globally or per model, from the Command
+  Palette, Settings, or the dashboard. See
+  [Reasoning effort](#reasoning-effort).
 - **Streaming + tool calls** — responses stream token-by-token, and tool calls
   round-trip through Copilot Chat's agent loop just like any built-in model.
 - **Resilient fallback** — if the control plane is unreachable, a built-in model
@@ -47,6 +51,8 @@ The Overview tab is the landing page. The **Connection** card shows whether the 
 ![Models &amp; endpoints tab](media/screenshots/tab-models.png)
 
 The Models & endpoints tab lists every model active in the control-plane catalog fetched live on each refresh. Each row shows the model's display name and context window, a **Live** pill confirming it is available on the serving endpoints reachable by your key, and a **Set as default** button to pick the model used by Copilot Chat (the current default shows **Current default**). Endpoints are provisioned out-of-band on serving nodes, so there is no separate endpoints list.
+
+Models that support reasoning also get an **Effort** dropdown (see [Reasoning effort](#reasoning-effort)), with a pill showing whether the active value comes from a per-model override, the global setting, or the server default. The **Reasoning effort** card above the list sets the global level for all models.
 
 ### Cost
 
@@ -100,10 +106,44 @@ Pick one — all three use the same credential resolution order:
 That's it. Once authenticated, every ZRO model active in the control plane is
 available with no additional configuration.
 
+## Reasoning effort
+
+ZRO models that support reasoning let you choose how hard they think before
+answering — trading latency for quality.
+
+Set it from any of:
+
+- **Command palette** → **`ZRO: Set reasoning effort`**, then pick a model (or
+  *Global default*) and a level. Levels come from the live catalog, so the list
+  matches what each model actually supports.
+- **Settings** → `zro.reasoningEffort` (all models) and
+  `zro.reasoningEffortByModel` (per model).
+- **Dashboard** → **Models** tab, where each model shows its own level and the
+  effective value's source.
+
+For example, to make GLM-5.2 skip reasoning (fastest) while Kimi K3 stays on its
+full setting:
+
+```jsonc
+{
+  "zro.reasoningEffort": "default",
+  "zro.reasoningEffortByModel": {
+    "glm-5.2": "none"
+  }
+}
+```
+
+Precedence is **per-model override → global setting → the model's native
+default**. `default` means "send nothing", so the control plane applies the
+level it recommends. A level a model doesn't support falls back to that model's
+default rather than erroring. The change applies to the next message you send.
+
 ## Configuration
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
+| `zro.reasoningEffort` | Reasoning effort for all ZRO models | `default` |
+| `zro.reasoningEffortByModel` | Per-model overrides, keyed by model id | `{}` |
 | `ZRO_API_KEY` (env) | API key — overrides everything else | — |
 | `ZRO_ENDPOINT_ROOT` (env) | Inference + catalog endpoint root | `https://zro.moonmath.ai` |
 
@@ -131,6 +171,8 @@ them up.
   endpoint on every picker refresh, filtered to the models currently active in
   LiteLLM. If that fetch fails, a built-in fallback list is used so the picker is
   never empty.
-- Reasoning-effort control is not exposed — Copilot Chat's model picker has no
-  reasoning-effort UI. The default reasoning level is used.
+- Reasoning effort is configured through ZRO's own settings rather than Copilot
+  Chat's model picker, which has no reasoning-effort UI for extension-provided
+  models. The chosen level is sent as `reasoning_effort` on each request; see
+  [Reasoning effort](#reasoning-effort).
 - Image input is not advertised (`imageInput: false`).
