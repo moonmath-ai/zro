@@ -1,24 +1,59 @@
 import * as vscode from "vscode";
-import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, type ZroModel, type ZroReasoningConfig } from "./constants.js";
+import {
+  BASE_URL,
+  PROVIDER_ID,
+  PROVIDER_NAME,
+  type ZroChatInformation,
+  type ZroModel,
+  type ZroReasoningConfig,
+} from "./constants.js";
 import { fetchModelCatalog } from "./catalog.js";
 import { resolveApiKey } from "./credentials.js";
-import { resolveEffort } from "./reasoning.js";
+import {
+  alternateLevels,
+  buildReasoningConfigurationSchema,
+  effortEntryId,
+  effortFromModelConfiguration,
+  levelLabel,
+  parseEffortEntryId,
+  resolveEffort,
+} from "./reasoning.js";
 
-/** Model ids advertised by the last `provideLanguageModelChatInformation` refresh. */
-const advertisedReasoning = new Map<string, ZroReasoningConfig | undefined>();
+/**
+ * What a picker entry maps to on the wire, from the last
+ * `provideLanguageModelChatInformation` refresh. Keys are entry ids, which for
+ * reasoning models are `<modelId>--<level>` (see reasoning.ts).
+ */
+export interface AdvertisedEntry {
+  /** Catalog model id to send as `model` (entry ids carry the level suffix). */
+  modelId: string;
+  reasoning?: ZroReasoningConfig;
+  /** Level fixed by the entry, if the entry is a level variant. */
+  effort?: string;
+}
+
+const advertisedEntries = new Map<string, AdvertisedEntry>();
+
+/**
+ * Mime type of the data part that carries token usage back to the chat client.
+ * This is the convention Copilot's own BYOK providers use (`CustomDataPartMimeTypes.Usage`
+ * in github.copilot-chat) and the only channel that feeds the context-usage /
+ * Session Info widget for extension-provided models.
+ */
+const USAGE_MIME_TYPE = "usage";
 
 /**
  * Registers ZRO models with VS Code's Copilot Chat model picker and
  * streams chat completions from the Zro inference endpoint (OpenAI-compatible
  * /v1). The model list is discovered dynamically from the control plane.
  */
-export class ZroModelProvider implements vscode.LanguageModelChatProvider {
+export class ZroModelProvider implements vscode.LanguageModelChatProvider<ZroChatInformation> {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async provideLanguageModelChatInformation(
     options: { silent: boolean },
     _token: vscode.CancellationToken
-  ): Promise<vscode.LanguageModelChatInformation[]> {
+  ): Promise<ZroChatInformation[]> {
     let apiKey = await resolveApiKey(this.context);
     if (!apiKey) {
       // When silent (e.g. VS Code pre-populating the picker), don't prompt.
@@ -31,15 +66,19 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider {
     }
 
     const { models } = await fetchModelCatalog(apiKey);
-    advertisedReasoning.clear();
+    advertisedEntries.clear();
+    const infos: ZroChatInformation[] = [];
     for (const model of models) {
-      advertisedReasoning.set(model.id, model.reasoning);
+      for (const info of toChatInfos(model)) {
+        advertisedEntries.set(info.id, resolveEntry(model, info.id));
+        infos.push(info);
+      }
     }
-    return models.map((model) => toChatInfo(model));
+    return infos;
   }
 
   async provideLanguageModelChatResponse(
-    model: vscode.LanguageModelChatInformation,
+    model: ZroChatInformation,
     messages: readonly vscode.LanguageModelChatRequestMessage[],
     options: vscode.ProvideLanguageModelChatResponseOptions,
     progress: vscode.Progress<vscode.LanguageModelResponsePart>,
@@ -51,8 +90,7 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider {
       return;
     }
 
-    const body = buildRequestBody(model, messages, options);
-    applyReasoningEffort(body, advertisedReasoning.get(model.id));
+    const body = buildEntryRequestBody(model, messages, options, advertisedEntries.get(model.id));
     const response = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -92,7 +130,7 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider {
   }
 }
 
-export function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation {
+export function toChatInfo(model: ZroModel): ZroChatInformation {
   // A misconfigured catalog can advertise maxOutputTokens >= contextWindow
   // (kimi-k3 shipped with maxOutputTokens = contextWindow = 1_048_576). Copilot
   // forwards that verbatim as max_tokens, and the model rejects the request
@@ -106,6 +144,8 @@ export function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation
   // VS Code's Copilot Chat picker groups models by `family`: if every model
   // shares one family value, the picker collapses them into a single selectable
   // entry. Use a per-model family so each ZRO model appears as its own entry.
+  // Level variants (toChatInfos) share their model's family — same underlying
+  // model, and `lm.selectChatModels({ family })` should still find all of them.
   const family = `${PROVIDER_ID}-${model.id}`;
   return {
     id: model.id,
@@ -114,8 +154,11 @@ export function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation
     tooltip: `${PROVIDER_NAME} model via ${BASE_URL}`,
     detail: `${model.displayName} · ${PROVIDER_ID}`,
     version: "1.0.0",
-    maxInputTokens: model.contextWindow - cappedMaxOutput,
     maxOutputTokens: cappedMaxOutput,
+    maxInputTokens: model.contextWindow - cappedMaxOutput,
+    // Gives the model picker its per-model "Thinking Effort" dropdown on
+    // builds that honor `configurationSchema` (ignored everywhere else).
+    configurationSchema: buildReasoningConfigurationSchema(model.reasoning),
     capabilities: {
       toolCalling: true,
       imageInput: false
@@ -123,7 +166,81 @@ export function toChatInfo(model: ZroModel): vscode.LanguageModelChatInformation
   };
 }
 
+/**
+ * Every picker entry a catalog model contributes. A reasoning model yields its
+ * own row (server default) plus one row per non-default level, so each level is
+ * directly selectable from the model list instead of hidden in a submenu:
+ *
+ *   ZRO GLM-5.2              → glm-5.2            (default level)
+ *   ZRO GLM-5.2 · No thinking → glm-5.2--none
+ *   ZRO GLM-5.2 · High        → glm-5.2--high
+ *
+ * The base row keeps the model's real id (stable for pinned models, history and
+ * the per-model settings keys) and the configuration dropdown; level rows carry
+ * a fixed level, so they are not configurable.
+ */
+export function toChatInfos(model: ZroModel): ZroChatInformation[] {
+  const base = toChatInfo(model);
+  const levels = alternateLevels(model.reasoning);
+  if (levels.length === 0) return [base];
+
+  // Drop the schema from level rows: their level is already decided, and a
+  // second way to pick one would just fight the entry.
+  const { configurationSchema: _schema, ...variantBase } = base;
+  return [
+    base,
+    ...levels.map((level) => ({
+      ...variantBase,
+      id: effortEntryId(model.id, level),
+      name: `${PROVIDER_NAME} ${model.displayName} · ${levelLabel(level)}`,
+      detail: `${model.displayName} · thinking ${level}`,
+    })),
+  ];
+}
+
 // --- Request building --------------------------------------------------------
+
+/**
+ * Map a picker entry id onto the catalog model it belongs to, plus the level the
+ * entry fixes. Only levels the model actually advertises are honored, so a stale
+ * entry id can never send an unsupported `reasoning_effort`.
+ */
+export function resolveEntry(model: ZroModel, entryId: string): AdvertisedEntry {
+  const { level } = parseEffortEntryId(entryId);
+  const known = level && model.reasoning?.levels.some((l) => l.id === level);
+  return {
+    modelId: model.id,
+    reasoning: model.reasoning,
+    effort: known ? level : undefined,
+  };
+}
+
+/**
+ * Request body for a picker entry: the wire always carries the real catalog
+ * model id (level entries use a synthetic id) plus the resolved
+ * `reasoning_effort`. The entry's fixed level wins over the in-picker "Thinking
+ * Effort" choice, which in turn wins over the extension settings.
+ */
+export function buildEntryRequestBody(
+  model: vscode.LanguageModelChatInformation,
+  messages: readonly vscode.LanguageModelChatRequestMessage[],
+  options: vscode.ProvideLanguageModelChatResponseOptions,
+  entry: AdvertisedEntry | undefined
+): Record<string, unknown> {
+  const body = buildRequestBody(model, messages, options);
+  if (entry && entry.modelId !== model.id) {
+    body.model = entry.modelId;
+  }
+  // `modelConfiguration` holds the in-picker config choice on builds that
+  // support per-model configuration; it isn't in @types/vscode yet, hence the
+  // structural read.
+  const pickerEffort = effortFromModelConfiguration(
+    (options as { modelConfiguration?: unknown }).modelConfiguration,
+    entry?.reasoning
+  );
+  applyReasoningEffort(body, entry?.reasoning, entry?.effort ?? pickerEffort);
+  return body;
+}
 
 interface OpenAiMessage {
   role: string;
@@ -141,12 +258,17 @@ export function buildRequestBody(
   messages: readonly vscode.LanguageModelChatRequestMessage[],
   options: vscode.ProvideLanguageModelChatResponseOptions
 ): Record<string, unknown> {
-  const openaiMessages = messages.flatMap(toOpenAiMessages);
+const openaiMessages = messages.flatMap(toOpenAiMessages);
   const body: Record<string, unknown> = {
     model: model.id,
     messages: openaiMessages,
     stream: true,
-    max_tokens: model.maxOutputTokens
+    max_tokens: model.maxOutputTokens,
+    // Ask for the final `usage` chunk explicitly. ZRO already emits one, but
+    // OpenAI-compatible servers that follow the spec strictly only send it when
+    // this is set — and without it Copilot Chat's context-usage / Session Info
+    // widget has nothing to display.
+    stream_options: { include_usage: true }
   };
 
   if (options.tools && options.tools.length > 0) {
@@ -173,19 +295,27 @@ export function buildRequestBody(
 }
 
 /**
- * Add `reasoning_effort` to a chat request when the user has configured one
- * (`zro.reasoningEffort` / `zro.reasoningEffortByModel`). With no configured
- * effort the key is omitted, so the proxy applies the model's native
- * `defaultLevel`. A value the current model doesn't advertise is clamped to
- * the closest supported level (see resolveEffort). Caller-supplied
- * `modelOptions.reasoning_effort` always wins over the extension setting.
+ * Add `reasoning_effort` to a chat request when the user has configured one.
+ * Precedence, highest first:
+ *  1. caller-supplied `modelOptions.reasoning_effort` (already on the body),
+ *  2. `pickerEffort` — the level fixed by the selected picker entry
+ *     (`"ZRO GLM-5.2 · High"`), or the in-picker "Thinking Effort" choice
+ *     flowing back via `options.modelConfiguration` (validated against the
+ *     model's levels either way),
+ *  3. extension settings (`zro.reasoningEffortByModel` / `zro.reasoningEffort`),
+ *  4. nothing — the proxy applies the model's native `defaultLevel`.
  */
 export function applyReasoningEffort(
   body: Record<string, unknown>,
-  reasoning: ZroReasoningConfig | undefined
+  reasoning: ZroReasoningConfig | undefined,
+  pickerEffort?: string | null
 ): void {
   if (body.reasoning_effort !== undefined) return;
   if (!reasoning?.levels.length) return;
+  if (pickerEffort) {
+    body.reasoning_effort = pickerEffort;
+    return;
+  }
   const effort = resolveEffort(String(body.model ?? ""), reasoning);
   if (effort.level) {
     body.reasoning_effort = effort.level;
@@ -263,7 +393,35 @@ interface ToolCallBuffer {
   arguments: string;
 }
 
-async function streamChatResponse(
+/**
+ * Token accounting as the ZRO `/v1/chat/completions` endpoint reports it on the
+ * final streamed chunk (OpenAI-compatible, plus ZRO's prompt-cache counters).
+ */
+interface ZroUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  cache_read_input_tokens?: number;
+  completion_tokens_details?: { reasoning_tokens?: number };
+}
+
+interface StreamChunk {
+  choices?: Array<{
+    delta?: {
+      content?: string;
+      reasoning_content?: string;
+      tool_calls?: Array<{
+        index: number;
+        id?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
+    };
+    finish_reason?: string | null;
+  }>;
+  usage?: ZroUsage;
+}
+
+export async function streamChatResponse(
   response: Response,
   progress: vscode.Progress<vscode.LanguageModelResponsePart>,
   token: vscode.CancellationToken
@@ -280,6 +438,8 @@ async function streamChatResponse(
   // model never emits any — otherwise we'd double-show the same text on models
   // that produce both fields.
   let hasContent = false;
+  // Token usage for this response, captured from the stream's final chunk.
+  let usage: ZroUsage | undefined;
 
   const cancellation = token.onCancellationRequested(() => reader.cancel().catch(() => {}));
 
@@ -299,24 +459,17 @@ async function streamChatResponse(
         const data = trimmed.slice(5).trim();
         if (data === "[DONE]") {
           flushToolCalls(toolCalls, progress);
+          reportUsage(usage, progress);
           return;
         }
 
         try {
-          const chunk = JSON.parse(data) as {
-            choices?: Array<{
-              delta?: {
-                content?: string;
-                reasoning_content?: string;
-                tool_calls?: Array<{
-                  index: number;
-                  id?: string;
-                  function?: { name?: string; arguments?: string };
-                }>;
-              };
-              finish_reason?: string | null;
-            }>;
-          };
+          const chunk = JSON.parse(data) as StreamChunk;
+
+          // Usage rides on its own final chunk. ZRO sends it with a placeholder
+          // `choices: [{index: 0, delta: {}}]`, but the OpenAI spec allows an
+          // empty `choices` array, so capture it before the choice guard.
+          if (chunk.usage) usage = chunk.usage;
 
           const choice = chunk.choices?.[0];
           if (!choice) continue;
@@ -362,9 +515,47 @@ async function streamChatResponse(
 
     // Stream ended without [DONE]; flush any pending tool calls.
     flushToolCalls(toolCalls, progress);
+    reportUsage(usage, progress);
   } finally {
     cancellation.dispose();
   }
+}
+
+/**
+ * Report the response's token usage to VS Code.
+ *
+ * Copilot Chat's context-window meter and its "Session Info" popover are driven
+ * entirely by the response's usage, which for extension-provided models is only
+ * populated when the provider emits a `LanguageModelDataPart` with the `usage`
+ * mime type carrying OpenAI-shaped counts. Copilot's own BYOK providers
+ * (Anthropic, Gemini) end their streams the same way. Without this the widget
+ * stays hidden and the context display is always empty.
+ */
+export function reportUsage(
+  usage: ZroUsage | undefined,
+  progress: vscode.Progress<vscode.LanguageModelResponsePart>
+): void {
+  if (!usage) return;
+  const promptTokens = usage.prompt_tokens ?? 0;
+  const completionTokens = usage.completion_tokens ?? 0;
+  const payload: Record<string, unknown> = {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: usage.total_tokens ?? promptTokens + completionTokens
+  };
+  // Copilot surfaces cache hits in the Session Info breakdown as
+  // `prompt_tokens_details.cached_tokens`; ZRO reports the same figure as
+  // `cache_read_input_tokens`. Only forward a positive count so models that are
+  // never prompt-cached (deepseek-v4-flash-0731) don't show a zeroed line.
+  if (typeof usage.cache_read_input_tokens === "number" && usage.cache_read_input_tokens > 0) {
+    payload.prompt_tokens_details = { cached_tokens: usage.cache_read_input_tokens };
+  }
+  progress.report(
+    new vscode.LanguageModelDataPart(
+      new TextEncoder().encode(JSON.stringify(payload)),
+      USAGE_MIME_TYPE
+    )
+  );
 }
 
 function flushToolCalls(

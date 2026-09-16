@@ -9,6 +9,12 @@ import {
   effortForRequest,
   setEffort,
   effortLabel,
+  buildReasoningConfigurationSchema,
+  effortFromModelConfiguration,
+  effortEntryId,
+  parseEffortEntryId,
+  alternateLevels,
+  levelLabel,
 } from "../src/reasoning.js";
 import {
   CONFIG_SECTION,
@@ -117,6 +123,94 @@ describe("fetchModelCatalog reasoning", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("effort entry ids", () => {
+  it("round-trips a model id and level", () => {
+    const id = effortEntryId("glm-5.2", "high");
+    expect(id).toBe("glm-5.2--high");
+    expect(parseEffortEntryId(id)).toEqual({ modelId: "glm-5.2", level: "high" });
+  });
+
+  it("treats a plain model id as having no fixed level", () => {
+    expect(parseEffortEntryId("glm-5.2")).toEqual({ modelId: "glm-5.2" });
+    // Ids with single hyphens and digits are untouched.
+    expect(parseEffortEntryId("deepseek-v4-flash-0731")).toEqual({ modelId: "deepseek-v4-flash-0731" });
+  });
+
+  it("never ends in the `-fast` suffix core uses for speed variants", () => {
+    for (const level of ["none", "low", "high", "max"]) {
+      expect(effortEntryId("glm-5.2", level).endsWith("-fast")).toBe(false);
+    }
+  });
+});
+
+describe("alternateLevels", () => {
+  it("lists every level except the model's native default", () => {
+    expect(alternateLevels(GLM)).toEqual(["none", "high"]);
+    expect(alternateLevels(KIMI)).toEqual(["low", "max"]);
+  });
+
+  it("returns nothing without levels", () => {
+    expect(alternateLevels(undefined)).toEqual([]);
+    expect(alternateLevels({ defaultLevel: "high", levels: [] })).toEqual([]);
+  });
+});
+
+describe("levelLabel", () => {
+  it("spells out `none` and capitalizes the rest", () => {
+    expect(levelLabel("none")).toBe("No thinking");
+    expect(levelLabel("high")).toBe("High");
+    expect(levelLabel("xhigh")).toBe("Xhigh");
+  });
+});
+
+describe("buildReasoningConfigurationSchema", () => {
+  it("builds the in-picker thinking-effort schema from the model's levels", () => {
+    expect(buildReasoningConfigurationSchema(GLM)).toEqual({
+      properties: {
+        reasoningEffort: {
+          type: "string",
+          title: "Thinking Effort",
+          enum: ["none", "high", "max"],
+          enumDescriptions: [
+            "Disable reasoning for the lowest latency",
+            "Use GLM High reasoning effort",
+            "Use GLM maximum reasoning effort",
+          ],
+          default: "max",
+          group: "navigation",
+        },
+      },
+    });
+  });
+
+  it("returns undefined without levels", () => {
+    expect(buildReasoningConfigurationSchema(undefined)).toBeUndefined();
+    expect(buildReasoningConfigurationSchema({ defaultLevel: "max", levels: [] })).toBeUndefined();
+  });
+});
+
+describe("effortFromModelConfiguration", () => {
+  it("returns the selected level when the model advertises it", () => {
+    expect(effortFromModelConfiguration({ reasoningEffort: "high" }, GLM)).toBe("high");
+  });
+
+  it("rejects values the model does not advertise", () => {
+    expect(effortFromModelConfiguration({ reasoningEffort: "xhigh" }, GLM)).toBeNull();
+  });
+
+  it("ignores missing or malformed configuration", () => {
+    expect(effortFromModelConfiguration(undefined, GLM)).toBeNull();
+    expect(effortFromModelConfiguration(null, GLM)).toBeNull();
+    expect(effortFromModelConfiguration({}, GLM)).toBeNull();
+    expect(effortFromModelConfiguration({ reasoningEffort: 42 }, GLM)).toBeNull();
+    expect(effortFromModelConfiguration("high", GLM)).toBeNull();
+  });
+
+  it("returns null for models without reasoning levels", () => {
+    expect(effortFromModelConfiguration({ reasoningEffort: "high" }, undefined)).toBeNull();
   });
 });
 

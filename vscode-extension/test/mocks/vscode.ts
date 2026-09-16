@@ -36,6 +36,17 @@ export class LanguageModelToolResultPart {
   ) {}
 }
 
+/**
+ * Data-carrying response part. The provider uses this to report token usage
+ * (mime type `"usage"`) after the last content part.
+ */
+export class LanguageModelDataPart {
+  constructor(
+    public readonly data: Uint8Array,
+    public readonly mimeType: string
+  ) {}
+}
+
 // Lightweight mock Progress used when unit-testing the chat provider response path.
 export class Progress<T> {
   constructor(

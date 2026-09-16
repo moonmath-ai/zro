@@ -3,6 +3,9 @@
 // fetches the live catalog from the control plane (`/api/cli/models`) and only
 // falls back to this list when the endpoint is unreachable.
 
+// Type-only import: erased at compile time, keeps this module require-free.
+import type { LanguageModelChatInformation } from "vscode";
+
 export const ENDPOINT_ROOT = process.env.ZRO_ENDPOINT_ROOT ?? "https://zro.moonmath.ai";
 export const BASE_URL = `${ENDPOINT_ROOT}/v1`;
 export const CATALOG_URL = `${ENDPOINT_ROOT}/api/cli/models`;
@@ -57,18 +60,71 @@ export interface ZroModel {
   reasoning?: ZroReasoningConfig;
 }
 
+/**
+ * One property of VS Code's per-model configuration schema. This is the shape
+ * Copilot Chat itself uses for its own models' "Thinking Effort" dropdown:
+ * the workbench renders enum'd properties with `group: "navigation"` as a
+ * quick picker next to the model picker, and folds the rest into the model's
+ * "Configure Model…" action. `LanguageModelChatInformation.configurationSchema`
+ * is not yet declared in @types/vscode, so this is defined structurally here.
+ */
+export interface ZroModelConfigurationProperty {
+  readonly type: "string";
+  readonly title: string;
+  readonly enum: readonly string[];
+  readonly enumDescriptions: readonly string[];
+  readonly default: string;
+  readonly group?: string;
+}
+
+/** Configuration schema attached to a chat model (see reasoning.ts). */
+export interface ZroModelConfigurationSchema {
+  readonly properties: Record<string, ZroModelConfigurationProperty>;
+}
+
+/**
+ * `LanguageModelChatInformation` plus the configuration schema. The runtime
+ * passes the field through verbatim (verified in this build's extension host),
+ * older VS Code builds simply ignore it.
+ */
+export interface ZroChatInformation extends LanguageModelChatInformation {
+  readonly configurationSchema?: ZroModelConfigurationSchema;
+}
+
 /** Static fallback used when the live catalog cannot be fetched. */
 export const ZRO_MODELS: readonly ZroModel[] = [
   {
-    id: "minimax-m3",
-    displayName: "MiniMax M3",
+    id: "deepseek-v4.1-flash",
+    displayName: "DeepSeek V4.1 Flash",
     contextWindow: 1048576,
-    maxOutputTokens: 64000
+    maxOutputTokens: 384000,
+    reasoning: {
+      defaultLevel: "high",
+      levels: [
+        { id: "low", description: "Use DeepSeek low reasoning effort" },
+        { id: "high", description: "Use DeepSeek high reasoning effort" },
+        { id: "max", description: "Use DeepSeek maximum reasoning effort" }
+      ]
+    }
   },
   {
-    id: "glm-5.2",
-    displayName: "GLM-5.2",
-    contextWindow: 524288,
+    id: "glm-5.3",
+    displayName: "GLM-5.3",
+    contextWindow: 1048576,
+    maxOutputTokens: 131000,
+    reasoning: {
+      defaultLevel: "max",
+      levels: [
+        { id: "none", description: "Disable reasoning for the lowest latency" },
+        { id: "high", description: "Use GLM High reasoning effort" },
+        { id: "max", description: "Use GLM maximum reasoning effort" }
+      ]
+    }
+  },
+  {
+    id: "glm-5.3-flash",
+    displayName: "GLM-5.3 Flash",
+    contextWindow: 1048576,
     maxOutputTokens: 64000,
     reasoning: {
       defaultLevel: "max",
@@ -80,10 +136,34 @@ export const ZRO_MODELS: readonly ZroModel[] = [
     }
   },
   {
+    id: "dolly1-security",
+    displayName: "Dolly 1 Security",
+    contextWindow: 1048576,
+    maxOutputTokens: 64000,
+    reasoning: {
+      defaultLevel: "max",
+      levels: [
+        { id: "none", description: "Disable reasoning for the lowest latency" },
+        { id: "high", description: "Use GLM High reasoning effort" },
+        { id: "max", description: "Use GLM maximum reasoning effort" }
+      ]
+    }
+  },
+  {
+    id: "auto",
+    displayName: "Auto",
+    contextWindow: 1048576,
+    maxOutputTokens: 131000,
+    reasoning: {
+      defaultLevel: "auto",
+      levels: [{ id: "auto", description: "Let the Auto router pick the model per request" }]
+    }
+  },
+  {
     id: "kimi-k3",
     displayName: "Kimi K3",
     contextWindow: 1048576,
-    maxOutputTokens: 64000,
+    maxOutputTokens: 1048576,
     reasoning: {
       defaultLevel: "high",
       levels: [

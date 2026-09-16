@@ -113,9 +113,24 @@ answering — trading latency for quality.
 
 Set it from any of:
 
+- **Model picker → per-model entries** — every reasoning model is listed once per
+  level, so a level is directly selectable from the model list:
+
+  ```
+  ZRO GLM-5.2                 ← the model's own row (native default level)
+  ZRO GLM-5.2 · No thinking
+  ZRO GLM-5.2 · High
+  ```
+
+  The model's own row sends no effort, so the control plane applies the level it
+  recommends; the `· <Level>` rows pin that level for the request. Levels come
+  from the live catalog, so the list matches what the model actually supports.
+- **Model picker → Thinking Effort dropdown** — the model's own row also carries
+  this dropdown, on VS Code builds that support per-model configuration. It is
+  useful for setting a level on the model's own row without picking a level entry
+  (a level entry's own level always wins over it).
 - **Command palette** → **`ZRO: Set reasoning effort`**, then pick a model (or
-  *Global default*) and a level. Levels come from the live catalog, so the list
-  matches what each model actually supports.
+  *Global default*) and a level.
 - **Settings** → `zro.reasoningEffort` (all models) and
   `zro.reasoningEffortByModel` (per model).
 - **Dashboard** → **Models** tab, where each model shows its own level and the
@@ -133,10 +148,11 @@ full setting:
 }
 ```
 
-Precedence is **per-model override → global setting → the model's native
-default**. `default` means "send nothing", so the control plane applies the
-level it recommends. A level a model doesn't support falls back to that model's
-default rather than erroring. The change applies to the next message you send.
+Precedence is **selected level entry → in-picker dropdown choice → per-model
+override → global setting → the model's native default**. `default` means "send
+nothing", so the control plane applies the level it recommends. A level a model
+doesn't support falls back to that model's default rather than erroring. The
+change applies to the next message you send.
 
 ## Configuration
 
@@ -171,10 +187,14 @@ them up.
   endpoint on every picker refresh, filtered to the models currently active in
   LiteLLM. If that fetch fails, a built-in fallback list is used so the picker is
   never empty.
-- Reasoning effort is configured through ZRO's own settings rather than Copilot
-  Chat's model picker, which has no reasoning-effort UI for extension-provided
-  models. The chosen level is sent as `reasoning_effort` on each request; see
-  [Reasoning effort](#reasoning-effort).
+- Reasoning-effort choices — from a model picker level entry, its **Thinking
+  Effort** dropdown (where the VS Code build offers it), or ZRO's own settings —
+  are sent as `reasoning_effort` on each request; see
+  [Reasoning effort](#reasoning-effort). On older builds without the picker
+  dropdown, the level entries and the ZRO settings still apply.
+- A level entry's id is `<model-id>--<level>` (for example `glm-5.2--high`); the
+  request always carries the catalog model id and the level separately, so the
+  control plane sees exactly what the CLI would send.
 - A level a model doesn't support is clamped to that model's default rather than
   rejected, so a global setting is always safe to apply.
 - Image input is not advertised (`imageInput: false`).

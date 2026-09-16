@@ -5,6 +5,7 @@ import {
   SETTING_REASONING_EFFORT,
   SETTING_REASONING_EFFORT_BY_MODEL,
   type ZroModel,
+  type ZroModelConfigurationSchema,
   type ZroReasoningConfig,
 } from "./constants.js";
 
@@ -24,7 +25,115 @@ import {
  * harnesses send through `openCodeOptions.reasoningEffort`. When the resolved
  * value is `default` (or no value is set at all), the key is omitted so the
  * proxy applies the model's native `defaultLevel`.
+ *
+ * Newer VS Code builds add the missing surface: a model can carry a
+ * `configurationSchema` on its chat info, the workbench then renders a
+ * "Thinking Effort" picker inside the model picker (group "navigation"), and
+ * the chosen value comes back on the request as
+ * `options.modelConfiguration.reasoningEffort`. `toChatInfo` attaches that
+ * schema when a model advertises reasoning levels; the extension settings
+ * remain as the fallback on builds without the surface.
+ *
+ * Levels are also listed directly: `toChatInfos` expands each reasoning model
+ * into one entry per level, using the id encoding below, so a level can be
+ * picked straight from the model list. Precedence for a request is: the level
+ * entry's own level → the config dropdown value → per-model/global settings →
+ * the model's native default. All of this is `default`-friendly: when nothing
+ * applies, `reasoning_effort` is omitted from the request.
  */
+
+/** Key of the reasoning-effort property in the model configuration schema. */
+export const MODEL_CONFIG_REASONING_EFFORT = "reasoningEffort";
+
+/**
+ * Separator between a model id and its reasoning level in a synthetic picker
+ * entry id. Reasoning models are advertised once per level so each level is a
+ * directly selectable row in the model picker; the entry id carries the level.
+ *
+ * Two constraints drove the choice: real catalog ids only use single hyphens
+ * (`deepseek-v4-flash-0731`), and VS Code treats an id ending in `-fast` as the
+ * fast half of a two-way speed-variant toggle — so this neither collides with
+ * real ids nor triggers that pairing.
+ */
+export const EFFORT_ENTRY_SEPARATOR = "--";
+
+/** Picker entry id for one level of a model (e.g. `glm-5.2--high`). */
+export function effortEntryId(modelId: string, level: string): string {
+  return `${modelId}${EFFORT_ENTRY_SEPARATOR}${level}`;
+}
+
+/**
+ * Split a picker entry id back into the catalog model id and its fixed level.
+ * `level` is undefined for the model's own entry (the plain id), which means
+ * "server default" unless a setting or the config dropdown says otherwise.
+ */
+export function parseEffortEntryId(entryId: string): { modelId: string; level?: string } {
+  const at = entryId.lastIndexOf(EFFORT_ENTRY_SEPARATOR);
+  if (at <= 0) return { modelId: entryId };
+  const level = entryId.slice(at + EFFORT_ENTRY_SEPARATOR.length);
+  return level ? { modelId: entryId.slice(0, at), level } : { modelId: entryId };
+}
+
+/**
+ * Every level except the model's native default, in catalog order. The default
+ * level gets no extra entry: the model's own row already means "whatever the
+ * server recommends", so a duplicate row would be noise.
+ */
+export function alternateLevels(reasoning: ZroReasoningConfig | undefined): string[] {
+  if (!reasoning?.levels?.length) return [];
+  return reasoning.levels
+    .map((level) => level.id)
+    .filter((id) => id !== reasoning.defaultLevel);
+}
+
+/** Short label for a level id, for picker entry names ("none" → "No thinking"). */
+export function levelLabel(level: string): string {
+  if (level === "none") return "No thinking";
+  return level.charAt(0).toUpperCase() + level.slice(1);
+}
+
+/**
+ * The per-model configuration schema VS Code renders as the in-picker
+ * "Thinking Effort" dropdown. Mirrors the shape Copilot Chat builds for its
+ * own models: an enum of the model's level ids, defaulting to the catalog's
+ * native default level. `group: "navigation"` promotes it from the
+ * "Configure Model…" dialog to the quick dropdown beside the model picker.
+ * Returns undefined for models without reasoning levels.
+ */
+export function buildReasoningConfigurationSchema(
+  reasoning: ZroReasoningConfig | undefined
+): ZroModelConfigurationSchema | undefined {
+  if (!reasoning?.levels?.length) return undefined;
+  return {
+    properties: {
+      [MODEL_CONFIG_REASONING_EFFORT]: {
+        type: "string",
+        title: "Thinking Effort",
+        enum: reasoning.levels.map((level) => level.id),
+        enumDescriptions: reasoning.levels.map((level) => level.description),
+        default: reasoning.defaultLevel,
+        group: "navigation",
+      },
+    },
+  };
+}
+
+/**
+ * Extract the user's in-picker effort choice from the request options.
+ * `modelConfiguration` mirrors back the values selected in the schema-driven
+ * UI; anything that isn't a known level id for this model is ignored (the
+ * extension settings then apply instead).
+ */
+export function effortFromModelConfiguration(
+  modelConfiguration: unknown,
+  reasoning: ZroReasoningConfig | undefined
+): string | null {
+  if (!reasoning?.levels?.length) return null;
+  if (!modelConfiguration || typeof modelConfiguration !== "object") return null;
+  const value = (modelConfiguration as Record<string, unknown>)[MODEL_CONFIG_REASONING_EFFORT];
+  if (typeof value !== "string" || !value) return null;
+  return reasoning.levels.some((level) => level.id === value) ? value : null;
+}
 
 /** Result of resolving the effort for a model. `omit` = send nothing. */
 export interface EffectiveEffort {
