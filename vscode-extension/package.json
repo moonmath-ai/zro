@@ -114,7 +114,7 @@
             "Use maximum reasoning effort."
           ],
           "default": "default",
-          "markdownDescription": "Reasoning effort for ZRO models in Copilot Chat. `default` uses the model's native level. A level the selected model does not support falls back to that model's default. Override per model with `#zro.reasoningEffortByModel#`, or run **ZRO: Set reasoning effort**."
+          "markdownDescription": "Reasoning effort for ZRO models in Copilot Chat. `default` uses the model's native level. A level the selected model does not support falls back to that model's default. Override per model with `#zro.reasoningEffortByModel#`, or use the model picker's **Thinking Effort** dropdown / the **ZRO: Set reasoning effort** command."
         },
         "zro.reasoningEffortByModel": {
           "type": "object",

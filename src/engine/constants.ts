@@ -28,10 +28,40 @@ export interface ZroModel {
 
 export const ZRO_MODELS = [
   {
-    id: "glm-5.2",
-    displayName: "GLM-5.2",
-    contextWindow: 524288,
-    maxOutputTokens: 64000,
+    id: "deepseek-v4.1-flash",
+    displayName: "DeepSeek V4.1 Flash",
+    contextWindow: 1048576,
+    maxOutputTokens: 384000,
+    reasoning: {
+      defaultLevel: "high",
+      levels: [
+        {
+          id: "low",
+          description: "Use DeepSeek low reasoning effort",
+          piLevel: "low",
+          openCodeOptions: { reasoningEffort: "low" }
+        },
+        {
+          id: "high",
+          description: "Use DeepSeek high reasoning effort",
+          piLevel: "high",
+          openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use DeepSeek maximum reasoning effort",
+          codexEffort: "xhigh",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
+  },
+  {
+    id: "glm-5.3",
+    displayName: "GLM-5.3",
+    contextWindow: 1048576,
+    maxOutputTokens: 131000,
     reasoning: {
       defaultLevel: "max",
       levels: [
@@ -56,6 +86,83 @@ export const ZRO_MODELS = [
           description: "Use GLM maximum reasoning effort",
           piLevel: "xhigh",
           openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
+  },
+  {
+    id: "glm-5.3-flash",
+    displayName: "GLM-5.3 Flash",
+    contextWindow: 1048576,
+    maxOutputTokens: 64000,
+    reasoning: {
+      defaultLevel: "max",
+      levels: [
+        {
+          id: "none",
+          description: "Disable reasoning for the lowest latency",
+          codexEffort: "disabled",
+          piLevel: "off",
+          openCodeOptions: { reasoningEffort: "none" }
+        },
+        {
+          id: "high",
+          description: "Use GLM High reasoning effort",
+          piLevel: "high",
+          openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use GLM maximum reasoning effort",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
+  },
+  {
+    id: "dolly1-security",
+    displayName: "Dolly 1 Security",
+    contextWindow: 1048576,
+    maxOutputTokens: 64000,
+    reasoning: {
+      defaultLevel: "max",
+      levels: [
+        {
+          id: "none",
+          description: "Disable reasoning for the lowest latency",
+          codexEffort: "disabled",
+          piLevel: "off",
+          openCodeOptions: { reasoningEffort: "none" }
+        },
+        {
+          id: "high",
+          description: "Use GLM High reasoning effort",
+          piLevel: "high",
+          openCodeOptions: { reasoningEffort: "high" }
+        },
+        {
+          id: "max",
+          description: "Use GLM maximum reasoning effort",
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
+  },
+  {
+    id: "auto",
+    displayName: "Auto",
+    contextWindow: 1048576,
+    maxOutputTokens: 131000,
+    reasoning: {
+      defaultLevel: "auto",
+      levels: [
+        {
+          id: "auto",
+          description: "Let the Auto router pick the model per request",
+          piLevel: "medium",
+          openCodeOptions: {}
         }
       ]
     }
@@ -89,33 +196,9 @@ export const ZRO_MODELS = [
         }
       ]
     }
-  },
-  {
-    id: "deepseek-v4-flash-0731",
-    displayName: "DeepSeek V4 Flash",
-    contextWindow: 1048576,
-    maxOutputTokens: 384000,
-    reasoning: {
-      defaultLevel: "high",
-      levels: [
-        {
-          id: "none",
-          description: "Disable reasoning for the lowest latency",
-          codexEffort: "disabled",
-          piLevel: "off",
-          openCodeOptions: { reasoningEffort: "none" }
-        },
-        {
-          id: "high",
-          description: "Use DeepSeek high reasoning effort",
-          piLevel: "high",
-          openCodeOptions: { reasoningEffort: "high" }
-        }
-      ]
-    }
   }
 ] as const satisfies readonly ZroModel[];
 
-export const DEFAULT_MODEL = "glm-5.2";
+export const DEFAULT_MODEL = "deepseek-v4.1-flash";
 
 export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "hermes", "openclaw", "pi", "prime"] as const;

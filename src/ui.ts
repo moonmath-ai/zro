@@ -31,7 +31,7 @@ export function helpText(colors: Theme): string {
 
 ${colors.strong("Open an agent")}
   zro claude                 Open Claude Code on the default model
-  zro codex -m glm-5.2       Pick a model for this session
+  zro codex -m deepseek-v4.1-flash  Pick a model for this session
   zro oc -- --help           Use an alias and pass native arguments
   zro again                  Reopen the last tool and model
 

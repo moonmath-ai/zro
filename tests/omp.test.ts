@@ -70,7 +70,7 @@ auth:
       tool: "omp",
       label: "Oh My Pi",
       command: "omp",
-      model: "glm-5.2",
+      model: "deepseek-v4.1-flash",
       args: ["--print", "hello"],
     });
     for (const key of [
@@ -127,10 +127,10 @@ auth:
     expect(overlay).toMatchObject({
       enabledModels: [`${PROVIDER_ID}/*`],
       modelRoles: {
-        default: `${PROVIDER_ID}/glm-5.2:max`,
-        smol: `${PROVIDER_ID}/glm-5.2:max`,
-        slow: `${PROVIDER_ID}/glm-5.2:max`,
-        plan: `${PROVIDER_ID}/glm-5.2:max`,
+        default: `${PROVIDER_ID}/deepseek-v4.1-flash:high`,
+        smol: `${PROVIDER_ID}/deepseek-v4.1-flash:high`,
+        slow: `${PROVIDER_ID}/deepseek-v4.1-flash:high`,
+        plan: `${PROVIDER_ID}/deepseek-v4.1-flash:high`,
       },
       startup: {
         quiet: true,
@@ -176,7 +176,7 @@ auth:
       });
     }
 
-    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.2");
+    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.3");
     expect(glm.thinking).toEqual({
       mode: "effort",
       efforts: ["minimal", "high", "max"],
@@ -196,13 +196,15 @@ auth:
       reasoningEffortMap: { low: "low", high: "high", max: "max" },
     });
 
-    const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4-flash-0731");
+    const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4.1-flash");
     expect(deepseek.thinking).toEqual({
       mode: "effort",
-      efforts: ["minimal", "high"],
+      efforts: ["low", "high", "max"],
       defaultLevel: "high",
     });
-    expect(deepseek.compat).toEqual({ reasoningEffortMap: { minimal: "none", high: "high" } });
+    expect(deepseek.compat).toEqual({
+      reasoningEffortMap: { low: "low", high: "high", max: "max" },
+    });
 
     const mcpFile = findFile(plan.files, "mcp.json");
     const mcp = JSON.parse(String(mcpFile.contents));
@@ -267,7 +269,7 @@ auth:
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.2" });
+    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "deepseek-v4.1-flash" });
     expect(preview.environment.ZRO_API_KEY).not.toContain("preview-secret");
     expect(preview.environment.ZRO_MCP_AUTHORIZATION).not.toContain("preview-secret");
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -320,7 +322,7 @@ function context(
     apiKey: "sk-omp-secret",
     apiKeySource: "env",
     env,
-    model: "glm-5.2",
+    model: "deepseek-v4.1-flash",
     models: ZRO_MODELS,
     extraArgs: ["--print", "hello"],
     homeDir,

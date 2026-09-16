@@ -178,7 +178,7 @@ describe("zro experience", () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-launch-"));
     const stdout = new PassThrough();
     let sessionHome = "";
-    const code = await run(["codex", "-m", "glm-5.2", "exec", "hello"], {
+    const code = await run(["codex", "-m", "deepseek-v4.1-flash", "exec", "hello"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-new-secret" },
       fetch: async (input, init) => {
@@ -188,7 +188,7 @@ describe("zro experience", () => {
       },
       spawn: fakeExitSpawn((command, args, options) => {
         expect(command).toBe("codex");
-        expect(args).toEqual(["exec", "-c", 'model="glm-5.2"', "hello"]);
+        expect(args).toEqual(["exec", "-c", 'model="deepseek-v4.1-flash"', "hello"]);
         expect(options.env.ZRO_API_KEY).toBe("sk-new-secret");
         sessionHome = String(options.env.CODEX_HOME);
       })
@@ -198,7 +198,7 @@ describe("zro experience", () => {
     const preferences = JSON.parse(
       await fs.readFile(path.join(home, ".config", "zro", "preferences.json"), "utf8")
     );
-    expect(preferences).toMatchObject({ lastTool: "codex", lastModel: "glm-5.2" });
+    expect(preferences).toMatchObject({ lastTool: "codex", lastModel: "deepseek-v4.1-flash" });
     await expect(fs.stat(sessionHome)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -350,7 +350,7 @@ describe("zro experience", () => {
     await fs.writeFile(path.join(credentialDir, "credentials.json"), JSON.stringify({ apiKey: "sk-stored" }));
     await fs.mkdir(codexAppDir);
     await fs.writeFile(path.join(codexAppDir, ".env"), "ZRO_API_KEY=sk-stored\n");
-    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"glm-5.2\"\n");
+    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"deepseek-v4.1-flash\"\n");
     const catalogPath = path.join(home, ".cache", "zro", "model-catalog.json");
     await fs.mkdir(path.dirname(catalogPath), { recursive: true });
     await fs.writeFile(catalogPath, JSON.stringify(dynamicCatalogResponse()));
@@ -370,7 +370,7 @@ describe("zro experience", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(catalogPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(path.join(codexAppDir, "config.toml"), "utf8"))
-      .resolves.toBe("model = \"glm-5.2\"\n");
+      .resolves.toBe("model = \"deepseek-v4.1-flash\"\n");
   });
 
   it("removes the Codex App key when it is the only stored credential", async () => {

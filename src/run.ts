@@ -771,7 +771,7 @@ async function models(
     io.stdout.write(`\n  ${isDefault ? colors.accent("◆") : colors.muted("◇")} ${colors.strong(model.displayName)}  ${colors.muted(model.id)}${isDefault ? colors.accent("  default") : ""}\n`);
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }
-  io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.2\n");
+  io.stdout.write("\nChoose per session with -m, for example: zro codex -m deepseek-v4.1-flash\n");
   return 0;
 }
 
