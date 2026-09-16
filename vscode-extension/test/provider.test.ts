@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   toChatInfo,
-  toChatInfos,
   buildRequestBody,
-  buildEntryRequestBody,
-  resolveEntry,
   toOpenAiMessages,
   applyReasoningEffort,
   streamChatResponse
@@ -20,6 +17,7 @@ import {
   __resetConfig
 } from "./mocks/vscode.js";
 import { CONFIG_SECTION, SETTING_REASONING_EFFORT, type ZroReasoningConfig } from "../src/constants.js";
+import { effortFromModelConfiguration } from "../src/reasoning.js";
 import type { LanguageModelChatInformation, LanguageModelChatRequestMessage } from "vscode";
 
 const DEFAULT_MODEL: ZroModelInput = {
@@ -93,12 +91,13 @@ describe("toChatInfo", () => {
     expect(info.capabilities).toEqual({ toolCalling: true, imageInput: false });
   });
 
-  it("attaches a thinking-effort configuration schema for reasoning models", () => {
+  it("attaches the thinking-effort dropdown schema for reasoning models", () => {
     const info = toChatInfo(REASONING_MODEL);
     expect(info.configurationSchema?.properties.reasoningEffort).toEqual({
       type: "string",
       title: "Thinking Effort",
       enum: ["none", "high", "max"],
+      enumItemLabels: ["No thinking", "High", "Max"],
       enumDescriptions: ["off", "mid", "top"],
       default: "max",
       group: "navigation"
@@ -107,43 +106,6 @@ describe("toChatInfo", () => {
 
   it("omits the configuration schema for models without reasoning", () => {
     expect(toChatInfo(DEFAULT_MODEL).configurationSchema).toBeUndefined();
-  });
-});
-
-describe("toChatInfos", () => {
-  it("lists one entry per non-default level, plus the model's own row", () => {
-    const infos = toChatInfos(REASONING_MODEL);
-    expect(infos.map((i) => i.id)).toEqual([
-      "glm-5.2",
-      "glm-5.2--none",
-      "glm-5.2--high"
-    ]);
-    expect(infos.map((i) => i.name)).toEqual([
-      "ZRO GLM-5.2",
-      "ZRO GLM-5.2 · No thinking",
-      "ZRO GLM-5.2 · High"
-    ]);
-  });
-
-  it("leaves non-reasoning models as a single entry", () => {
-    expect(toChatInfos(DEFAULT_MODEL).map((i) => i.id)).toEqual(["glm-5.2"]);
-  });
-
-  it("keeps every entry in the same family with the same limits", () => {
-    const infos = toChatInfos(REASONING_MODEL);
-    for (const info of infos) {
-      expect(info.family).toBe("zro-glm-5.2");
-      expect(info.maxOutputTokens).toBe(64_000);
-      expect(info.maxInputTokens).toBe(524_288 - 64_000);
-    }
-  });
-
-  it("keeps the configuration dropdown on the model row only", () => {
-    const infos = toChatInfos(REASONING_MODEL);
-    expect(infos[0].configurationSchema?.properties.reasoningEffort).toBeDefined();
-    for (const variant of infos.slice(1)) {
-      expect(variant.configurationSchema).toBeUndefined();
-    }
   });
 });
 
@@ -278,81 +240,54 @@ describe("streamChatResponse usage reporting", () => {
   });
 });
 
-describe("resolveEntry", () => {
-  it("resolves a level entry to the catalog model plus its level", () => {
-    expect(resolveEntry(REASONING_MODEL, "glm-5.2--high")).toEqual({
-      modelId: "glm-5.2",
-      reasoning: REASONING_MODEL.reasoning,
-      effort: "high"
-    });
-  });
+/**
+ * The row's "Thinking Effort" dropdown reaches the provider as
+ * `options.modelConfiguration`. This mirrors the response path: build the body,
+ * read the dropdown choice, apply it.
+ */
+describe("reasoning effort from the row dropdown", () => {
+  const REASONING = REASONING_MODEL.reasoning!;
 
-  it("leaves the model's own entry without a fixed level", () => {
-    const entry = resolveEntry(REASONING_MODEL, "glm-5.2");
-    expect(entry.modelId).toBe("glm-5.2");
-    expect(entry.effort).toBeUndefined();
-  });
-
-  it("ignores a level the model does not advertise", () => {
-    expect(resolveEntry(REASONING_MODEL, "glm-5.2--xhigh").effort).toBeUndefined();
-    expect(resolveEntry(DEFAULT_MODEL, "glm-5.2--high").effort).toBeUndefined();
-  });
-});
-
-describe("buildEntryRequestBody", () => {
-  const entryModel: ZroModelInput = {
-    ...REASONING_MODEL,
-    reasoning: {
-      defaultLevel: "high",
-      levels: [
-        { id: "none", description: "off" },
-        { id: "high", description: "mid" },
-        { id: "max", description: "top" }
-      ]
-    }
-  };
+  function bodyFor(options: Record<string, unknown>): Record<string, unknown> {
+    const body = buildRequestBody(chatInfo(), [], options);
+    const chosen = effortFromModelConfiguration(options.modelConfiguration, REASONING);
+    applyReasoningEffort(body, REASONING, chosen);
+    return body;
+  }
 
   beforeEach(() => {
     __resetConfig();
   });
 
-  it("sends the catalog model id and the entry's level", () => {
-    const info = toChatInfos(entryModel);
-    const maxInfo = info.find((i) => i.id === "glm-5.2--max")!;
-    const body = buildEntryRequestBody(maxInfo, [], {}, resolveEntry(entryModel, maxInfo.id));
+  it("sends the level chosen in the dropdown", () => {
+    const body = bodyFor({ modelConfiguration: { reasoningEffort: "high" } });
     expect(body.model).toBe("glm-5.2");
-    expect(body.reasoning_effort).toBe("max");
+    expect(body.reasoning_effort).toBe("high");
   });
 
-  it("sends nothing for the model's default entry when no setting applies", () => {
-    const info = toChatInfos(entryModel)[0]; // glm-5.2 (default level)
-    const body = buildEntryRequestBody(info, [], {}, resolveEntry(entryModel, info.id));
-    expect(body.model).toBe("glm-5.2");
+  it("sends nothing when the dropdown is untouched", () => {
+    const body = bodyFor({});
     expect(body).not.toHaveProperty("reasoning_effort");
   });
 
-  it("lets a level entry beat the global setting", () => {
+  it("lets the dropdown choice beat the global setting", () => {
     __setConfig(CONFIG_SECTION, { [SETTING_REASONING_EFFORT]: "none" });
-    const info = toChatInfos(entryModel);
-    const maxInfo = info.find((i) => i.id === "glm-5.2--max")!;
-    const body = buildEntryRequestBody(maxInfo, [], {}, resolveEntry(entryModel, maxInfo.id));
-    expect(body.reasoning_effort).toBe("max");
+    expect(bodyFor({ modelConfiguration: { reasoningEffort: "max" } }).reasoning_effort).toBe("max");
   });
 
-  it("honors the in-picker config choice for the model's own entry", () => {
-    const info = toChatInfos(entryModel)[0];
-    const body = buildEntryRequestBody(
-      info,
-      [],
-      { modelConfiguration: { reasoningEffort: "max" } } as never,
-      resolveEntry(entryModel, info.id)
-    );
-    expect(body.reasoning_effort).toBe("max");
+  it("ignores a level the model does not advertise", () => {
+    __setConfig(CONFIG_SECTION, { [SETTING_REASONING_EFFORT]: "none" });
+    expect(bodyFor({ modelConfiguration: { reasoningEffort: "xhigh" } }).reasoning_effort).toBe("none");
+  });
+
+  it("falls back to the global setting when the dropdown is untouched", () => {
+    __setConfig(CONFIG_SECTION, { [SETTING_REASONING_EFFORT]: "none" });
+    expect(bodyFor({}).reasoning_effort).toBe("none");
   });
 
   it("leaves non-reasoning models untouched", () => {
-    const info = toChatInfos(DEFAULT_MODEL)[0];
-    const body = buildEntryRequestBody(info, [], {}, resolveEntry(DEFAULT_MODEL, info.id));
+    const body = buildRequestBody(chatInfo(), [], { modelConfiguration: { reasoningEffort: "high" } });
+    applyReasoningEffort(body, undefined, effortFromModelConfiguration({ reasoningEffort: "high" }, undefined));
     expect(body.model).toBe("glm-5.2");
     expect(body).not.toHaveProperty("reasoning_effort");
   });

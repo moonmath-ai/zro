@@ -11,9 +11,6 @@ import {
   effortLabel,
   buildReasoningConfigurationSchema,
   effortFromModelConfiguration,
-  effortEntryId,
-  parseEffortEntryId,
-  alternateLevels,
   levelLabel,
 } from "../src/reasoning.js";
 import {
@@ -126,38 +123,6 @@ describe("fetchModelCatalog reasoning", () => {
   });
 });
 
-describe("effort entry ids", () => {
-  it("round-trips a model id and level", () => {
-    const id = effortEntryId("glm-5.2", "high");
-    expect(id).toBe("glm-5.2--high");
-    expect(parseEffortEntryId(id)).toEqual({ modelId: "glm-5.2", level: "high" });
-  });
-
-  it("treats a plain model id as having no fixed level", () => {
-    expect(parseEffortEntryId("glm-5.2")).toEqual({ modelId: "glm-5.2" });
-    // Ids with single hyphens and digits are untouched.
-    expect(parseEffortEntryId("deepseek-v4-flash-0731")).toEqual({ modelId: "deepseek-v4-flash-0731" });
-  });
-
-  it("never ends in the `-fast` suffix core uses for speed variants", () => {
-    for (const level of ["none", "low", "high", "max"]) {
-      expect(effortEntryId("glm-5.2", level).endsWith("-fast")).toBe(false);
-    }
-  });
-});
-
-describe("alternateLevels", () => {
-  it("lists every level except the model's native default", () => {
-    expect(alternateLevels(GLM)).toEqual(["none", "high"]);
-    expect(alternateLevels(KIMI)).toEqual(["low", "max"]);
-  });
-
-  it("returns nothing without levels", () => {
-    expect(alternateLevels(undefined)).toEqual([]);
-    expect(alternateLevels({ defaultLevel: "high", levels: [] })).toEqual([]);
-  });
-});
-
 describe("levelLabel", () => {
   it("spells out `none` and capitalizes the rest", () => {
     expect(levelLabel("none")).toBe("No thinking");
@@ -174,6 +139,7 @@ describe("buildReasoningConfigurationSchema", () => {
           type: "string",
           title: "Thinking Effort",
           enum: ["none", "high", "max"],
+          enumItemLabels: ["No thinking", "High", "Max"],
           enumDescriptions: [
             "Disable reasoning for the lowest latency",
             "Use GLM High reasoning effort",

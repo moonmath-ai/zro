@@ -10,29 +10,17 @@ import {
 import { fetchModelCatalog } from "./catalog.js";
 import { resolveApiKey } from "./credentials.js";
 import {
-  alternateLevels,
   buildReasoningConfigurationSchema,
-  effortEntryId,
   effortFromModelConfiguration,
-  levelLabel,
-  parseEffortEntryId,
   resolveEffort,
 } from "./reasoning.js";
 
 /**
- * What a picker entry maps to on the wire, from the last
- * `provideLanguageModelChatInformation` refresh. Keys are entry ids, which for
- * reasoning models are `<modelId>--<level>` (see reasoning.ts).
+ * Reasoning config per model id, from the last
+ * `provideLanguageModelChatInformation` refresh. Feeds both the request's
+ * `reasoning_effort` and validation of the picker's chosen level.
  */
-export interface AdvertisedEntry {
-  /** Catalog model id to send as `model` (entry ids carry the level suffix). */
-  modelId: string;
-  reasoning?: ZroReasoningConfig;
-  /** Level fixed by the entry, if the entry is a level variant. */
-  effort?: string;
-}
-
-const advertisedEntries = new Map<string, AdvertisedEntry>();
+const advertisedReasoning = new Map<string, ZroReasoningConfig | undefined>();
 
 /**
  * Mime type of the data part that carries token usage back to the chat client.
@@ -66,15 +54,11 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider<ZroCha
     }
 
     const { models } = await fetchModelCatalog(apiKey);
-    advertisedEntries.clear();
-    const infos: ZroChatInformation[] = [];
+    advertisedReasoning.clear();
     for (const model of models) {
-      for (const info of toChatInfos(model)) {
-        advertisedEntries.set(info.id, resolveEntry(model, info.id));
-        infos.push(info);
-      }
+      advertisedReasoning.set(model.id, model.reasoning);
     }
-    return infos;
+    return models.map((model) => toChatInfo(model));
   }
 
   async provideLanguageModelChatResponse(
@@ -90,7 +74,16 @@ export class ZroModelProvider implements vscode.LanguageModelChatProvider<ZroCha
       return;
     }
 
-    const body = buildEntryRequestBody(model, messages, options, advertisedEntries.get(model.id));
+    const reasoning = advertisedReasoning.get(model.id);
+    const body = buildRequestBody(model, messages, options);
+    // The model's row carries a "Thinking Effort" dropdown built from this
+    // model's `configurationSchema`; the chosen level comes back here. The
+    // field isn't in @types/vscode yet, hence the structural read.
+    const pickerEffort = effortFromModelConfiguration(
+      (options as { modelConfiguration?: unknown }).modelConfiguration,
+      reasoning
+    );
+    applyReasoningEffort(body, reasoning, pickerEffort);
     const response = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -144,8 +137,6 @@ export function toChatInfo(model: ZroModel): ZroChatInformation {
   // VS Code's Copilot Chat picker groups models by `family`: if every model
   // shares one family value, the picker collapses them into a single selectable
   // entry. Use a per-model family so each ZRO model appears as its own entry.
-  // Level variants (toChatInfos) share their model's family — same underlying
-  // model, and `lm.selectChatModels({ family })` should still find all of them.
   const family = `${PROVIDER_ID}-${model.id}`;
   return {
     id: model.id,
@@ -156,8 +147,9 @@ export function toChatInfo(model: ZroModel): ZroChatInformation {
     version: "1.0.0",
     maxOutputTokens: cappedMaxOutput,
     maxInputTokens: model.contextWindow - cappedMaxOutput,
-    // Gives the model picker its per-model "Thinking Effort" dropdown on
-    // builds that honor `configurationSchema` (ignored everywhere else).
+    // The model picker renders this as the row's own "Thinking Effort"
+    // dropdown (submenu + hover button + config menu), so each model carries its
+    // levels without extra rows. Ignored by builds without the surface.
     configurationSchema: buildReasoningConfigurationSchema(model.reasoning),
     capabilities: {
       toolCalling: true,
@@ -166,81 +158,7 @@ export function toChatInfo(model: ZroModel): ZroChatInformation {
   };
 }
 
-/**
- * Every picker entry a catalog model contributes. A reasoning model yields its
- * own row (server default) plus one row per non-default level, so each level is
- * directly selectable from the model list instead of hidden in a submenu:
- *
- *   ZRO GLM-5.2              → glm-5.2            (default level)
- *   ZRO GLM-5.2 · No thinking → glm-5.2--none
- *   ZRO GLM-5.2 · High        → glm-5.2--high
- *
- * The base row keeps the model's real id (stable for pinned models, history and
- * the per-model settings keys) and the configuration dropdown; level rows carry
- * a fixed level, so they are not configurable.
- */
-export function toChatInfos(model: ZroModel): ZroChatInformation[] {
-  const base = toChatInfo(model);
-  const levels = alternateLevels(model.reasoning);
-  if (levels.length === 0) return [base];
-
-  // Drop the schema from level rows: their level is already decided, and a
-  // second way to pick one would just fight the entry.
-  const { configurationSchema: _schema, ...variantBase } = base;
-  return [
-    base,
-    ...levels.map((level) => ({
-      ...variantBase,
-      id: effortEntryId(model.id, level),
-      name: `${PROVIDER_NAME} ${model.displayName} · ${levelLabel(level)}`,
-      detail: `${model.displayName} · thinking ${level}`,
-    })),
-  ];
-}
-
 // --- Request building --------------------------------------------------------
-
-/**
- * Map a picker entry id onto the catalog model it belongs to, plus the level the
- * entry fixes. Only levels the model actually advertises are honored, so a stale
- * entry id can never send an unsupported `reasoning_effort`.
- */
-export function resolveEntry(model: ZroModel, entryId: string): AdvertisedEntry {
-  const { level } = parseEffortEntryId(entryId);
-  const known = level && model.reasoning?.levels.some((l) => l.id === level);
-  return {
-    modelId: model.id,
-    reasoning: model.reasoning,
-    effort: known ? level : undefined,
-  };
-}
-
-/**
- * Request body for a picker entry: the wire always carries the real catalog
- * model id (level entries use a synthetic id) plus the resolved
- * `reasoning_effort`. The entry's fixed level wins over the in-picker "Thinking
- * Effort" choice, which in turn wins over the extension settings.
- */
-export function buildEntryRequestBody(
-  model: vscode.LanguageModelChatInformation,
-  messages: readonly vscode.LanguageModelChatRequestMessage[],
-  options: vscode.ProvideLanguageModelChatResponseOptions,
-  entry: AdvertisedEntry | undefined
-): Record<string, unknown> {
-  const body = buildRequestBody(model, messages, options);
-  if (entry && entry.modelId !== model.id) {
-    body.model = entry.modelId;
-  }
-  // `modelConfiguration` holds the in-picker config choice on builds that
-  // support per-model configuration; it isn't in @types/vscode yet, hence the
-  // structural read.
-  const pickerEffort = effortFromModelConfiguration(
-    (options as { modelConfiguration?: unknown }).modelConfiguration,
-    entry?.reasoning
-  );
-  applyReasoningEffort(body, entry?.reasoning, entry?.effort ?? pickerEffort);
-  return body;
-}
 
 interface OpenAiMessage {
   role: string;

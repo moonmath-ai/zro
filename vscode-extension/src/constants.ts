@@ -72,6 +72,8 @@ export interface ZroModelConfigurationProperty {
   readonly type: "string";
   readonly title: string;
   readonly enum: readonly string[];
+  /** Per-item labels for the dropdown (falls back to the enum value). */
+  readonly enumItemLabels?: readonly string[];
   readonly enumDescriptions: readonly string[];
   readonly default: string;
   readonly group?: string;
