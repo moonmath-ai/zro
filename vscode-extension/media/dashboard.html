@@ -118,6 +118,23 @@
     .effort-select:focus { outline: none; border-color: var(--accent); }
     .m-effort { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
     .m-effort .label { font-size: 11px; color: var(--muted); }
+
+    /* Per-model effort: a labelled chevron button that opens a submenu of levels. */
+    .effort-picker { position: relative; }
+    .effort-toggle { display: inline-flex; align-items: center; gap: 6px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; cursor: pointer; }
+    .effort-toggle:hover, .effort-toggle.open { border-color: var(--accent); }
+    .effort-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+    .effort-chevron { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .7; transition: transform .12s ease; }
+    .effort-toggle.open .effort-chevron { transform: rotate(180deg); }
+    .effort-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 230px; max-width: 320px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); padding: 4px; }
+    .effort-menu[hidden] { display: none; }
+    .effort-item { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; color: var(--text); font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+    .effort-item:hover { background: var(--panel-2); border-color: transparent; }
+    .effort-item.active { background: rgba(110, 168, 254, .14); }
+    .effort-check { width: 12px; flex-shrink: 0; color: var(--accent); }
+    .effort-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .effort-item-label { font-weight: 500; }
+    .effort-item-desc { color: var(--muted); font-size: 11px; line-height: 1.35; }
   </style>
 </head>
 <body>
@@ -345,10 +362,17 @@
           const effortRow = e ? `
                 <div class="m-effort">
                   <span class="label">Effort</span>
-                  <select class="effort-select" data-model="${m.id}" title="Reasoning effort for ${m.displayName}.">
-                    <option value="default"${e.override ? '' : ' selected'}>Default (${e.defaultLevel})</option>
-                    ${e.levels.map((l) => `<option value="${l.id}"${e.override === l.id ? ' selected' : ''}>${l.id}</option>`).join('')}
-                  </select>
+                  <div class="effort-picker">
+                    <button class="effort-toggle" type="button" data-model="${m.id}"
+                            aria-haspopup="menu" aria-expanded="false"
+                            title="Thinking effort for ${m.displayName}.">
+                      <span class="effort-current">${effortCurrentLabel(e)}</span>
+                      <span class="effort-chevron" aria-hidden="true"></span>
+                    </button>
+                    <div class="effort-menu" role="menu" data-model="${m.id}" hidden>
+                      ${effortMenuItems(m, e)}
+                    </div>
+                  </div>
                   <span class="pill ${e.source === 'server' ? '' : 'good'}" title="${e.source === 'server' ? 'Using the model default from the control plane.' : 'Overridden by your ZRO setting.'}">${effortSourceLabel(e.source)}</span>
                 </div>` : '';
           return `
@@ -368,9 +392,59 @@
         $$('.select-btn').forEach((b) => b.addEventListener('click', () => {
           vscode.postMessage({ type: 'selectModel', model: b.dataset.model });
         }));
+        $$('.effort-toggle').forEach((b) => b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const menu = b.parentElement.querySelector('.effort-menu');
+          const wasOpen = !!menu && !menu.hidden;
+          closeEffortMenus();
+          if (!menu || wasOpen) return;
+          menu.hidden = false;
+          b.classList.add('open');
+          b.setAttribute('aria-expanded', 'true');
+        }));
+        $$('.effort-item').forEach((b) => b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          vscode.postMessage({ type: 'setEffort', model: b.dataset.model, level: b.dataset.level });
+        }));
         $$('.effort-select').forEach((s) => s.addEventListener('change', () => {
           vscode.postMessage({ type: 'setEffort', model: s.dataset.model, level: s.value });
         }));
+      }
+
+      /* --- Per-model thinking-effort submenu ---------------------------------
+         Each model row gets an "Effort" chevron button; the arrow opens a
+         submenu listing that model's own levels (plus the native default), so
+         the choice is reachable per model without a separate settings screen.
+         Level ids are prettified the same way the extension's reasoning.ts
+         does it ("none" → "No thinking"). */
+
+      function levelLabel(id) {
+        if (id === 'none') return 'No thinking';
+        return String(id).charAt(0).toUpperCase() + String(id).slice(1);
+      }
+
+      function effortCurrentLabel(e) {
+        return e.override ? levelLabel(e.override) : `Default (${levelLabel(e.defaultLevel)})`;
+      }
+
+      function effortMenuItems(m, e) {
+        const current = e.override || 'default';
+        const item = (value, label, desc) => `
+          <button class="effort-item${current === value ? ' active' : ''}" type="button" role="menuitemradio"
+                  aria-checked="${current === value}" data-model="${m.id}" data-level="${value}"
+                  title="${desc}">
+            <span class="effort-check" aria-hidden="true">${current === value ? '✓' : ''}</span>
+            <span class="effort-item-text"><span class="effort-item-label">${label}</span>${desc ? `<span class="effort-item-desc">${desc}</span>` : ''}</span>
+          </button>`;
+        return [
+          item('default', `Default (${levelLabel(e.defaultLevel)})`, "Use the model's native level from the control plane."),
+          ...e.levels.filter((l) => l.id !== e.defaultLevel).map((l) => item(l.id, levelLabel(l.id), l.description)),
+        ].join('');
+      }
+
+      function closeEffortMenus() {
+        $$('.effort-menu').forEach((menu) => { menu.hidden = true; });
+        $$('.effort-toggle').forEach((b) => { b.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); });
       }
 
       function renderCost() {
@@ -491,6 +565,14 @@
       $('#qa-logout').addEventListener('click', () => vscode.postMessage({ type: 'logout' }));
       $('#cache-flush').addEventListener('click', () => vscode.postMessage({ type: 'clearCache' }));
       $('#topup-btn').addEventListener('click', () => vscode.postMessage({ type: 'openBrowser', url: ACCOUNT_URL }));
+
+      // Close a model's effort submenu when clicking elsewhere or pressing Escape.
+      document.addEventListener('click', (ev) => {
+        const target = ev.target;
+        if (target && target.closest && target.closest('.effort-picker')) return;
+        closeEffortMenus();
+      });
+      document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeEffortMenus(); });
 
       window.addEventListener('message', (e) => {
         const msg = e.data;

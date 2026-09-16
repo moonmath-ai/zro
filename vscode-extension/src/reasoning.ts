@@ -34,11 +34,10 @@ import {
  * schema when a model advertises reasoning levels; the extension settings
  * remain as the fallback on builds without the surface.
  *
- * Levels are also listed directly: `toChatInfos` expands each reasoning model
- * into one entry per level, using the id encoding below, so a level can be
- * picked straight from the model list. Precedence for a request is: the level
- * entry's own level → the config dropdown value → per-model/global settings →
- * the model's native default. All of this is `default`-friendly: when nothing
+ * Levels live on the model's own row — no duplicated entries per level. The
+ * row's dropdown sets `options.modelConfiguration.reasoningEffort`, and the
+ * precedence for a request is: that choice → per-model override → global setting
+ * → the model's native default. All of this is `default`-friendly: when nothing
  * applies, `reasoning_effort` is omitted from the request.
  */
 
@@ -46,47 +45,9 @@ import {
 export const MODEL_CONFIG_REASONING_EFFORT = "reasoningEffort";
 
 /**
- * Separator between a model id and its reasoning level in a synthetic picker
- * entry id. Reasoning models are advertised once per level so each level is a
- * directly selectable row in the model picker; the entry id carries the level.
- *
- * Two constraints drove the choice: real catalog ids only use single hyphens
- * (`deepseek-v4-flash-0731`), and VS Code treats an id ending in `-fast` as the
- * fast half of a two-way speed-variant toggle — so this neither collides with
- * real ids nor triggers that pairing.
+ * Short label for a level id, used as the dropdown item's label so the list
+ * reads better than the raw id ("none" → "No thinking").
  */
-export const EFFORT_ENTRY_SEPARATOR = "--";
-
-/** Picker entry id for one level of a model (e.g. `glm-5.2--high`). */
-export function effortEntryId(modelId: string, level: string): string {
-  return `${modelId}${EFFORT_ENTRY_SEPARATOR}${level}`;
-}
-
-/**
- * Split a picker entry id back into the catalog model id and its fixed level.
- * `level` is undefined for the model's own entry (the plain id), which means
- * "server default" unless a setting or the config dropdown says otherwise.
- */
-export function parseEffortEntryId(entryId: string): { modelId: string; level?: string } {
-  const at = entryId.lastIndexOf(EFFORT_ENTRY_SEPARATOR);
-  if (at <= 0) return { modelId: entryId };
-  const level = entryId.slice(at + EFFORT_ENTRY_SEPARATOR.length);
-  return level ? { modelId: entryId.slice(0, at), level } : { modelId: entryId };
-}
-
-/**
- * Every level except the model's native default, in catalog order. The default
- * level gets no extra entry: the model's own row already means "whatever the
- * server recommends", so a duplicate row would be noise.
- */
-export function alternateLevels(reasoning: ZroReasoningConfig | undefined): string[] {
-  if (!reasoning?.levels?.length) return [];
-  return reasoning.levels
-    .map((level) => level.id)
-    .filter((id) => id !== reasoning.defaultLevel);
-}
-
-/** Short label for a level id, for picker entry names ("none" → "No thinking"). */
 export function levelLabel(level: string): string {
   if (level === "none") return "No thinking";
   return level.charAt(0).toUpperCase() + level.slice(1);
@@ -110,6 +71,9 @@ export function buildReasoningConfigurationSchema(
         type: "string",
         title: "Thinking Effort",
         enum: reasoning.levels.map((level) => level.id),
+        // Labels + tooltips for each dropdown item, so the row's dropdown reads
+        // "No thinking" rather than "none".
+        enumItemLabels: reasoning.levels.map((level) => levelLabel(level.id)),
         enumDescriptions: reasoning.levels.map((level) => level.description),
         default: reasoning.defaultLevel,
         group: "navigation",
