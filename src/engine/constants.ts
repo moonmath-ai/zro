@@ -18,12 +18,25 @@ export interface ZroReasoningConfig {
   levels: readonly ZroReasoningLevel[];
 }
 
+export type ZroModality = "text" | "image" | "video" | "audio" | "pdf";
+
+export interface ZroModalities {
+  input: readonly ZroModality[];
+  output: readonly ZroModality[];
+}
+
 export interface ZroModel {
   id: string;
   displayName: string;
   contextWindow: number;
   maxOutputTokens: number;
+  modalities: ZroModalities;
   reasoning: ZroReasoningConfig;
+}
+
+/** True when a model accepts non-text input (image/video/audio/pdf). */
+export function supportsAttachments(model: Pick<ZroModel, "modalities">): boolean {
+  return model.modalities.input.some((modality) => modality !== "text");
 }
 
 export const ZRO_MODELS = [
@@ -32,6 +45,7 @@ export const ZRO_MODELS = [
     displayName: "GLM-5.2",
     contextWindow: 524288,
     maxOutputTokens: 64000,
+    modalities: { input: ["text"], output: ["text"] },
     reasoning: {
       defaultLevel: "max",
       levels: [
@@ -65,6 +79,7 @@ export const ZRO_MODELS = [
     displayName: "Kimi K3",
     contextWindow: 1048576,
     maxOutputTokens: 1048576,
+    modalities: { input: ["text", "image"], output: ["text"] },
     reasoning: {
       defaultLevel: "high",
       levels: [
@@ -95,6 +110,7 @@ export const ZRO_MODELS = [
     displayName: "DeepSeek V4 Flash",
     contextWindow: 1048576,
     maxOutputTokens: 384000,
+    modalities: { input: ["text"], output: ["text"] },
     reasoning: {
       defaultLevel: "high",
       levels: [

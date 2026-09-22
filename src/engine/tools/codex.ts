@@ -160,7 +160,7 @@ export function buildCodexModelCatalog(modelSpecs: readonly ZroModel[]): Record<
       max_context_window: model.contextWindow,
       effective_context_window_percent: 95,
       experimental_supported_tools: [],
-      input_modalities: ["text"],
+      input_modalities: model.modalities.input,
       supports_search_tool: false,
       use_responses_lite: false
     }))

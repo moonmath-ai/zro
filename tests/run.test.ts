@@ -538,6 +538,10 @@ function dynamicCatalogResponse() {
         displayName: "Future Model",
         contextWindow: 200_000,
         maxOutputTokens: 20_000,
+        modalities: {
+          input: ["text"] as const,
+          output: ["text"] as const,
+        },
         reasoning: {
           defaultLevel: "high",
           levels: [
