@@ -305,18 +305,12 @@ export function buildVscodeLmGuide(
 
 // --- Orchestrator ------------------------------------------------------------
 
-interface ConfigureOptions {
-  /** Show the plaintext-key confirmation prompt before writing files. */
-  confirmPlaintext?: boolean;
-}
-
 /**
  * Run the "configure in other extensions" flow. Called by the
  * `zro.configureExtensions` command.
  */
 export async function configureInExtensions(
-  context: vscode.ExtensionContext,
-  options: ConfigureOptions = {}
+  context: vscode.ExtensionContext
 ): Promise<void> {
   const apiKey = await resolveApiKey(context);
   if (!apiKey) {

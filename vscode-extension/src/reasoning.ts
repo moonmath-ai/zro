@@ -229,9 +229,6 @@ export async function promptForEffort(models: readonly ZroModel[]): Promise<void
 
   const settings = readEffortSettings();
 
-  interface LevelPick extends vscode.QuickPickItem {
-    effort: string;
-  }
   const chosen =
     target.modelId === null
       ? await pickGlobalLevel(withReasoning, settings.global)

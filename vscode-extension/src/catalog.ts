@@ -54,6 +54,12 @@ export interface CatalogResult {
 }
 
 /**
+ * Result used whenever the live catalog is unreachable, errors, or comes back
+ * empty, so the model picker is never left with nothing to show.
+ */
+const FALLBACK_CATALOG: CatalogResult = { default: ZRO_MODELS[0].id, models: ZRO_MODELS };
+
+/**
  * Fetch the live model catalog from the control plane, authenticated with the
  * same API key used for inference. Falls back to the static `ZRO_MODELS` list
  * when the endpoint is unreachable or returns an error, so the picker is never
@@ -68,7 +74,7 @@ export async function fetchModelCatalog(
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: signal ?? AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return { default: ZRO_MODELS[0].id, models: ZRO_MODELS };
+    if (!response.ok) return FALLBACK_CATALOG;
 
     const catalog = (await response.json()) as RemoteCatalog;
     const models = (catalog.models ?? [])
@@ -82,19 +88,17 @@ export async function fetchModelCatalog(
         pricing: parsePricing(model.pricing),
       }));
 
-    if (models.length === 0) {
-      return { default: ZRO_MODELS[0].id, models: ZRO_MODELS };
-    }
+    if (models.length === 0) return FALLBACK_CATALOG;
 
-    const fallbackDefault = ZRO_MODELS[0].id;
+    // `models` is non-empty here, so every branch yields a real id.
     const defaultId =
       catalog.default && models.some((model) => model.id === catalog.default)
         ? catalog.default
         : models[0].id;
 
-    return { default: defaultId ?? fallbackDefault, models };
+    return { default: defaultId, models };
   } catch {
-    return { default: ZRO_MODELS[0].id, models: ZRO_MODELS };
+    return FALLBACK_CATALOG;
   }
 }
 

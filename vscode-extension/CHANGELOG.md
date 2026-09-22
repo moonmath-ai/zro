@@ -2,7 +2,7 @@
 
 All notable changes to the ZRO VS Code extension are documented here.
 
-## [Unreleased]
+## [0.1.3] — 2026-09-22
 
 ### Added
 

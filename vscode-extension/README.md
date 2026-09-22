@@ -81,7 +81,7 @@ The Team tab shows account-level team information when your plan includes shared
 ### From a .vsix
 
 ```bash
-code --install-extension zro-0.1.0.vsix
+code --install-extension zro-<version>.vsix
 ```
 
 Or in VS Code: Extensions → `…` → *Install from VSIX…*.

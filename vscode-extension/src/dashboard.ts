@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { fetchModelCatalog, type CatalogResult } from "./catalog.js";
-import { fetchAccountStatus, type AccountStatusResult } from "./account.js";
+import { fetchAccountStatus } from "./account.js";
 import { resolveCredential, storeApiKey, deleteApiKey, maskKey, type CredentialSource } from "./credentials.js";
 import { AuthFlowController } from "./auth.js";
 import { setEffort, resolveEffort, readEffortSettings } from "./reasoning.js";

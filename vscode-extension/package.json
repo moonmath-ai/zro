@@ -1,15 +1,18 @@
 {
   "name": "zro",
-  "publisher": "MoonMathAi",
+  "publisher": "moonmathai",
   "displayName": "ZRO",
   "description": "Use ZRO models as a Copilot Chat model provider in VS Code.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "UNLICENSED",
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/moonmath-ai/zro.git",
     "directory": "vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/moonmath-ai/zro/issues"
   },
   "homepage": "https://moonmath.ai",
   "keywords": [
