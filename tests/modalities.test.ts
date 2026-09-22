@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseModelCatalog } from "../src/model-catalog.js";
-import { buildCodexModelCatalog } from "../src/engine/tools/codex.js";
+import { buildCodexConfig, buildCodexModelCatalog } from "../src/engine/tools/codex.js";
 import { buildOpenCodeConfig } from "../src/engine/tools/opencode.js";
 import { ZRO_MODELS } from "../src/engine/constants.js";
 
@@ -127,6 +127,25 @@ describe("codex emitter derives input_modalities from the model", () => {
 
     const glm = models.find((entry) => entry.slug === "glm-5.3");
     expect(glm?.input_modalities).toEqual(["text"]);
+  });
+});
+
+describe("codex config writes a documented reasoning effort for every bundled default", () => {
+  const supportedEfforts = new Set(["minimal", "low", "medium", "high", "xhigh", "disabled"]);
+
+  it("never emits a bare level id like 'auto' into model_reasoning_effort", () => {
+    for (const model of ZRO_MODELS) {
+      const config = buildCodexConfig(model.id, { modelSpec: model });
+      const match = config.match(/model_reasoning_effort = "(.*)"/);
+      expect(match, model.id).toBeDefined();
+      expect(supportedEfforts.has(match![1]), `${model.id}: ${match![1]}`).toBe(true);
+    }
+  });
+
+  it("maps the auto router to a pinned medium effort", () => {
+    const auto = ZRO_MODELS.find((model) => model.id === "auto");
+    const config = buildCodexConfig("auto", { modelSpec: auto });
+    expect(config).toContain('model_reasoning_effort = "medium"');
   });
 });
 

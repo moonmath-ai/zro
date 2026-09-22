@@ -131,7 +131,8 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       model: preferences.lastModel,
       dryRun: request.dryRun,
       output: request.output,
-      extraArgs: []
+      extraArgs: [],
+      aliases: request.aliases
     };
   }
 
@@ -199,7 +200,7 @@ async function launch(
 
   const model = request.model ?? catalog.default;
   if (!catalog.models.some((candidate) => candidate.id === model)) {
-    io.stderr.write(`Unknown model "${model}". Run zro models.\n`);
+    io.stderr.write(`Unknown model "${model}". It is not offered by your account's catalog. Run zro models.\n`);
     return 1;
   }
 
@@ -215,7 +216,7 @@ async function launch(
       return 1;
     }
     if (modelId && !catalog.models.some((candidate) => candidate.id === modelId)) {
-      io.stderr.write(`Unknown model "${modelId}" for alias ${slot.toLowerCase()}. Run zro models.\n`);
+      io.stderr.write(`Unknown model "${modelId}" for alias ${slot.toLowerCase()}. It is not offered by your account's catalog. Run zro models.\n`);
       return 1;
     }
     modelAliases ??= {};
@@ -930,10 +931,31 @@ async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): P
   });
 }
 
-function redact(key: string, value: string, secret: string): string {
-  if (/\b(KEY|TOKEN|SECRET|AUTH)\b/i.test(key) || value.includes(secret)) return maskKey(value);
+export function redact(key: string, value: string, secret: string): string {
+  const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
+  if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
+    return maskKey(value);
+  }
   return value;
 }
+
+const SECRET_NAME_TOKENS = new Set([
+  "APIKEY",
+  "APIKEYS",
+  "APISECRET",
+  "APISECRETS",
+  "AUTH",
+  "AUTHORIZATION",
+  "CREDENTIAL",
+  "CREDENTIALS",
+  "KEY",
+  "KEYS",
+  "PASSWORD",
+  "PASSPHRASE",
+  "SECRET",
+  "SECRETS",
+  "TOKEN"
+]);
 
 function shellPreview(argv: string[]): string {
   return argv.map((value) => /^[A-Za-z0-9_./:=@+-]+$/.test(value)

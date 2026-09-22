@@ -52,7 +52,7 @@ export function parseArgs(argv: string[]): CliRequest {
   if (command === "again") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "again", dryRun: parsed.dryRun, output: parsed.output };
+    return { command: "again", dryRun: parsed.dryRun, output: parsed.output, aliases: parsed.aliases };
   }
   if (command === "feedback") {
     const parsed = parseOptions(argv.slice(1), false);

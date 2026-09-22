@@ -99,6 +99,7 @@ export const ZRO_MODELS = [
         {
           id: "max",
           description: "Use GLM maximum reasoning effort",
+          codexEffort: "xhigh",
           piLevel: "xhigh",
           openCodeOptions: { reasoningEffort: "max" }
         }
@@ -130,6 +131,7 @@ export const ZRO_MODELS = [
         {
           id: "max",
           description: "Use GLM maximum reasoning effort",
+          codexEffort: "xhigh",
           piLevel: "xhigh",
           openCodeOptions: { reasoningEffort: "max" }
         }
@@ -161,6 +163,7 @@ export const ZRO_MODELS = [
         {
           id: "max",
           description: "Use GLM maximum reasoning effort",
+          codexEffort: "xhigh",
           piLevel: "xhigh",
           openCodeOptions: { reasoningEffort: "max" }
         }
@@ -179,6 +182,9 @@ export const ZRO_MODELS = [
         {
           id: "auto",
           description: "Let the Auto router pick the model per request",
+          // Codex has no "auto" effort; pin the documented value that matches
+          // this level's piLevel so config.toml never carries a bare "auto".
+          codexEffort: "medium",
           piLevel: "medium",
           openCodeOptions: {}
         }

@@ -173,7 +173,7 @@ function codexReasoningEffort(
   return level ? level.codexEffort ?? level.id : undefined;
 }
 
-function buildCodexConfig(
+export function buildCodexConfig(
   model: string,
   options: { catalogPath?: string; modelSpec?: ZroModel } = {}
 ): string {

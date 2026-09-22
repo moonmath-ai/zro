@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, type ZroModel } from "../constants.js";
+import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, ZRO_MODELS, type ZroModel } from "../constants.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 
@@ -83,25 +83,45 @@ function buildClaudeModelEnv(
     ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
   };
 
-  const selectedSpec = modelSpecs.find((m) => m.id === selectedModel);
+  // The active catalog is authoritative, but a caller may pass a model the
+  // remote catalog no longer lists; fall back to the bundled lineup so the
+  // context limit is never silently missing.
+  const selectedSpec = modelSpecs.find((m) => m.id === selectedModel)
+    ?? ZRO_MODELS.find((m) => m.id === selectedModel);
   if (selectedSpec) {
     env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(selectedSpec.contextWindow);
   }
 
-  // Tier-map the remaining models into the alias slots by output capacity:
-  // opus gets the beefiest, haiku (used for cheap background tasks) the smallest.
+  // Alias slots: explicit --alias values win and reserve their model; the
+  // remaining slots fill from the unclaimed catalog, tier-mapped by output
+  // capacity (opus gets the beefiest, haiku — used for cheap background tasks
+  // — the smallest) with deterministic tie-breaks so the mapping never depends
+  // on catalog order. Writing these into plan.env is deliberate: Zro owns the
+  // alias routing for its launches, and dropping a slot with --alias haiku=
+  // leaves any user shell value untouched.
+  const claimed = new Set([selectedModel]);
+  const dropped = new Set<string>();
   const aliasMapping: Record<string, string> = {};
-  const otherModels = modelSpecs
-    .filter((model) => model.id !== selectedModel)
-    .sort((a, b) => b.maxOutputTokens - a.maxOutputTokens)
-    .map((model) => model.id);
-  for (const [index, modelId] of otherModels.entries()) {
-    if (index >= CLAUDE_MODEL_ALIAS_SLOTS.length) break;
-    aliasMapping[CLAUDE_MODEL_ALIAS_SLOTS[index]] = modelId;
-  }
   for (const [slot, modelId] of Object.entries(modelAliases)) {
-    if (modelId) aliasMapping[slot] = modelId;
-    else delete aliasMapping[slot];
+    if (modelId) {
+      aliasMapping[slot] = modelId;
+      claimed.add(modelId);
+    } else {
+      dropped.add(slot);
+    }
+  }
+  const fillCandidates = modelSpecs
+    .filter((model) => !claimed.has(model.id))
+    .sort((a, b) =>
+      b.maxOutputTokens - a.maxOutputTokens ||
+      b.contextWindow - a.contextWindow ||
+      a.id.localeCompare(b.id)
+    );
+  let cursor = 0;
+  for (const slot of CLAUDE_MODEL_ALIAS_SLOTS) {
+    if (dropped.has(slot) || aliasMapping[slot]) continue;
+    if (cursor >= fillCandidates.length) break;
+    aliasMapping[slot] = fillCandidates[cursor++].id;
   }
 
   for (const [slot, modelId] of Object.entries(aliasMapping)) {

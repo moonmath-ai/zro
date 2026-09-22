@@ -266,12 +266,15 @@ describe("zro experience", () => {
     expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1048576");
     expect(modelArg).toBe("kimi-k3[1m]");
     expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("kimi-k3[1m]");
+    // Deterministic tier mapping: unclaimed models sort by max output tokens
+    // descending with id tie-breaks, so opus gets the beefiest model and haiku
+    // the smallest; glm-5.3-flash (fifth remaining) lands in no slot.
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("deepseek-v4.1-flash[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("glm-5.3[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("glm-5.3-flash[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("auto[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("glm-5.3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("dolly1-security[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("Zro DeepSeek V4.1 Flash");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Zro GLM-5.3 Flash");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Zro Dolly 1 Security");
   });
 
   it("lets users override Claude alias slots with --alias, including dropping one", async () => {
@@ -289,9 +292,34 @@ describe("zro experience", () => {
     expect(code).toBe(0);
     const result = JSON.parse(await streamText(stdout));
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.3[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("glm-5.3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("deepseek-v4.1-flash[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
+  });
+
+  it("forwards --alias overrides through zro again", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-again-alias-"));
+    const stdout = new PassThrough();
+
+    const launchCode = await run(["claude", "-m", "kimi-k3"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-again-secret" },
+      fetch: async () => Response.json({ data: [] }),
+      spawn: fakeExitSpawn(() => {})
+    });
+    expect(launchCode).toBe(0);
+
+    const againStdout = new PassThrough();
+    const againCode = await run(["again", "--alias", "opus=glm-5.3", "--dry-run", "--json"], {
+      ...io(home, againStdout),
+      env: { ZRO_API_KEY: "sk-again-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+    expect(againCode).toBe(0);
+    const result = JSON.parse(await streamText(againStdout));
+    expect(result.tool).toBe("claude");
+    expect(result.model).toBe("kimi-k3");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.3[1m]");
   });
 
   it("rejects alias overrides with unknown slots, unknown models, or other tools", async () => {
