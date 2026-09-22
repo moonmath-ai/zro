@@ -85,12 +85,37 @@ export interface ZroModelConfigurationSchema {
 }
 
 /**
- * `LanguageModelChatInformation` plus the configuration schema. The runtime
- * passes the field through verbatim (verified in this build's extension host),
- * older VS Code builds simply ignore it.
+ * Icon id contributed by this extension through VS Code's `icons` extension
+ * point (see `contributes.icons` in package.json; the glyph is built from
+ * media/icon.svg by scripts/build-icon-font.py).
+ *
+ * VS Code renders a model's `statusIcon` as a theme icon — literally
+ * `<span class="codicon codicon-<id>">` — so a bitmap or SVG can never appear
+ * in the picker. Registering a one-glyph font is the only way a provider can
+ * put its own mark next to its models; core then emits
+ * `.codicon-zro-logo:before { content: ...; font-family: ... }` for us.
+ */
+export const ZRO_STATUS_ICON_ID = "zro-logo";
+
+/**
+ * Theme-icon reference understood by core's picker renderer
+ * (`metadata.statusIcon`). Passed through verbatim by the extension host; not
+ * declared in @types/vscode. Without it, models from an unknown vendor render
+ * with the default placeholder glyph.
+ */
+export interface ZroStatusIcon {
+  readonly id: string;
+  readonly color?: { readonly id: string };
+}
+
+/**
+ * `LanguageModelChatInformation` plus the configuration schema and status icon.
+ * The runtime passes both fields through verbatim (verified in this build's
+ * extension host), older VS Code builds simply ignore them.
  */
 export interface ZroChatInformation extends LanguageModelChatInformation {
   readonly configurationSchema?: ZroModelConfigurationSchema;
+  readonly statusIcon?: ZroStatusIcon;
 }
 
 /** Static fallback used when the live catalog cannot be fetched. */

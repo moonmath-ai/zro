@@ -3,6 +3,7 @@ import {
   BASE_URL,
   PROVIDER_ID,
   PROVIDER_NAME,
+  ZRO_STATUS_ICON_ID,
   type ZroChatInformation,
   type ZroModel,
   type ZroReasoningConfig,
@@ -151,6 +152,11 @@ export function toChatInfo(model: ZroModel): ZroChatInformation {
     // dropdown (submenu + hover button + config menu), so each model carries its
     // levels without extra rows. Ignored by builds without the surface.
     configurationSchema: buildReasoningConfigurationSchema(model.reasoning),
+    // The glyph registered by `contributes.icons` (media/zro-logo.woff, built
+    // from media/icon.svg). The picker renders statusIcon as a theme icon, so
+    // this is the only way to show the ZRO mark there — without it, models of
+    // an unknown vendor fall back to a stock placeholder codicon.
+    statusIcon: { id: ZRO_STATUS_ICON_ID },
     capabilities: {
       toolCalling: true,
       imageInput: false

@@ -39,6 +39,15 @@
         "managementCommand": "zro.manage"
       }
     ],
+    "icons": {
+      "zro-logo": {
+        "description": "ZRO",
+        "default": {
+          "fontPath": "media/zro-logo.woff",
+          "fontCharacter": "\\e900"
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {

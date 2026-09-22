@@ -277,7 +277,11 @@ export class ZroDashboard extends ZroDashboardController {
         enableCommandUris: true,
       }
     );
-    this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "icon.png");
+    // Light/dark pair: the black mark vanishes on a dark title bar.
+    this.panel.iconPath = {
+      light: vscode.Uri.joinPath(context.extensionUri, "media", "icon.png"),
+      dark: vscode.Uri.joinPath(context.extensionUri, "media", "zro-mark-white.svg"),
+    };
     void renderHtml(this.panel.webview, context.extensionUri).then((html) => {
       this.panel.webview.html = html;
     });
@@ -417,10 +421,17 @@ async function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): Pr
   const iconUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "media", "icon.png")
   );
+  // The dashboard renders on a dark background, so its header uses the white
+  // mark. media/icon.png is the black mark and is invisible there; it is kept
+  // for light surfaces (Marketplace listing, light-theme editor tab icon).
+  const markUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "zro-mark-white.svg")
+  );
   const accountUrl = `${ENDPOINT_ROOT.replace(/\/+$/, "")}/account`;
   return html
     .replace(/\{\{cspSource\}\}/g, cspSource)
     .replace(/\{\{nonce\}\}/g, nonce)
     .replace(/\{\{iconUri\}\}/g, iconUri.toString())
+    .replace(/\{\{markUri\}\}/g, markUri.toString())
     .replace(/\{\{accountUrl\}\}/g, accountUrl);
 }
