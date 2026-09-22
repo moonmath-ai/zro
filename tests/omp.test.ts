@@ -10,8 +10,8 @@ import {
   MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
 } from "../src/engine/constants.js";
+import { TEST_MODELS } from "./fixtures.js";
 import { yamlSerializer } from "../src/engine/serializers.js";
 import { ompTool } from "../src/engine/tools/omp.js";
 import type { LaunchContext, LaunchFile } from "../src/engine/types.js";
@@ -162,8 +162,8 @@ auth:
       },
     });
     expect(JSON.stringify(modelsConfig)).not.toContain("sk-omp-secret");
-    expect(provider.models).toHaveLength(ZRO_MODELS.length);
-    for (const model of ZRO_MODELS) {
+    expect(provider.models).toHaveLength(TEST_MODELS.length);
+    for (const model of TEST_MODELS) {
       const actual = provider.models.find((candidate: any) => candidate.id === model.id);
       expect(actual).toMatchObject({
         id: model.id,
@@ -260,7 +260,7 @@ auth:
         XDG_CACHE_HOME: cache,
       },
       platform: "linux",
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: catalogFetch,
     });
 
     expect(code).toBe(0);
@@ -301,7 +301,7 @@ auth:
       },
       platform: "linux",
       spawn,
-      fetch: async () => new Response(null, { status: 200 }),
+      fetch: catalogFetch,
     };
 
     expect(await run(["omp"], io)).toBe(expectedCode);
@@ -321,7 +321,7 @@ function context(
     apiKeySource: "env",
     env,
     model: "glm-5.2",
-    models: ZRO_MODELS,
+    models: TEST_MODELS,
     extraArgs: ["--print", "hello"],
     homeDir,
     cwd: homeDir,
@@ -356,4 +356,34 @@ async function readOptionalDirectory(directory: string): Promise<string[]> {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
+}
+
+async function catalogFetch(input: string | URL | Request): Promise<Response> {
+  if (String(input).endsWith("/api/cli/models")) {
+    return Response.json({
+      version: 1,
+      default: "glm-5.2",
+      models: [
+        {
+          id: "glm-5.2",
+          displayName: "GLM-5.2",
+          contextWindow: 524_288,
+          maxOutputTokens: 64_000,
+          modalities: { input: ["text"], output: ["text"] },
+          reasoning: {
+            defaultLevel: "high",
+            levels: [
+              {
+                id: "high",
+                description: "Reason carefully",
+                piLevel: "high",
+                openCodeOptions: { reasoningEffort: "high" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  }
+  return new Response(null, { status: 200 });
 }

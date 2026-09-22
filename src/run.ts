@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_ENV_KEY } from "./engine/constants.js";
+import { ENDPOINT_ROOT, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -34,7 +34,7 @@ import { piTool } from "./engine/tools/pi.js";
 import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
-import { describeTool, TOOLS } from "./catalog.js";
+import { describeTool } from "./catalog.js";
 import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import {
@@ -44,7 +44,7 @@ import {
   type ModelCatalog,
 } from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
-import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
+import { banner, chooseConnectMethod, chooseInstall, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -135,11 +135,6 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
     };
   }
 
-  if (request.install && !request.dryRun) {
-    const ready = await ensureHarnessInstalled(request.tool, io, env);
-    if (!ready) return 1;
-  }
-
   return launch(request, io, env, colors);
 }
 
@@ -152,25 +147,14 @@ async function launch(
   let key;
   try {
     key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
-  } catch (error) {
+  } catch {
     if (!isTty(io.stdin) || !isTty(io.stdout)) {
       io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
       return 1;
     }
-    io.stdout.write(`${colors.strong("Connect once to keep going.")}\n\n`);
-    const loggedIn = await loginWithWebsite({
-      command: "login",
-      method: "browser",
-      openBrowser: true,
-      output: "human",
-    }, io, env, colors);
-    if (loggedIn !== 0) return loggedIn;
-    try {
-      key = await resolveApiKey({ env, homeDir: io.homeDir });
-    } catch (resolutionError) {
-      io.stderr.write(`${messageOf(resolutionError)}\n`);
-      return 1;
-    }
+    const connected = await connectInteractively(io, env, colors);
+    if (typeof connected === "number") return connected;
+    key = connected;
   }
 
   if (request.apiKey) {
@@ -193,14 +177,55 @@ async function launch(
       );
       return 1;
     }
-    io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
-    return 1;
+    if (isTty(io.stdin) && isTty(io.stdout)) {
+      io.stdout.write(
+        `${colors.strong("Could not load the model catalog.")} ${colors.muted(messageOf(error))}\n\n`,
+      );
+      const connected = await connectInteractively(io, env, colors);
+      if (typeof connected === "number") return connected;
+      try {
+        catalog = await loadModelCatalog({
+          apiKey: connected.apiKey,
+          env,
+          homeDir: io.homeDir,
+          fetch: io.fetch,
+          cacheRemote: !request.dryRun,
+        });
+        key = connected;
+      } catch (retryError) {
+        io.stderr.write(`Could not load the Zro model catalog: ${messageOf(retryError)}\n`);
+        return 1;
+      }
+    } else {
+      io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
+      return 1;
+    }
   }
 
   const model = request.model ?? catalog.default;
   if (!catalog.models.some((candidate) => candidate.id === model)) {
     io.stderr.write(`Unknown model "${model}". Run zro models.\n`);
     return 1;
+  }
+
+  const tool = describeTool(request.tool);
+  if (
+    !request.dryRun &&
+    !await commandExists(tool.executable, env) &&
+    (request.install || (isTty(io.stdin) && isTty(io.stdout)))
+  ) {
+    if (!request.install) {
+      let choice: "install" | "cancel";
+      try {
+        choice = await chooseInstall(tool.name, io.stdin, io.stdout, colors);
+      } catch (error) {
+        if (messageOf(error) !== "Cancelled.") io.stderr.write(`${messageOf(error)}\n`);
+        return messageOf(error) === "Cancelled." ? 0 : 1;
+      }
+      if (choice === "cancel") return 0;
+    }
+    const ready = await ensureHarnessInstalled(request.tool, io, env);
+    if (!ready) return 1;
   }
 
   const tempRoot = path.join(env.XDG_CACHE_HOME || path.join(io.homeDir, ".cache"), "zro", "sessions");
@@ -228,7 +253,7 @@ async function launch(
   }
 
   if (request.dryRun) {
-    printPreview(plan, request.output, io, key.apiKey, colors);
+    printPreview(plan, request.output, io, key.apiKey, colors, catalog.models);
     await fs.rm(tempDir, { recursive: true, force: true });
     return 0;
   }
@@ -314,18 +339,46 @@ async function verifyApiKey(
   return false;
 }
 
+async function connectInteractively(
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+  colors: ReturnType<typeof theme>,
+): Promise<Awaited<ReturnType<typeof resolveApiKey>> | number> {
+  io.stdout.write(`${colors.strong("Connect once to keep going.")}\n\n`);
+  const loggedIn = await login(
+    {
+      command: "login",
+      method: "choose",
+      openBrowser: true,
+      output: "human",
+    },
+    io,
+    env,
+    colors,
+    false,
+  );
+  if (loggedIn !== 0) return loggedIn;
+  try {
+    return await resolveApiKey({ env, homeDir: io.homeDir });
+  } catch (error) {
+    io.stderr.write(`${messageOf(error)}\n`);
+    return 1;
+  }
+}
+
 async function login(
   request: Extract<CliRequest, { command: "login" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
-  colors: ReturnType<typeof theme>
+  colors: ReturnType<typeof theme>,
+  showBanner = true,
 ): Promise<number> {
   let method = request.method;
-  let showWebsiteBanner = true;
+  let showWebsiteBanner = showBanner;
 
   if (method === "choose") {
     if (request.output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
-      io.stdout.write(`${banner(colors)}\n\n`);
+      if (showBanner) io.stdout.write(`${banner(colors)}\n\n`);
       try {
         method = await chooseConnectMethod(io.stdin, io.stdout, colors);
       } catch (error) {
@@ -539,16 +592,9 @@ async function status(
   const source = envKey ? "environment" : stored ? "stored" : "none";
   const credential = envKey ?? stored;
   const preferences = await readPreferences({ homeDir: io.homeDir, env });
-  const [installed, accountResult] = await Promise.all([
-    Promise.all(TOOLS.map(async (tool) => ({
-      id: tool.id,
-      name: tool.name,
-      installed: await commandExists(tool.executable, env)
-    }))),
-    credential
-      ? fetchAccountStatus(credential, io, env)
-      : Promise.resolve({ state: "not_connected" } as const),
-  ]);
+  const accountResult = credential
+    ? await fetchAccountStatus(credential, io, env)
+    : { state: "not_connected" } as const;
   const connected = source !== "none" && accountResult.state !== "rejected";
   if (accountResult.state === "rejected") {
     await invalidateModelCatalog({ homeDir: io.homeDir, env }).catch(() => {});
@@ -563,31 +609,39 @@ async function status(
       lastSession: preferences.lastTool && preferences.lastModel
         ? { tool: preferences.lastTool, model: preferences.lastModel }
         : null,
-      tools: installed
     }, null, 2)}\n`);
     return 0;
   }
 
-  io.stdout.write(`${banner(colors)}\n\n`);
-  io.stdout.write(`${!connected ? colors.muted("◇") : colors.good("◆")} Connection  `);
-  io.stdout.write(source === "none"
-    ? `${colors.muted("not logged in")}\n  Run zro login\n`
-    : accountResult.state === "rejected"
-      ? `${colors.muted("API key rejected")}\n  Run zro login --manual\n`
-    : `${colors.strong(source)} ${colors.muted(`· ${maskKey(credential!)}`)}\n`);
+  io.stdout.write(`${banner(colors)}\n`);
+
+  io.stdout.write(`\n${colors.muted("CONNECTION")}\n`);
+  if (source === "none") {
+    io.stdout.write(`  ${colors.muted("◇")} Not logged in\n`);
+    io.stdout.write(`    ${colors.muted("Run")} zro login ${colors.muted("to connect")}\n`);
+  } else if (accountResult.state === "rejected") {
+    io.stdout.write(`  ${colors.muted("◇")} API key rejected\n`);
+    io.stdout.write(`    ${colors.muted("Run")} zro login --manual ${colors.muted("with a valid key")}\n`);
+  } else {
+    io.stdout.write(`  ${colors.good("◆")} ${colors.strong(source)} ${colors.muted(maskKey(credential!))}\n`);
+  }
+
   if (accountResult.state === "available") {
     printAccountStatus(accountResult.account, io, colors);
   } else if (accountResult.state === "unavailable") {
-    io.stdout.write(`${colors.muted("◇")} Account     ${colors.muted("details unavailable")}\n`);
+    io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
+    io.stdout.write(`  ${colors.muted("◇")} Details unavailable\n`);
   }
+
+  io.stdout.write(`\n${colors.muted("LAST SESSION")}\n`);
   if (preferences.lastTool && preferences.lastModel) {
-    io.stdout.write(`${colors.accent("◆")} Last session  ${describeTool(preferences.lastTool).name} ${colors.muted(`· ${preferences.lastModel}`)}\n`);
+    io.stdout.write(
+      `  ${colors.accent("◆")} ${colors.strong(describeTool(preferences.lastTool).name)} ` +
+      `${colors.muted(preferences.lastModel)}\n`,
+    );
+    io.stdout.write(`    ${colors.muted("Reopen with")} zro again\n`);
   } else {
-    io.stdout.write(`${colors.muted("◇")} Last session  ${colors.muted("none yet")}\n`);
-  }
-  io.stdout.write("\nTools\n");
-  for (const tool of installed) {
-    io.stdout.write(`  ${tool.installed ? colors.good("◆") : colors.muted("◇")} ${pad(tool.name, 13)} ${tool.installed ? "ready" : colors.muted("not installed")}\n`);
+    io.stdout.write(`  ${colors.muted("◇")} None yet — start with ${colors.muted("zro claude")}\n`);
   }
   return 0;
 }
@@ -699,28 +753,32 @@ function printAccountStatus(
   colors: ReturnType<typeof theme>,
 ): void {
   const plan = account.billing.plan;
-  io.stdout.write("\nAccount\n");
+  const currency = account.billing.currency;
+  const packs = account.billing.usagePacks;
+  const activity = account.activity30d;
+
+  io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
   io.stdout.write(
-    `  ${colors.good("◆")} Plan         ${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
-    `${colors.muted(`· ${account.billing.status}`)}\n`,
+    `  ${plan ? colors.good("◆") : colors.muted("◇")} Plan           ` +
+    `${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
+    `${colors.muted(account.billing.status)}\n`,
   );
   if (plan) {
+    const ratio = plan.allowance > 0 ? Math.min(Math.max(plan.used / plan.allowance, 0), 1) : 0;
+    const width = 24;
+    const filled = Math.round(ratio * width);
+    const bar = colors.good("█".repeat(filled)) + colors.muted("░".repeat(width - filled));
     io.stdout.write(
-      `  ${colors.good("◆")} Plan usage   ${money(plan.used, account.billing.currency)} of ` +
-      `${money(plan.allowance, account.billing.currency)} · ${money(plan.remaining, account.billing.currency)} left\n`,
+      `    ${bar}  ${colors.strong(`${Math.round(ratio * 100)}%`)} ${colors.muted("used")}\n`,
     );
   }
-  const packs = account.billing.usagePacks;
   io.stdout.write(
-    `  ${packs.remaining > 0 ? colors.good("◆") : colors.muted("◇")} Usage packs  ` +
-    `${money(packs.remaining, account.billing.currency)} left · ${money(packs.total, account.billing.currency)} total\n`,
+    `  ${packs.remaining > 0 ? colors.good("◆") : colors.muted("◇")} Top-up credits ` +
+    `${colors.strong(money(packs.remaining, currency))} ${colors.muted(`left · ${money(packs.total, currency)} total`)}\n`,
   );
   io.stdout.write(
-    `  ${colors.good("◆")} Available    ${money(account.billing.totalRemaining, account.billing.currency)} total\n`,
-  );
-  io.stdout.write(
-    `  ${colors.muted("◇")} Last 30 days ${formatInteger(account.activity30d.requests)} requests · ` +
-    `${formatInteger(account.activity30d.totalTokens)} tokens\n`,
+    `  ${colors.muted("◇")} Activity       ${formatInteger(activity.requests)} ${colors.muted("requests ·")} ` +
+    `${formatTokens(activity.totalTokens)} ${colors.muted("tokens")} ${colors.muted("(30d)")}\n`,
   );
 }
 
@@ -747,7 +805,7 @@ async function models(
   try {
     apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
   } catch {
-    // A cached or bundled catalog remains useful before the user signs in.
+    // A cached catalog remains useful before the user signs in.
   }
 
   let catalog: ModelCatalog;
@@ -758,8 +816,24 @@ async function models(
       io.stderr.write(`Authentication failed: ${error.message} Run zro login --manual with a valid API key.\n`);
       return 1;
     }
-    io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
-    return 1;
+    if (output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
+      const connected = await connectInteractively(io, env, colors);
+      if (typeof connected === "number") return connected;
+      try {
+        catalog = await loadModelCatalog({
+          apiKey: connected.apiKey,
+          env,
+          homeDir: io.homeDir,
+          fetch: io.fetch,
+        });
+      } catch (retryError) {
+        io.stderr.write(`Could not load the Zro model catalog: ${messageOf(retryError)}\n`);
+        return 1;
+      }
+    } else {
+      io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
+      return 1;
+    }
   }
 
   if (output === "json") {
@@ -772,7 +846,7 @@ async function models(
     io.stdout.write(`\n  ${isDefault ? colors.accent("◆") : colors.muted("◇")} ${colors.strong(model.displayName)}  ${colors.muted(model.id)}${isDefault ? colors.accent("  default") : ""}\n`);
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }
-  io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.2\n");
+  io.stdout.write(`\nChoose per session with -m, for example: zro codex -m ${catalog.default}\n`);
   return 0;
 }
 
@@ -851,7 +925,8 @@ function printPreview(
   output: "human" | "json",
   io: RunIo,
   secret: string,
-  colors: ReturnType<typeof theme>
+  colors: ReturnType<typeof theme>,
+  models: readonly ZroModel[]
 ): void {
   const safeEnv = Object.fromEntries(
     Object.entries(plan.env ?? {}).map(([key, value]) => [key, redact(key, value, secret)])
@@ -870,7 +945,7 @@ function printPreview(
   }
   io.stdout.write(`${banner(colors)}\n\n${colors.strong("Session preview")}\n`);
   io.stdout.write(`  Tool     ${describeTool(plan.tool).name}\n`);
-  io.stdout.write(`  Model    ${modelName(plan.model)} ${colors.muted(`· ${plan.model}`)}\n`);
+  io.stdout.write(`  Model    ${modelName(plan.model, models)} ${colors.muted(`· ${plan.model}`)}\n`);
   io.stdout.write(`  Command  ${shellPreview([plan.command, ...plan.args])}\n`);
   const entries = Object.entries(safeEnv);
   if (entries.length) {
@@ -926,12 +1001,18 @@ function compactPath(cwd: string, homeDir: string): string {
 }
 
 function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".0", "")}M`;
-  return `${Math.round(value / 1_000)}K`;
-}
-
-function pad(value: string, width: number): string {
-  return value + " ".repeat(Math.max(1, width - value.length));
+  const units: Array<[number, string]> = [
+    [1_000_000_000, "B"],
+    [1_000_000, "M"],
+    [1_000, "K"],
+  ];
+  for (const [threshold, suffix] of units) {
+    if (value >= threshold) {
+      const scaled = value / threshold;
+      return `${scaled >= 10 ? Math.round(scaled) : scaled.toFixed(1)}${suffix}`;
+    }
+  }
+  return String(value);
 }
 
 function messageOf(error: unknown): string {

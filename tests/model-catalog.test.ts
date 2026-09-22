@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  BUNDLED_MODEL_CATALOG,
   CatalogAuthenticationError,
   loadModelCatalog,
   modelCatalogCachePath,
@@ -74,10 +73,13 @@ describe("dynamic model catalog", () => {
     expect(catalog.default).toBe("future-model");
   });
 
-  it("uses bundled models when signed out with no cache", async () => {
-    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-bundled-"));
-
-    await expect(loadModelCatalog({ env: {}, homeDir })).resolves.toBe(BUNDLED_MODEL_CATALOG);
+  it("requires a login when signed out with no cache", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-public-"));
+    await expect(loadModelCatalog({
+      env: {},
+      homeDir,
+      fetch: async () => new Response(null, { status: 500 }),
+    })).rejects.toThrow("Run zro login");
   });
 
   it("never hides an explicit authentication rejection behind a cache", async () => {
@@ -95,15 +97,13 @@ describe("dynamic model catalog", () => {
     await expect(fs.stat(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("rejects malformed remote catalogs and falls back safely", async () => {
+  it("rejects a malformed remote catalog", async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-invalid-"));
-    const catalog = await loadModelCatalog({
+    await expect(loadModelCatalog({
       apiKey: "sk-secret",
       env: {},
       homeDir,
       fetch: async () => Response.json({ version: 1, default: "missing", models: [] }),
-    });
-
-    expect(catalog).toBe(BUNDLED_MODEL_CATALOG);
+    })).rejects.toThrow("Run zro login");
   });
 });

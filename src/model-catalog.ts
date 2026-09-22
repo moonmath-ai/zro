@@ -2,8 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   ENDPOINT_ROOT,
-  ZRO_MODELS,
-  DEFAULT_MODEL,
   type ZroModel,
   type ZroModality,
   type ZroModalities,
@@ -30,16 +28,10 @@ export class CatalogAuthenticationError extends Error {
   }
 }
 
-export const BUNDLED_MODEL_CATALOG: ModelCatalog = {
-  version: 1,
-  default: DEFAULT_MODEL,
-  models: ZRO_MODELS,
-};
-
 export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
   if (options.apiKey) {
     try {
-      const catalog = await fetchModelCatalog(options);
+      const catalog = await fetchAuthenticatedCatalog(options, options.apiKey);
       if (options.cacheRemote !== false) {
         await writeCachedCatalog(options, catalog).catch(() => {});
       }
@@ -52,7 +44,10 @@ export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCa
     }
   }
 
-  return await readCachedCatalog(options) ?? BUNDLED_MODEL_CATALOG;
+  const cached = await readCachedCatalog(options);
+  if (cached) return cached;
+
+  throw new Error("No model catalog is available. Run zro login to load models.");
 }
 
 export async function invalidateModelCatalog(
@@ -71,13 +66,11 @@ export function modelCatalogCachePath(options: Pick<CatalogOptions, "env" | "hom
   return path.join(cacheRoot, "zro", "model-catalog.json");
 }
 
-async function fetchModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
+async function fetchAuthenticatedCatalog(options: CatalogOptions, apiKey: string): Promise<ModelCatalog> {
   const fetcher = options.fetch ?? globalThis.fetch;
-  const endpointRoot = (
-    options.env.ZRO_AUTH_URL || options.env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT
-  ).replace(/\/+$/, "");
+  const endpointRoot = catalogRoot(options.env);
   const response = await fetcher(`${endpointRoot}/api/cli/models`, {
-    headers: { Authorization: `Bearer ${options.apiKey}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(5_000),
   });
 
@@ -91,6 +84,10 @@ async function fetchModelCatalog(options: CatalogOptions): Promise<ModelCatalog>
   }
 
   return parseModelCatalog(await response.json());
+}
+
+function catalogRoot(env: NodeJS.ProcessEnv): string {
+  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
 }
 
 async function readCachedCatalog(options: CatalogOptions): Promise<ModelCatalog | null> {

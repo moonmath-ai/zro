@@ -182,6 +182,9 @@ describe("zro experience", () => {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-new-secret" },
       fetch: async (input, init) => {
+        if (String(input).endsWith("/api/cli/models")) {
+          return Response.json(glmCatalogResponse());
+        }
         expect(String(input)).toBe("https://zro.moonmath.ai/v1/models");
         expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-new-secret");
         return Response.json({ data: [] });
@@ -238,7 +241,9 @@ describe("zro experience", () => {
       ...io(home, stdout),
       stderr,
       env: { ZRO_API_KEY: "sk-unverified-secret" },
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: async (input) => String(input).endsWith("/api/cli/models")
+        ? Response.json(dynamicCatalogResponse())
+        : new Response(null, { status: 503 }),
       spawn: fakeExitSpawn(() => { spawned = true; }),
     });
 
@@ -256,7 +261,9 @@ describe("zro experience", () => {
     const code = await run(["claude", "--json"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-preview-secret" },
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: async (input) => String(input).endsWith("/api/cli/models")
+        ? Response.json(dynamicCatalogResponse())
+        : new Response(null, { status: 503 }),
       spawn: fakeExitSpawn(() => { spawned = true; })
     });
 
@@ -269,18 +276,14 @@ describe("zro experience", () => {
     await expect(fs.stat(path.join(home, ".cache", "zro"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("reports connection and installed tools as JSON", async () => {
+  it("reports the connection as JSON", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-status-"));
-    const bin = path.join(home, "bin");
-    await fs.mkdir(bin);
-    await fs.writeFile(path.join(bin, "claude"), "#!/bin/sh\n", { mode: 0o755 });
     const stdout = new PassThrough();
     const code = await run(["status", "--json"], {
       ...io(home, stdout),
       env: {
         ZRO_API_KEY: "sk-status-secret",
         ZRO_AUTH_URL: "https://auth.zro.example",
-        PATH: bin,
       },
       fetch: async (input, init) => {
         expect(String(input)).toBe("https://auth.zro.example/api/cli/status");
@@ -296,7 +299,7 @@ describe("zro experience", () => {
     expect(result.accountStatus).toBe("available");
     expect(result.account.billing.usagePacks.remaining).toBe(15);
     expect(result.account.activity30d.totalTokens).toBe(1250);
-    expect(result.tools.find((tool: { id: string }) => tool.id === "claude").installed).toBe(true);
+    expect(result.tools).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("sk-status-secret");
   });
 
@@ -311,11 +314,11 @@ describe("zro experience", () => {
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
-    expect(output).toContain("Plan         Pro · active");
-    expect(output).toContain("Plan usage   $8.00 of $60.00 · $52.00 left");
-    expect(output).toContain("Usage packs  $15.00 left · $20.00 total");
-    expect(output).toContain("Available    $67.00 total");
-    expect(output).toContain("Last 30 days 15 requests · 1,250 tokens");
+    expect(output).toContain("ACCOUNT");
+    expect(output).toContain("Plan           Pro active");
+    expect(output).toContain("███░░░░░░░░░░░░░░░░░░░░░  13% used");
+    expect(output).toContain("Top-up credits $15.00 left · $20.00 total");
+    expect(output).toContain("Activity       15 requests · 1.3K tokens (30d)");
   });
 
   it("reports a rejected stored key as disconnected", async () => {
@@ -538,6 +541,36 @@ function dynamicCatalogResponse() {
         displayName: "Future Model",
         contextWindow: 200_000,
         maxOutputTokens: 20_000,
+        modalities: {
+          input: ["text"] as const,
+          output: ["text"] as const,
+        },
+        reasoning: {
+          defaultLevel: "high",
+          levels: [
+            {
+              id: "high",
+              description: "Reason carefully",
+              piLevel: "high",
+              openCodeOptions: { reasoningEffort: "high" },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function glmCatalogResponse() {
+  return {
+    version: 1,
+    default: "glm-5.2",
+    models: [
+      {
+        id: "glm-5.2",
+        displayName: "GLM-5.2",
+        contextWindow: 524_288,
+        maxOutputTokens: 64_000,
         modalities: {
           input: ["text"] as const,
           output: ["text"] as const,
