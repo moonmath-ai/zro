@@ -16,7 +16,7 @@ import {
   __setConfig,
   __resetConfig
 } from "./mocks/vscode.js";
-import { CONFIG_SECTION, SETTING_REASONING_EFFORT, type ZroReasoningConfig } from "../src/constants.js";
+import { CONFIG_SECTION, SETTING_REASONING_EFFORT, type ZroModelPricing, type ZroReasoningConfig } from "../src/constants.js";
 import { effortFromModelConfiguration } from "../src/reasoning.js";
 import type { LanguageModelChatInformation, LanguageModelChatRequestMessage } from "vscode";
 
@@ -45,6 +45,7 @@ interface ZroModelInput {
   contextWindow: number;
   maxOutputTokens: number;
   reasoning?: ZroReasoningConfig;
+  pricing?: ZroModelPricing;
 }
 
 function chatInfo(id = DEFAULT_MODEL.id, maxOutputTokens = DEFAULT_MODEL.maxOutputTokens): LanguageModelChatInformation {
@@ -106,6 +107,27 @@ describe("toChatInfo", () => {
 
   it("omits the configuration schema for models without reasoning", () => {
     expect(toChatInfo(DEFAULT_MODEL).configurationSchema).toBeUndefined();
+  });
+
+  it("attaches cost metadata for a priced model", () => {
+    // DeepSeek V4.1 Flash's published (promotional) rates.
+    const info = toChatInfo({
+      ...DEFAULT_MODEL,
+      pricing: { inputPer1M: 0.15, outputPer1M: 0.6, cacheReadPer1M: 0.003 }
+    });
+    expect(info.pricing).toBe("$0.15 in · $0.60 out per 1M tokens");
+    // The gate core checks before rendering any price.
+    expect(info.multiplierNumeric).toBe(1);
+    expect(info.priceCategory).toBe("low");
+  });
+
+  it("adds no cost fields for an unpriced model", () => {
+    const info = toChatInfo(DEFAULT_MODEL);
+    expect(info.pricing).toBeUndefined();
+    expect(info.multiplierNumeric).toBeUndefined();
+    expect(info.priceCategory).toBeUndefined();
+    // Absent rather than explicitly undefined, so nothing is advertised at all.
+    expect(Object.keys(info)).not.toContain("multiplierNumeric");
   });
 });
 

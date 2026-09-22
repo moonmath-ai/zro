@@ -1,4 +1,10 @@
-import { CATALOG_URL, ZRO_MODELS, type ZroModel, type ZroReasoningConfig } from "./constants.js";
+import {
+  CATALOG_URL,
+  ZRO_MODELS,
+  type ZroModel,
+  type ZroModelPricing,
+  type ZroReasoningConfig,
+} from "./constants.js";
 
 /**
  * Shape returned by the control-plane `/api/cli/models` endpoint. Mirrors
@@ -18,12 +24,23 @@ interface RemoteReasoning {
   levels?: readonly RemoteReasoningLevel[];
 }
 
+/**
+ * Public pricing block, in USD per 1M tokens. Rates are already
+ * promotion-adjusted by the control plane.
+ */
+interface RemotePricing {
+  inputPer1M?: number;
+  outputPer1M?: number;
+  cacheReadPer1M?: number;
+}
+
 interface RemoteCatalogModel {
   id: string;
   displayName?: string;
   contextWindow?: number;
   maxOutputTokens?: number;
   reasoning?: RemoteReasoning;
+  pricing?: RemotePricing;
 }
 
 interface RemoteCatalog {
@@ -62,6 +79,7 @@ export async function fetchModelCatalog(
         contextWindow: model.contextWindow ?? 128_000,
         maxOutputTokens: model.maxOutputTokens ?? 64_000,
         reasoning: parseReasoning(model.reasoning),
+        pricing: parsePricing(model.pricing),
       }));
 
     if (models.length === 0) {
@@ -99,4 +117,27 @@ export function parseReasoning(
     defaultLevel: levels.some((level) => level.id === defaultLevel) ? (defaultLevel as string) : levels[0].id,
     levels,
   };
+}
+
+/**
+ * Normalize a catalog `pricing` block. Returns undefined unless both input and
+ * output rates are present and sane, so a truncated or misconfigured block
+ * hides the price entirely instead of showing a half-filled or `$NaN` one.
+ * Cache-read is optional: not every model publishes a cache rate.
+ */
+export function parsePricing(
+  pricing: RemotePricing | undefined
+): ZroModelPricing | undefined {
+  if (!pricing || typeof pricing !== "object") return undefined;
+  const { inputPer1M, outputPer1M, cacheReadPer1M } = pricing;
+  if (!isRate(inputPer1M) || !isRate(outputPer1M)) return undefined;
+  return {
+    inputPer1M,
+    outputPer1M,
+    ...(isRate(cacheReadPer1M) ? { cacheReadPer1M } : {}),
+  };
+}
+
+function isRate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }

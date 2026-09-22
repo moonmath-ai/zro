@@ -2,6 +2,23 @@
 
 All notable changes to the ZRO VS Code extension are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Per-model pricing.** Published rates — USD per 1M tokens, with any live
+  promotion already applied — now show on each model's row in the Copilot Chat
+  model picker, and as a **Cost** line plus a low/high-cost badge in the row's
+  hover card. Models the control plane publishes no rate for (e.g. `Auto`) are
+  left exactly as they were.
+- **Dashboard → Models tab** shows the same price on each model row.
+
+### Changed
+
+- Requires control-plane pricing support in `/api/cli/models`. Against an older
+  control plane, or for a model with no published rate, the picker simply shows
+  no price.
+
 ## [0.1.2] — 2026-09-16
 
 ### Added

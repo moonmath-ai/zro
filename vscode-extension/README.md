@@ -13,6 +13,10 @@ inference endpoint with full tool-calling support (file edits, terminal, etc.).
   prefixed with `ZRO`. The catalog is fetched live from the control plane on
   every picker refresh, so newly activated models appear automatically — no
   extension update needed.
+- **Per-model pricing** — each model's published rate (USD per 1M tokens, with
+  any live promotion already applied) is shown on its row in the Copilot model
+  picker and in the dashboard's Models tab. Models with no published rate show
+  no price.
 - **Dashboard panel** — run `ZRO: Dashboard` (or `ZRO: Sign in with browser`)
   from the Command Palette to open a single-panel dashboard with tabs for
   **Overview**, **Models**, **Cost**, **Cache**, and **Team**.
@@ -50,7 +54,7 @@ The Overview tab is the landing page. The **Connection** card shows whether the 
 
 ![Models &amp; endpoints tab](media/screenshots/tab-models.png)
 
-The Models & endpoints tab lists every model active in the control-plane catalog fetched live on each refresh. Each row shows the model's display name and context window, a **Live** pill confirming it is available on the serving endpoints reachable by your key, and a **Set as default** button to pick the model used by Copilot Chat (the current default shows **Current default**). Endpoints are provisioned out-of-band on serving nodes, so there is no separate endpoints list.
+The Models & endpoints tab lists every model active in the control-plane catalog fetched live on each refresh. Each row shows the model's display name, context window, and — when the control plane publishes one — its price in USD per 1M tokens with any live promotion applied, a **Live** pill confirming it is available on the serving endpoints reachable by your key, and a **Set as default** button to pick the model used by Copilot Chat (the current default shows **Current default**). Endpoints are provisioned out-of-band on serving nodes, so there is no separate endpoints list.
 
 Models that support reasoning also get an **Effort** dropdown (see [Reasoning effort](#reasoning-effort)), with a pill showing whether the active value comes from a per-model override, the global setting, or the server default. The **Reasoning effort** card above the list sets the global level for all models.
 
@@ -136,14 +140,14 @@ Set it from any of:
   **Thinking Effort** submenu, as core renders any model's configuration schema
   there.
 
-For example, to make GLM-5.2 skip reasoning (fastest) while Kimi K3 stays on its
+For example, to make GLM-5.3 skip reasoning (fastest) while Kimi K3 stays on its
 full setting:
 
 ```jsonc
 {
   "zro.reasoningEffort": "default",
   "zro.reasoningEffortByModel": {
-    "glm-5.2": "none"
+    "glm-5.3": "none"
   }
 }
 ```
@@ -196,6 +200,13 @@ them up.
   (`group: "navigation"`, the group VS Code reserves for thinking effort). It is
   internal/undocumented API: if a future build renames it, the control disappears
   and the ZRO settings remain the fallback.
+- Prices come from the control plane (`pricing` on each catalog model, USD per
+  1M tokens) and are surfaced through three more undocumented
+  `LanguageModelChatInformation` fields: `pricing` (the string shown),
+  `multiplierNumeric` (required — core renders no price without it, so ZRO sends
+  a constant `1`) and `priceCategory` (the low/high-cost badge). On a build that
+  ignores them the picker just shows no prices, and the dashboard's Models tab
+  remains the fallback UI.
 - A level a model doesn't support is clamped to that model's default rather than
   rejected, so a global setting is always safe to apply.
 - Image input is not advertised (`imageInput: false`).

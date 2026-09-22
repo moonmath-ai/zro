@@ -89,6 +89,8 @@
     .model-item .m-name { font-weight: 600; }
     .model-item .m-id { color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
     .model-item .m-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .model-item .m-price { color: var(--text); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .model-item .m-price .label { color: var(--muted); }
     .model-item .m-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .model-item .select-btn { flex-shrink: 0; }
     .model-item .select-btn.selected { background: var(--good); color: #0f1117; border: none; font-weight: 600; }
@@ -275,15 +277,26 @@
       state.data = {
         keyless: false,
         catalog: {
-          default: 'glm-5.2',
+          default: 'deepseek-v4.1-flash',
           models: [
-            { id: 'minimax-m3', displayName: 'MiniMax M3', contextWindow: 1048576, maxOutputTokens: 64000 },
-            { id: 'glm-5.2', displayName: 'GLM-5.2', contextWindow: 524288, maxOutputTokens: 64000 },
-            { id: 'deepseek-v4-flash-0731', displayName: 'DeepSeek V4 Flash 0731', contextWindow: 1048576, maxOutputTokens: 384000 },
+            { id: 'deepseek-v4.1-flash', displayName: 'DeepSeek V4.1 Flash', contextWindow: 1048576, maxOutputTokens: 384000 },
+            { id: 'glm-5.3', displayName: 'GLM-5.3', contextWindow: 1048576, maxOutputTokens: 131000 },
+            { id: 'glm-5.3-flash', displayName: 'GLM-5.3 Flash', contextWindow: 1048576, maxOutputTokens: 64000 },
+            { id: 'dolly1-security', displayName: 'Dolly 1 Security', contextWindow: 1048576, maxOutputTokens: 64000 },
+            { id: 'auto', displayName: 'Auto', contextWindow: 1048576, maxOutputTokens: 131000 },
             { id: 'kimi-k3', displayName: 'Kimi K3', contextWindow: 1048576, maxOutputTokens: 1048576 },
           ],
         },
-        selected: 'glm-5.2',
+        selected: 'deepseek-v4.1-flash',
+        // Published rates per model. `auto` has none, which keeps the unpriced
+        // path visible in screenshots.
+        pricing: {
+          'deepseek-v4.1-flash': '$0.15 in · $0.60 out per 1M tokens',
+          'glm-5.3': '$1.40 in · $4.40 out per 1M tokens',
+          'glm-5.3-flash': '$0.15 in · $0.50 out per 1M tokens',
+          'dolly1-security': '$0.45 in · $1.50 out per 1M tokens',
+          'kimi-k3': '$1.25 in · $6.00 out per 1M tokens',
+        },
         effort: {
           global: 'default',
           globalLevels: [
@@ -294,7 +307,7 @@
           ],
           models: [
             {
-              id: 'glm-5.2', effective: 'none', source: 'model', defaultLevel: 'max', override: 'none',
+              id: 'glm-5.3', effective: 'none', source: 'model', defaultLevel: 'max', override: 'none',
               levels: [
                 { id: 'none', description: 'Disable reasoning for the lowest latency' },
                 { id: 'high', description: 'Use GLM High reasoning effort' },
@@ -302,7 +315,7 @@
               ],
             },
             {
-              id: 'deepseek-v4-flash-0731', effective: 'max', source: 'server', defaultLevel: 'max', override: null,
+              id: 'deepseek-v4.1-flash', effective: 'high', source: 'server', defaultLevel: 'high', override: null,
               levels: [
                 { id: 'low', description: 'Use DeepSeek low reasoning effort' },
                 { id: 'high', description: 'Use DeepSeek high reasoning effort' },
@@ -403,6 +416,8 @@
           const sel = m.id === data.selected;
           const catalogDefault = m.id === data.catalog.default;
           const e = byId.get(m.id);
+          // Priced by the control plane; absent for models with no public rates.
+          const price = (data.pricing && data.pricing[m.id]) || '';
           const effortRow = e ? `
                 <div class="m-effort">
                   <span class="label">Effort</span>
@@ -424,7 +439,8 @@
               <div class="m-left">
                 <div class="m-name">${m.displayName}${catalogDefault ? ' <span class="tag">catalog default</span>' : ''}</div>
                 <div class="m-id">${m.id}</div>
-                <div class="m-sub">${fmtNum(m.contextWindow)} ctx · ${fmtNum(m.maxOutputTokens)} out</div>${effortRow}
+                <div class="m-sub">${fmtNum(m.contextWindow)} ctx · ${fmtNum(m.maxOutputTokens)} out</div>${price ? `
+                <div class="m-price"><span class="label">Price</span> ${price}</div>` : ''}${effortRow}
               </div>
               <div class="m-right">
                 <span class="pill good" title="This model is live on the serving endpoints available to your key.">Live</span>

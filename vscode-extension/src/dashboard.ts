@@ -6,6 +6,7 @@ import { fetchAccountStatus, type AccountStatusResult } from "./account.js";
 import { resolveCredential, storeApiKey, deleteApiKey, maskKey, type CredentialSource } from "./credentials.js";
 import { AuthFlowController } from "./auth.js";
 import { setEffort, resolveEffort, readEffortSettings } from "./reasoning.js";
+import { pricingLabel } from "./pricing.js";
 import { EFFORT_DEFAULT, ENDPOINT_ROOT, type ZroModel } from "./constants.js";
 /**
  * Dashboard webview with tabs: Overview, Models, Cost, Endpoints, Cache, Team.
@@ -66,6 +67,7 @@ abstract class ZroDashboardController {
         account,
         selected,
         effort: buildEffortState(catalog.models),
+        pricing: buildPricingState(catalog.models),
       },
     });
   }
@@ -395,6 +397,19 @@ function buildEffortState(models: readonly ZroModel[]): EffortState {
         };
       }),
   };
+}
+
+/**
+ * Model id → display price for the webview's Models tab. The webview cannot
+ * import the pricing helpers, so the label is formatted here by the same
+ * function the Copilot picker uses — one formatter, two surfaces.
+ */
+function buildPricingState(models: readonly ZroModel[]): Record<string, string> {
+  const pricing: Record<string, string> = {};
+  for (const model of models) {
+    if (model.pricing) pricing[model.id] = pricingLabel(model.pricing);
+  }
+  return pricing;
 }
 
 interface CredentialState {

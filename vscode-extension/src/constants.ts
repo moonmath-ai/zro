@@ -52,12 +52,25 @@ export interface ZroReasoningConfig {
   levels: readonly ZroReasoningLevel[];
 }
 
+/**
+ * Public per-model pricing advertised by the control plane, in USD per 1M
+ * tokens. Rates are the effective ones — an active promotion is already applied
+ * — so the price shown is the price a request is billed at. Absent when the
+ * model has no published rates (e.g. the `auto` router).
+ */
+export interface ZroModelPricing {
+  inputPer1M: number;
+  outputPer1M: number;
+  cacheReadPer1M?: number;
+}
+
 export interface ZroModel {
   id: string;
   displayName: string;
   contextWindow: number;
   maxOutputTokens: number;
   reasoning?: ZroReasoningConfig;
+  pricing?: ZroModelPricing;
 }
 
 /**
@@ -109,6 +122,17 @@ export interface ZroStatusIcon {
 }
 
 /**
+ * Value reported as `multiplierNumeric` on every priced model.
+ *
+ * For Copilot's own models the field is a premium-request multiplier. ZRO has
+ * no equivalent, so this is a constant whose only job is to satisfy core's
+ * defined-check — the renderer shows nothing else when the field is absent.
+ * Deliberately 1 rather than a real cost ratio so core's "exceeds the current
+ * model's cost tier" comparison never fires on our models.
+ */
+export const PRICING_MULTIPLIER = 1;
+
+/**
  * `LanguageModelChatInformation` plus the configuration schema and status icon.
  * The runtime passes both fields through verbatim (verified in this build's
  * extension host), older VS Code builds simply ignore them.
@@ -116,6 +140,19 @@ export interface ZroStatusIcon {
 export interface ZroChatInformation extends LanguageModelChatInformation {
   readonly configurationSchema?: ZroModelConfigurationSchema;
   readonly statusIcon?: ZroStatusIcon;
+  /**
+   * Cost metadata, passed through verbatim by the extension host (verified in
+   * this build; builds that predate the fields simply ignore them).
+   *
+   * `multiplierNumeric` is the gate: core's picker renders nothing else unless
+   * it is defined, so every priced model carries {@link PRICING_MULTIPLIER}.
+   * `pricing` is a free-form string core appends to the model row's description
+   * and shows as "Cost: {pricing}" in the hover card; `priceCategory` adds
+   * core's "Low cost"/"High cost" badge to that hover card.
+   */
+  readonly pricing?: string;
+  readonly multiplierNumeric?: number;
+  readonly priceCategory?: string;
 }
 
 /** Static fallback used when the live catalog cannot be fetched. */

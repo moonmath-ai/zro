@@ -10,6 +10,7 @@ import {
 } from "./constants.js";
 import { fetchModelCatalog } from "./catalog.js";
 import { resolveApiKey } from "./credentials.js";
+import { pricingMetadata } from "./pricing.js";
 import {
   buildReasoningConfigurationSchema,
   effortFromModelConfiguration,
@@ -157,6 +158,10 @@ export function toChatInfo(model: ZroModel): ZroChatInformation {
     // this is the only way to show the ZRO mark there — without it, models of
     // an unknown vendor fall back to a stock placeholder codicon.
     statusIcon: { id: ZRO_STATUS_ICON_ID },
+    // Cost metadata for the picker's price line and hover cost badge. Spread
+    // rather than set so models the control plane publishes no rates for (e.g.
+    // `auto`) carry none of the three fields and render exactly as before.
+    ...pricingMetadata(model.pricing),
     capabilities: {
       toolCalling: true,
       imageInput: false
@@ -469,8 +474,8 @@ export function reportUsage(
   };
   // Copilot surfaces cache hits in the Session Info breakdown as
   // `prompt_tokens_details.cached_tokens`; ZRO reports the same figure as
-  // `cache_read_input_tokens`. Only forward a positive count so models that are
-  // never prompt-cached (deepseek-v4-flash-0731) don't show a zeroed line.
+  // `cache_read_input_tokens`. Only forward a positive count, so a model that
+  // reports no cache read never shows a zeroed line.
   if (typeof usage.cache_read_input_tokens === "number" && usage.cache_read_input_tokens > 0) {
     payload.prompt_tokens_details = { cached_tokens: usage.cache_read_input_tokens };
   }

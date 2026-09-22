@@ -1,6 +1,36 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { fetchModelCatalog } from "../src/catalog.js";
+import { fetchModelCatalog, parsePricing } from "../src/catalog.js";
 import { CATALOG_URL } from "../src/constants.js";
+
+describe("parsePricing", () => {
+  it("requires both input and output rates", () => {
+    expect(parsePricing(undefined)).toBeUndefined();
+    expect(parsePricing({ inputPer1M: 1 })).toBeUndefined();
+    expect(parsePricing({ outputPer1M: 1 })).toBeUndefined();
+  });
+
+  it("rejects non-finite and negative rates", () => {
+    expect(parsePricing({ inputPer1M: -1, outputPer1M: 1 })).toBeUndefined();
+    expect(parsePricing({ inputPer1M: Number.NaN, outputPer1M: 1 })).toBeUndefined();
+    expect(parsePricing({ inputPer1M: 1, outputPer1M: Number.POSITIVE_INFINITY })).toBeUndefined();
+  });
+
+  it("keeps the cache-read rate only when it is usable", () => {
+    expect(parsePricing({ inputPer1M: 1, outputPer1M: 2 })).toEqual({
+      inputPer1M: 1,
+      outputPer1M: 2
+    });
+    expect(parsePricing({ inputPer1M: 1, outputPer1M: 2, cacheReadPer1M: 0.5 })).toEqual({
+      inputPer1M: 1,
+      outputPer1M: 2,
+      cacheReadPer1M: 0.5
+    });
+    expect(parsePricing({ inputPer1M: 1, outputPer1M: 2, cacheReadPer1M: -1 })).toEqual({
+      inputPer1M: 1,
+      outputPer1M: 2
+    });
+  });
+});
 
 describe("fetchModelCatalog", () => {
   const apiKey = "sk-test";
@@ -85,6 +115,34 @@ describe("fetchModelCatalog", () => {
       contextWindow: 128_000,
       maxOutputTokens: 64_000
     });
+  });
+
+  it("carries published pricing through to the model", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          models: [
+            {
+              id: "glm-5.3",
+              displayName: "GLM-5.3",
+              pricing: { inputPer1M: 1.4, outputPer1M: 4.4, cacheReadPer1M: 0.26 }
+            },
+            { id: "auto", displayName: "Auto", pricing: { inputPer1M: 1 } }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+
+    const { models } = await fetchModelCatalog(apiKey);
+
+    expect(models[0].pricing).toEqual({
+      inputPer1M: 1.4,
+      outputPer1M: 4.4,
+      cacheReadPer1M: 0.26
+    });
+    // A partial block is dropped entirely rather than rendered half-filled.
+    expect(models[1].pricing).toBeUndefined();
   });
 
   it("falls back when models array is empty", async () => {
