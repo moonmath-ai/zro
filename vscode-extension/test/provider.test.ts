@@ -10,6 +10,7 @@ import {
   LanguageModelChatMessageRole,
   LanguageModelChatToolMode,
   LanguageModelTextPart,
+  LanguageModelThinkingPart,
   LanguageModelToolCallPart,
   LanguageModelToolResultPart,
   LanguageModelDataPart,
@@ -45,6 +46,7 @@ interface ZroModelInput {
   contextWindow: number;
   maxOutputTokens: number;
   reasoning?: ZroReasoningConfig;
+  imageInput?: boolean;
 }
 
 function chatInfo(id = DEFAULT_MODEL.id, maxOutputTokens = DEFAULT_MODEL.maxOutputTokens): LanguageModelChatInformation {
@@ -89,6 +91,12 @@ describe("toChatInfo", () => {
   it("advertises tool calling and no image input", () => {
     const info = toChatInfo(DEFAULT_MODEL);
     expect(info.capabilities).toEqual({ toolCalling: true, imageInput: false });
+  });
+
+  it("advertises image input only for vision models", () => {
+    const vision = toChatInfo({ ...DEFAULT_MODEL, imageInput: true });
+    expect(vision.capabilities?.imageInput).toBe(true);
+    expect(toChatInfo(DEFAULT_MODEL).capabilities?.imageInput).toBe(false);
   });
 
   it("attaches the thinking-effort dropdown schema for reasoning models", () => {
@@ -237,6 +245,34 @@ describe("streamChatResponse usage reporting", () => {
     const parts = await run([delta("Hello")]);
     expect(parts.some((p) => p instanceof LanguageModelDataPart)).toBe(false);
     expect(parts).toHaveLength(1);
+  });
+
+  function reasoningChunk(reasoning: string): string {
+    return JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: reasoning } }] });
+  }
+
+  it("reports reasoning deltas as thinking parts", async () => {
+    const parts = await run([reasoningChunk("pondering"), delta("Answer")]);
+    expect(parts[0]).toBeInstanceOf(LanguageModelThinkingPart);
+    expect((parts[0] as { value: string }).value).toBe("pondering");
+    // The visible answer still arrives as a plain text part.
+    expect(parts[1]).toBeInstanceOf(LanguageModelTextPart);
+  });
+
+  it("falls back to a text part when the runtime lacks thinking parts", async () => {
+    const vscodeMock = await import("./mocks/vscode.js");
+    const Thinking = vscodeMock.LanguageModelThinkingPart;
+    // Simulate an older extension host without the class.
+    // @ts-expect-error - deliberately breaking the mock's shape
+    delete vscodeMock.LanguageModelThinkingPart;
+    try {
+      const parts = await run([reasoningChunk("pondering")]);
+      expect(parts[0]).toBeInstanceOf(LanguageModelTextPart);
+      expect(parts).toHaveLength(1);
+    } finally {
+      // Restore for subsequent tests.
+      (vscodeMock as { LanguageModelThinkingPart?: unknown }).LanguageModelThinkingPart = Thinking;
+    }
   });
 });
 

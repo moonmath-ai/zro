@@ -40,7 +40,8 @@ describe("fetchModelCatalog", () => {
       id: "glm-5.2",
       displayName: "GLM-5.2",
       contextWindow: 524288,
-      maxOutputTokens: 64000
+      maxOutputTokens: 64000,
+      imageInput: false
     });
     expect(fetchMock).toHaveBeenCalledWith(
       CATALOG_URL,
@@ -83,7 +84,8 @@ describe("fetchModelCatalog", () => {
       id: "model-x",
       displayName: "Model X",
       contextWindow: 128_000,
-      maxOutputTokens: 64_000
+      maxOutputTokens: 64_000,
+      imageInput: false
     });
   });
 
@@ -93,5 +95,35 @@ describe("fetchModelCatalog", () => {
     );
     const { models } = await fetchModelCatalog(apiKey);
     expect(models.length).toBeGreaterThan(0);
+  });
+
+  it("maps the modalities block to imageInput", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          default: "glm-5.3-flash",
+          models: [
+            {
+              id: "glm-5.3-flash",
+              displayName: "GLM-5.3 Flash",
+              modalities: { input: ["text", "image"], output: ["text"] }
+            },
+            {
+              id: "glm-5.3",
+              displayName: "GLM-5.3",
+              modalities: { input: ["text"], output: ["text"] }
+            },
+            { id: "legacy", displayName: "Legacy" }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+
+    const { models } = await fetchModelCatalog(apiKey);
+    expect(models.find((m) => m.id === "glm-5.3-flash")?.imageInput).toBe(true);
+    expect(models.find((m) => m.id === "glm-5.3")?.imageInput).toBe(false);
+    // Rows without a modalities block stay text-only.
+    expect(models.find((m) => m.id === "legacy")?.imageInput).toBe(false);
   });
 });

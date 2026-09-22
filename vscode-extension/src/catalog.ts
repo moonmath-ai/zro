@@ -24,6 +24,7 @@ interface RemoteCatalogModel {
   contextWindow?: number;
   maxOutputTokens?: number;
   reasoning?: RemoteReasoning;
+  modalities?: { input?: readonly string[]; output?: readonly string[] };
 }
 
 interface RemoteCatalog {
@@ -62,6 +63,7 @@ export async function fetchModelCatalog(
         contextWindow: model.contextWindow ?? 128_000,
         maxOutputTokens: model.maxOutputTokens ?? 64_000,
         reasoning: parseReasoning(model.reasoning),
+        imageInput: parseImageInput(model.modalities),
       }));
 
     if (models.length === 0) {
@@ -78,6 +80,18 @@ export async function fetchModelCatalog(
   } catch {
     return { default: ZRO_MODELS[0].id, models: ZRO_MODELS };
   }
+}
+
+/**
+ * True when the model's catalog row advertises image input, e.g.
+ * `"modalities":{"input":["text","image"]}`. Verified advertised for
+ * glm-5.3-flash, deepseek-v4.1-flash, dolly1-security, and kimi-k3; text-only
+ * models (glm-5.3, auto) and rows without a modalities block stay false.
+ */
+function parseImageInput(
+  modalities: { input?: readonly string[] } | undefined
+): boolean {
+  return Array.isArray(modalities?.input) && modalities.input.includes("image");
 }
 
 /**
