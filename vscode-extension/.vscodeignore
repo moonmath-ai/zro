@@ -6,6 +6,8 @@ tsconfig.json
 vitest.config.ts
 package-lock.json
 out/**/*.map
+**/__pycache__/**
+scripts/build-icon-font.py
 scripts/capture-log.jsonl
 scripts/capture-proxy.py
 scripts/publish.mjs
