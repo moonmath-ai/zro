@@ -33,6 +33,33 @@ const advertisedReasoning = new Map<string, ZroReasoningConfig | undefined>();
 const USAGE_MIME_TYPE = "usage";
 
 /**
+ * `vscode.LanguageModelThinkingPart` exists in the extension-host runtime
+ * (verified on VS Code 1.138) but is not yet declared in the shipped stable
+ * `@types/vscode`, so it is reached structurally. Looked up per emission (not
+ * cached at module load) so runtimes that lack the class fall back to plain
+ * text parts — reasoning still surfaces, just not tagged as a collapsible
+ * thinking block.
+ */
+interface ThinkingPartShape {
+  readonly value: string;
+  readonly id?: string;
+  readonly metadata?: Record<string, unknown>;
+}
+function resolveThinkingPartCtor():
+  | (new (value: string, id?: string, metadata?: Record<string, unknown>) => ThinkingPartShape)
+  | undefined {
+  return (
+    vscode as unknown as {
+      LanguageModelThinkingPart?: new (
+        value: string,
+        id?: string,
+        metadata?: Record<string, unknown>
+      ) => ThinkingPartShape;
+    }
+  ).LanguageModelThinkingPart;
+}
+
+/**
  * Registers ZRO models with VS Code's Copilot Chat model picker and
  * streams chat completions from the Zro inference endpoint (OpenAI-compatible
  * /v1). The model list is discovered dynamically from the control plane.
@@ -164,7 +191,7 @@ export function toChatInfo(model: ZroModel): ZroChatInformation {
     ...pricingMetadata(model.pricing),
     capabilities: {
       toolCalling: true,
-      imageInput: false
+      imageInput: model.imageInput === true
     }
   };
 }
@@ -413,7 +440,15 @@ export async function streamChatResponse(
             // `reasoning_content` with `content` left empty; otherwise they'd
             // render nothing in the chat. Only show the reasoning until real
             // content begins, so models that emit both don't double-print.
-            progress.report(new vscode.LanguageModelTextPart(reasoning_content));
+            // Report it as a thinking part so Copilot Chat can distinguish
+            // reasoning from the visible answer (collapsible thinking block)
+            // instead of mixing it into the reply text.
+            const ThinkingPart = resolveThinkingPartCtor();
+            progress.report(
+              ThinkingPart
+                ? new ThinkingPart(reasoning_content)
+                : new vscode.LanguageModelTextPart(reasoning_content)
+            );
           }
 
           if (delta?.tool_calls) {
