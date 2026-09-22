@@ -89,7 +89,7 @@ try {
     assert.equal(codexConfig.model_provider, "zro");
     assert.equal(typeof codexConfig.model_catalog_json, "string");
     assert.equal(path.basename(codexConfig.model_catalog_json), "zro-models.json");
-    assert.equal(codexConfig.model_context_window, 524288);
+    assert.equal(codexConfig.model_context_window, 1048576);
     assert.equal(codexConfig.model_reasoning_effort, "max");
     assert.equal(codexConfig.model_providers?.zro?.base_url, "https://zro.moonmath.ai/v1");
     assert.equal(codexConfig.model_providers?.zro?.env_key, "ZRO_API_KEY");
