@@ -147,6 +147,24 @@ describe("codex config writes a documented reasoning effort for every bundled de
     const config = buildCodexConfig("auto", { modelSpec: auto });
     expect(config).toContain('model_reasoning_effort = "medium"');
   });
+
+  it("clamps levels without codexEffort — the remote-catalog shape — via piLevel", () => {
+    const remote = ZRO_MODELS.map((model) => ({
+      ...model,
+      reasoning: {
+        ...model.reasoning,
+        levels: model.reasoning.levels.map(({ codexEffort: _codexEffort, ...level }) => level)
+      }
+    }));
+    for (const model of remote) {
+      const config = buildCodexConfig(model.id, { modelSpec: model });
+      const match = config.match(/model_reasoning_effort = "(.*)"/);
+      expect(match, model.id).toBeDefined();
+      expect(supportedEfforts.has(match![1]), `${model.id}: ${match![1]}`).toBe(true);
+    }
+    const glm = remote.find((model) => model.id === "glm-5.3");
+    expect(buildCodexConfig("glm-5.3", { modelSpec: glm })).toContain('model_reasoning_effort = "xhigh"');
+  });
 });
 
 describe("opencode emitter enables attachments for image-capable models", () => {
