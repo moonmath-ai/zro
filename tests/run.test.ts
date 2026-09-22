@@ -276,18 +276,14 @@ describe("zro experience", () => {
     await expect(fs.stat(path.join(home, ".cache", "zro"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("reports connection and installed tools as JSON", async () => {
+  it("reports the connection as JSON", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-status-"));
-    const bin = path.join(home, "bin");
-    await fs.mkdir(bin);
-    await fs.writeFile(path.join(bin, "claude"), "#!/bin/sh\n", { mode: 0o755 });
     const stdout = new PassThrough();
     const code = await run(["status", "--json"], {
       ...io(home, stdout),
       env: {
         ZRO_API_KEY: "sk-status-secret",
         ZRO_AUTH_URL: "https://auth.zro.example",
-        PATH: bin,
       },
       fetch: async (input, init) => {
         expect(String(input)).toBe("https://auth.zro.example/api/cli/status");
@@ -303,7 +299,7 @@ describe("zro experience", () => {
     expect(result.accountStatus).toBe("available");
     expect(result.account.billing.usagePacks.remaining).toBe(15);
     expect(result.account.activity30d.totalTokens).toBe(1250);
-    expect(result.tools.find((tool: { id: string }) => tool.id === "claude").installed).toBe(true);
+    expect(result.tools).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain("sk-status-secret");
   });
 
@@ -318,11 +314,11 @@ describe("zro experience", () => {
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
-    expect(output).toContain("Plan         Pro · active");
-    expect(output).toContain("Plan usage   $8.00 of $60.00 · $52.00 left");
-    expect(output).toContain("Usage packs  $15.00 left · $20.00 total");
-    expect(output).toContain("Available    $67.00 total");
-    expect(output).toContain("Last 30 days 15 requests · 1,250 tokens");
+    expect(output).toContain("ACCOUNT");
+    expect(output).toContain("Plan           Pro active");
+    expect(output).toContain("███░░░░░░░░░░░░░░░░░░░░░  13% used");
+    expect(output).toContain("Top-up credits $15.00 left · $20.00 total");
+    expect(output).toContain("Activity       15 requests · 1.3K tokens (30d)");
   });
 
   it("reports a rejected stored key as disconnected", async () => {

@@ -89,6 +89,26 @@ export async function chooseConnectMethod(
   return choice as "browser" | "manual";
 }
 
+export async function chooseInstall(
+  toolName: string,
+  stdin: Readable,
+  stdout: Writable,
+  colors: Theme,
+): Promise<"install" | "cancel"> {
+  const choice = await choose({
+    stdin,
+    stdout,
+    title: `${toolName} is not installed yet.`,
+    options: [
+      { value: "install", label: `Install ${toolName}`, hint: "Recommended" },
+      { value: "cancel", label: "Not now", hint: "Exit without opening" },
+    ],
+    action: "continue",
+    colors,
+  });
+  return choice as "install" | "cancel";
+}
+
 async function choose(options: {
   stdin: Readable;
   stdout: Writable;
