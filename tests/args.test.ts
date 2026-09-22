@@ -23,10 +23,10 @@ describe("the direct command language", () => {
   });
 
   it("launches a tool directly with a short model flag", () => {
-    expect(parseArgs(["codex", "-m", "glm-5.2", "exec", "hello"])).toEqual({
+    expect(parseArgs(["codex", "-m", "glm-5.3", "exec", "hello"])).toEqual({
       command: "launch",
       tool: "codex",
-      model: "glm-5.2",
+      model: "glm-5.3",
       apiKey: undefined,
       dryRun: false,
       output: "human",
@@ -79,6 +79,27 @@ describe("the direct command language", () => {
       dryRun: false,
       extraArgs: ["--print"]
     });
+  });
+
+  it("parses repeated claude alias overrides and normalizes slot names", () => {
+    expect(parseArgs(["claude", "--alias", "opus=glm-5.3", "--alias=haiku=deepseek-v4.1-flash"])).toMatchObject({
+      command: "launch",
+      tool: "claude",
+      aliases: { OPUS: "glm-5.3", HAIKU: "deepseek-v4.1-flash" }
+    });
+    expect(parseArgs(["claude", "--alias", "Opus=glm-5.3"])).toMatchObject({
+      aliases: { OPUS: "glm-5.3" }
+    });
+    expect(parseArgs(["claude", "--alias", "haiku="])).toMatchObject({
+      aliases: { HAIKU: "" }
+    });
+  });
+
+  it("rejects malformed alias overrides", () => {
+    expect(() => parseArgs(["claude", "--alias", "opus"])).toThrow("--alias expects SLOT=MODEL");
+    expect(() => parseArgs(["claude", "--alias=opus"])).toThrow("--alias expects SLOT=MODEL");
+    expect(() => parseArgs(["claude", "--alias", "=glm-5.3"])).toThrow("--alias expects SLOT=MODEL");
+    expect(() => parseArgs(["claude", "--alias"])).toThrow("needs a value");
   });
 
   it("parses install, upgrade, and pinned harness versions", () => {

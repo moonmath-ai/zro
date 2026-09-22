@@ -80,7 +80,7 @@ describe("Kilo Code adapter", () => {
       tool: "kilo",
       label: "Kilo Code",
       command: "kilo",
-      model: "glm-5.2",
+      model: "glm-5.3",
       args: ["run", "hello"],
     });
     for (const key of [
@@ -117,7 +117,7 @@ describe("Kilo Code adapter", () => {
     const overlay = JSON.parse(plan.env!.KILO_CONFIG_CONTENT) as Record<string, any>;
     expect(overlay).toMatchObject({
       $schema: "https://app.kilo.ai/config.json",
-      model: `${PROVIDER_ID}/glm-5.2`,
+      model: `${PROVIDER_ID}/glm-5.3`,
       enabled_providers: [PROVIDER_ID],
       provider: {
         [PROVIDER_ID]: {
@@ -240,9 +240,9 @@ describe("Kilo Code adapter", () => {
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "glm-5.2" });
+    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "deepseek-v4.1-flash" });
     expect(JSON.parse(preview.environment.KILO_CONFIG_CONTENT)).toMatchObject({
-      model: "zro/glm-5.2",
+      model: "zro/deepseek-v4.1-flash",
     });
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -295,7 +295,7 @@ function context(
     apiKey: "sk-kilo-secret",
     apiKeySource: "env",
     env,
-    model: "glm-5.2",
+    model: "glm-5.3",
     extraArgs: ["run", "hello"],
     homeDir,
     cwd: homeDir,

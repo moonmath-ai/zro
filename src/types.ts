@@ -31,6 +31,7 @@ export type CliRequest =
       install?: boolean;
       output: OutputMode;
       extraArgs: string[];
+      aliases?: Record<string, string>;
     };
 
 export interface Preferences {

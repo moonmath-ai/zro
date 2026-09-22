@@ -178,7 +178,7 @@ describe("zro experience", () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-launch-"));
     const stdout = new PassThrough();
     let sessionHome = "";
-    const code = await run(["codex", "-m", "glm-5.2", "exec", "hello"], {
+    const code = await run(["codex", "-m", "glm-5.3", "exec", "hello"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-new-secret" },
       fetch: async (input, init) => {
@@ -188,7 +188,7 @@ describe("zro experience", () => {
       },
       spawn: fakeExitSpawn((command, args, options) => {
         expect(command).toBe("codex");
-        expect(args).toEqual(["exec", "-c", 'model="glm-5.2"', "hello"]);
+        expect(args).toEqual(["exec", "-c", 'model="glm-5.3"', "hello"]);
         expect(options.env.ZRO_API_KEY).toBe("sk-new-secret");
         sessionHome = String(options.env.CODEX_HOME);
       })
@@ -198,7 +198,7 @@ describe("zro experience", () => {
     const preferences = JSON.parse(
       await fs.readFile(path.join(home, ".config", "zro", "preferences.json"), "utf8")
     );
-    expect(preferences).toMatchObject({ lastTool: "codex", lastModel: "glm-5.2" });
+    expect(preferences).toMatchObject({ lastTool: "codex", lastModel: "glm-5.3" });
     await expect(fs.stat(sessionHome)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -247,6 +247,127 @@ describe("zro experience", () => {
     expect(await streamText(stderr)).toContain(
       "Could not verify Zro authentication: HTTP 503",
     );
+  });
+
+  it("sets CLAUDE_CODE_MAX_CONTEXT_TOKENS and appends [1m] for 1M-window models", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-context-"));
+    const stdout = new PassThrough();
+
+    const code = await run(["claude", "-m", "kimi-k3", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    const modelArg = result.args[result.args.indexOf("--model") + 1];
+    expect(result.model).toBe("kimi-k3");
+    expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1048576");
+    expect(modelArg).toBe("kimi-k3[1m]");
+    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("kimi-k3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("deepseek-v4.1-flash[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("glm-5.3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("glm-5.3-flash[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("Zro DeepSeek V4.1 Flash");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Zro GLM-5.3 Flash");
+  });
+
+  it("lets users override Claude alias slots with --alias, including dropping one", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-"));
+    const stdout = new PassThrough();
+
+    const code = await run([
+      "claude", "-m", "kimi-k3", "--alias", "opus=glm-5.3", "--alias", "haiku=", "--json"
+    ], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("glm-5.3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
+  });
+
+  it("rejects alias overrides with unknown slots, unknown models, or other tools", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-bad-"));
+    const stdout = new PassThrough();
+
+    const slotStderr = new PassThrough();
+    const slotCode = await run(["claude", "--alias", "turbo=glm-5.3", "--json"], {
+      ...io(home, stdout),
+      stderr: slotStderr,
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+    expect(slotCode).toBe(1);
+    expect(await streamText(slotStderr)).toContain("Unknown alias slot");
+
+    const modelStderr = new PassThrough();
+    const modelCode = await run(["claude", "--alias", "opus=nope", "--json"], {
+      ...io(home, stdout),
+      stderr: modelStderr,
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+    expect(modelCode).toBe(1);
+    expect(await streamText(modelStderr)).toContain('Unknown model "nope" for alias opus');
+
+    const toolStderr = new PassThrough();
+    const toolCode = await run(["codex", "--alias", "opus=glm-5.3", "--json"], {
+      ...io(home, stdout),
+      stderr: toolStderr,
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+    expect(toolCode).toBe(1);
+    expect(await streamText(toolStderr)).toContain("--alias is only supported for the claude tool");
+  });
+
+  it("does not append [1m] for sub-1M-window models from the cached catalog", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-no1m-"));
+    const stdout = new PassThrough();
+    const cacheDir = path.join(home, ".cache", "zro");
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.writeFile(path.join(cacheDir, "model-catalog.json"), JSON.stringify({
+      version: 1,
+      default: "glm-5.2",
+      models: [{
+        id: "glm-5.2",
+        displayName: "GLM-5.2",
+        contextWindow: 524288,
+        maxOutputTokens: 64000,
+        reasoning: {
+          defaultLevel: "max",
+          levels: [{
+            id: "max",
+            description: "Use GLM maximum reasoning effort",
+            piLevel: "xhigh",
+            openCodeOptions: { reasoningEffort: "max" }
+          }]
+        }
+      }]
+    }));
+
+    const code = await run(["claude", "-m", "glm-5.2", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    const modelArg = result.args[result.args.indexOf("--model") + 1];
+    expect(result.model).toBe("glm-5.2");
+    expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("524288");
+    expect(modelArg).toBe("glm-5.2");
+    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("glm-5.2");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
   });
 
   it("produces a JSON preview without exposing or writing the key", async () => {
@@ -350,7 +471,7 @@ describe("zro experience", () => {
     await fs.writeFile(path.join(credentialDir, "credentials.json"), JSON.stringify({ apiKey: "sk-stored" }));
     await fs.mkdir(codexAppDir);
     await fs.writeFile(path.join(codexAppDir, ".env"), "ZRO_API_KEY=sk-stored\n");
-    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"glm-5.2\"\n");
+    await fs.writeFile(path.join(codexAppDir, "config.toml"), "model = \"glm-5.3\"\n");
     const catalogPath = path.join(home, ".cache", "zro", "model-catalog.json");
     await fs.mkdir(path.dirname(catalogPath), { recursive: true });
     await fs.writeFile(catalogPath, JSON.stringify(dynamicCatalogResponse()));
@@ -370,7 +491,7 @@ describe("zro experience", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.stat(catalogPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(path.join(codexAppDir, "config.toml"), "utf8"))
-      .resolves.toBe("model = \"glm-5.2\"\n");
+      .resolves.toBe("model = \"glm-5.3\"\n");
   });
 
   it("removes the Codex App key when it is the only stored credential", async () => {

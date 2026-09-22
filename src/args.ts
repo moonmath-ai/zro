@@ -82,6 +82,7 @@ interface ParsedOptions {
   install?: boolean;
   output: OutputMode;
   extraArgs: string[];
+  aliases?: Record<string, string>;
 }
 
 function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions {
@@ -108,6 +109,14 @@ function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions 
     }
     if (value.startsWith("--model=")) {
       result.model = value.slice("--model=".length);
+      continue;
+    }
+    if (value === "--alias") {
+      addAlias(result, requiredValue(argv, ++index, value));
+      continue;
+    }
+    if (value.startsWith("--alias=")) {
+      addAlias(result, value.slice("--alias=".length));
       continue;
     }
     if (value === "--api-key") {
@@ -185,6 +194,15 @@ function parseInstallArgs(argv: string[]): Extract<CliRequest, { command: "insta
     throw new Error("Choose either a pinned version or --upgrade, not both.");
   }
   return { command: "install", tool, upgrade, version };
+}
+
+function addAlias(options: ParsedOptions, pair: string): void {
+  const separator = pair.indexOf("=");
+  if (separator <= 0) {
+    throw new Error("--alias expects SLOT=MODEL, for example: --alias opus=deepseek-v4.1-flash");
+  }
+  options.aliases ??= {};
+  options.aliases[pair.slice(0, separator).toUpperCase()] = pair.slice(separator + 1);
 }
 
 function requiredValue(argv: string[], index: number, option: string): string {
