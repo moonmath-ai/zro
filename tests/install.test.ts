@@ -33,12 +33,16 @@ function io(spawn: SpawnProcess, stdout = new PassThrough(), stderr = new PassTh
 }
 
 describe("zro install", () => {
-  it("uses the safe Windows command bridge", async () => {
+  it("targets the package manager regardless of platform", async () => {
     const { spawn, calls } = recorder();
     const code = await run(["install", "claude"], { ...io(spawn), platform: "win32" });
 
     expect(code).toBe(0);
-    expect(calls[0]?.command).toBe("powershell.exe");
+    // Only the dispatched command is asserted here; platform bridging is covered in process.test.ts.
+    expect(calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@anthropic-ai/claude-code@latest"],
+    });
   });
 
   it("installs an agent's catalog package", async () => {

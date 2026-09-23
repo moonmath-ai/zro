@@ -328,6 +328,7 @@ function context(
     homeDir,
     cwd: homeDir,
     tempDir,
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),

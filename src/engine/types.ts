@@ -16,6 +16,7 @@ export interface LaunchContext {
   homeDir: string;
   cwd: string;
   tempDir: string;
+  platform: NodeJS.Platform;
   stdin: Readable;
   stdout: Writable;
   stderr: Writable;

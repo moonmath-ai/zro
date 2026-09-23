@@ -213,6 +213,7 @@ async function launch(
       homeDir: io.homeDir,
       cwd: io.cwd,
       tempDir,
+      platform: io.platform ?? process.platform,
       stdin: io.stdin,
       stdout: io.stdout,
       stderr: io.stderr
@@ -259,7 +260,22 @@ async function launch(
     io.stderr.write(`Could not open ${plan.label}: ${messageOf(error)}\n`);
     return 1;
   } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+    await removeSessionDir(tempDir);
+  }
+}
+
+// Windows keeps files locked briefly after a child exits (antivirus, plugin clones), so a
+// single rm can fail with EBUSY/EPERM even though the session is over. Retry, then give up
+// silently: a leaked temp dir is harmless, a crash after the session is not.
+async function removeSessionDir(tempDir: string): Promise<void> {
+  for (const delayMs of [0, 250, 1000, 3000]) {
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+      return;
+    } catch {
+      // Retry.
+    }
   }
 }
 
@@ -935,17 +951,21 @@ function messageOf(error: unknown): string {
 }
 
 async function openBrowserWithSystem(url: string, platform: NodeJS.Platform): Promise<boolean> {
+  // explorer.exe is a single-instance shell: a spawned process just forwards its argument to the
+  // running shell, which often opens a File Explorer window instead of the URL. rundll32 goes
+  // straight through the URL protocol handler, so the default browser always opens.
   const command = platform === "darwin"
     ? "open"
     : platform === "linux"
       ? "xdg-open"
       : platform === "win32"
-        ? "explorer.exe"
+        ? "rundll32"
         : null;
   if (!command) return false;
+  const args = platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url];
 
   return new Promise((resolve) => {
-    const child = nodeSpawn(command, [url], { detached: true, stdio: "ignore" });
+    const child = nodeSpawn(command, args, { detached: true, stdio: "ignore" });
     let settled = false;
     child.once("error", () => {
       if (settled) return;
