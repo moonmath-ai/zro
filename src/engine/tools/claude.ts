@@ -15,6 +15,7 @@ export const claudeTool: ToolModule = {
       );
     }
     const aliasPlan = resolveClaudeAliases(ctx.model, ctx.models, ctx.modelAliases);
+    const sessionBudget = claudeSessionBudget(ctx.model, ctx.models, aliasPlan);
     return {
       tool: "claude",
       label: "Claude Code",
@@ -22,9 +23,9 @@ export const claudeTool: ToolModule = {
       command: "claude",
       args: [
         "--model",
-        claudeModelId(ctx.model, ctx.models),
+        claudeModelId(ctx.model, claudeSpecFor(ctx.model, ctx.models), sessionBudget),
         "--managed-settings",
-        buildClaudeManagedSettingsArg(ctx.model, ctx.models, aliasPlan),
+        buildClaudeManagedSettingsArg(ctx.models, aliasPlan),
         "--mcp-config",
         mcpConfigPath,
         ...ctx.extraArgs
@@ -32,7 +33,7 @@ export const claudeTool: ToolModule = {
       env: {
         ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
         ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
-        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan),
+        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget),
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "0",
         CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
         CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
@@ -67,27 +68,22 @@ export const claudeTool: ToolModule = {
 // models need no code changes; users can override per slot with --alias.
 export const CLAUDE_MODEL_ALIAS_SLOTS = ["OPUS", "SONNET", "FABLE", "HAIKU"] as const;
 
-// Only the tier aliases Zro actually seated may be allowlisted: with
+// Every allowlisted value is drawn from the validated catalog or the fixed
+// tier-alias set — never from a caller-supplied model string — because this
+// JSON is handed to Claude Code, a separate trust domain. With
 // enforceAvailableModels on, Claude Code drops any /model row whose value is
 // not in availableModels, and an allowlisted alias with no seated model
-// re-enables that row resolving to Claude Code's built-in Anthropic model —
+// re-enables that row resolving to Claude Code's built-in Anthropic model,
 // which the Zro base URL cannot serve.
 function buildClaudeManagedSettingsArg(
-  selectedModel: string,
   modelSpecs: readonly ZroModel[],
   aliasPlan: ClaudeAliasPlan
 ): string {
   const seatedSlots = CLAUDE_MODEL_ALIAS_SLOTS.filter((slot) => aliasPlan.mapping[slot]);
   return JSON.stringify({
-    // The selection is listed too: on the exported launch boundary a caller can
-    // pass a model the catalog does not carry, and the custom-option row it
-    // backs must stay allowlisted or Claude Code drops it.
     availableModels: [
-      ...new Set([
-        selectedModel,
-        ...modelSpecs.map((model) => model.id),
-        ...seatedSlots.map((slot) => slot.toLowerCase())
-      ])
+      ...modelSpecs.map((model) => model.id),
+      ...seatedSlots.map((slot) => slot.toLowerCase())
     ],
     enforceAvailableModels: true,
     permissions: {
@@ -98,9 +94,8 @@ function buildClaudeManagedSettingsArg(
 
 const ONE_MILLION = 1048576;
 
-export interface ClaudeAliasPlan {
+interface ClaudeAliasPlan {
   mapping: Record<string, string>;
-  dropped: Set<string>;
 }
 
 // Alias slots: explicit --alias values win and reserve their model — even
@@ -112,7 +107,7 @@ export interface ClaudeAliasPlan {
 // alias routing for its launches, and dropping a slot with --alias haiku=
 // leaves any user shell value untouched. Slots the catalog cannot fill stay
 // unfilled, and the caller must not advertise them either.
-export function resolveClaudeAliases(
+function resolveClaudeAliases(
   selectedModel: string,
   modelSpecs: readonly ZroModel[],
   modelAliases: Readonly<Record<string, string>> = {}
@@ -149,40 +144,45 @@ export function resolveClaudeAliases(
   for (const slot of Object.keys(mapping)) {
     if (!modelSpecs.some((model) => model.id === mapping[slot])) delete mapping[slot];
   }
-  return { mapping, dropped };
+  return { mapping };
+}
+
+// The session's context budget: the smallest window across the selection and
+// every seated slot, since Claude Code holds one budget per launch. Undefined
+// when no model in the session has a known window (an unknown-in-both model
+// with no seated slots). launch() warns about the unknown selection.
+function claudeSessionBudget(
+  selectedModel: string,
+  modelSpecs: readonly ZroModel[],
+  aliasPlan: ClaudeAliasPlan
+): number | undefined {
+  const specs = [
+    claudeSpecFor(selectedModel, modelSpecs),
+    ...Object.values(aliasPlan.mapping).map((modelId) => claudeSpecFor(modelId, modelSpecs))
+  ].filter((spec): spec is ZroModel => Boolean(spec));
+  return specs.length > 0 ? Math.min(...specs.map((spec) => spec.contextWindow)) : undefined;
+}
+
+// The active catalog is authoritative, but a caller may pass a model the remote
+// catalog no longer lists; fall back to the bundled lineup so a known model
+// still gets its real window. An unknown-in-both model resolves to undefined.
+function claudeSpecFor(
+  modelId: string,
+  modelSpecs: readonly ZroModel[]
+): ZroModel | undefined {
+  return modelSpecs.find((m) => m.id === modelId) ?? ZRO_MODELS.find((m) => m.id === modelId);
 }
 
 function buildClaudeModelEnv(
   selectedModel: string,
   modelSpecs: readonly ZroModel[],
-  aliasPlan: ClaudeAliasPlan
+  aliasPlan: ClaudeAliasPlan,
+  sessionBudget: number | undefined
 ): Record<string, string> {
   const aliasMapping = aliasPlan.mapping;
 
-  // The active catalog is authoritative, but a caller may pass a model the
-  // remote catalog no longer lists; fall back to the bundled lineup so a
-  // known model still gets its real window. An unknown-in-both model gets no
-  // budget here — launch() warns so the degradation is not silent.
-  const selectedSpec = modelSpecs.find((m) => m.id === selectedModel)
-    ?? ZRO_MODELS.find((m) => m.id === selectedModel);
-
-  // Claude Code holds one context budget per launch, but every model that can
-  // run in the session — the selection and each filled alias slot — has its
-  // own window. Budget for the smallest so a mixed-window catalog compacts
-  // instead of erroring. The picker labels mark [1m] off this budget, not off
-  // each model's own window, so a row never advertises more than the session
-  // will actually grant.
-  const sessionSpecs = [
-    selectedSpec,
-    ...Object.values(aliasMapping)
-      .map((modelId) => modelSpecs.find((model) => model.id === modelId))
-  ].filter((spec): spec is ZroModel => Boolean(spec));
-  const sessionBudget = sessionSpecs.length > 0
-    ? Math.min(...sessionSpecs.map((spec) => spec.contextWindow))
-    : undefined;
-
   const env: Record<string, string> = {
-    ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, modelSpecs),
+    ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, claudeSpecFor(selectedModel, modelSpecs), sessionBudget),
     ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: claudeModelName(selectedModel, modelSpecs, sessionBudget),
     ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
   };
@@ -190,7 +190,11 @@ function buildClaudeModelEnv(
   // aliasPlan.mapping is already filtered to models this catalog carries, so
   // every seated slot here is emitted and every emitted slot is allowlisted.
   for (const [slot, modelId] of Object.entries(aliasMapping)) {
-    env[`ANTHROPIC_DEFAULT_${slot}_MODEL`] = claudeModelId(modelId, modelSpecs);
+    env[`ANTHROPIC_DEFAULT_${slot}_MODEL`] = claudeModelId(
+      modelId,
+      claudeSpecFor(modelId, modelSpecs),
+      sessionBudget
+    );
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_NAME`] = claudeModelName(modelId, modelSpecs, sessionBudget);
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`;
   }
@@ -202,12 +206,12 @@ function buildClaudeModelEnv(
   return env;
 }
 
-function claudeModelId(modelId: string, modelSpecs: readonly ZroModel[]): string {
-  const spec = modelSpecs.find((m) => m.id === modelId);
-  if (spec && spec.contextWindow >= ONE_MILLION) {
-    return `${modelId}[1m]`;
-  }
-  return modelId;
+function claudeModelId(
+  modelId: string,
+  spec: ZroModel | undefined,
+  sessionBudget: number | undefined
+): string {
+  return `${modelId}${claudeContextMarker(spec, sessionBudget)}`;
 }
 
 function claudeModelName(
@@ -215,15 +219,21 @@ function claudeModelName(
   modelSpecs: readonly ZroModel[],
   sessionBudget: number | undefined
 ): string {
-  const displayName = modelSpecs.find((model) => model.id === modelId)?.displayName ?? modelId;
-  return `${PROVIDER_NAME} ${displayName}${claudeContextSuffix(sessionBudget)}`;
+  const spec = claudeSpecFor(modelId, modelSpecs);
+  const displayName = spec?.displayName ?? modelId;
+  return `${PROVIDER_NAME} ${displayName}${claudeContextMarker(spec, sessionBudget)}`;
 }
 
-// Mirror the [1m] model-ID marker in the human-readable name so the /model
-// picker shows which sessions carry 1M context; the *_MODEL_NAME values are
-// what Claude Code renders as the row label. Keyed on the session budget (the
-// smallest window across the selection and every seated slot), because Claude
-// Code clamps the whole session to it.
-function claudeContextSuffix(sessionBudget: number | undefined): string {
-  return sessionBudget !== undefined && sessionBudget >= ONE_MILLION ? "[1m]" : "";
+// The [1m] marker goes on both the model id and its label from a single
+// predicate, so the two can never disagree. It requires a known model with a
+// >= 1M window and a >= 1M session budget: Claude Code clamps the whole session
+// to the smallest window, so a 1M model in a mixed-window session is not
+// advertised as 1M.
+function claudeContextMarker(
+  spec: ZroModel | undefined,
+  sessionBudget: number | undefined
+): string {
+  if (!spec || spec.contextWindow < ONE_MILLION) return "";
+  if (sessionBudget === undefined || sessionBudget < ONE_MILLION) return "";
+  return "[1m]";
 }
