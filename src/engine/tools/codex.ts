@@ -167,11 +167,14 @@ export function buildCodexModelCatalog(modelSpecs: readonly ZroModel[]): Record<
   };
 }
 
-// The remote catalog does not carry codexEffort, so undocumented level ids
-// ("max", "auto", "none") would reach config.toml unchecked. Clamp to the
-// level's piLevel — always a documented Codex effort — unless the catalog
-// explicitly pins one ("disabled" survives the wire where Codex's unset
+// The remote catalog does not carry codexEffort, and parseModelCatalog
+// forwards whatever effort string a server sends. Undocumented values
+// ("max", "auto", "none") must not reach config.toml: accept only the
+// documented set, otherwise clamp to the level's piLevel — always a
+// documented Codex effort ("disabled" survives the wire where Codex's unset
 // sentinel does not).
+const SUPPORTED_CODEX_EFFORTS = new Set(["disabled", "minimal", "low", "medium", "high", "xhigh"]);
+
 const CODEX_EFFORTS_BY_PI_LEVEL: Record<string, string> = {
   off: "disabled",
   minimal: "minimal",
@@ -185,7 +188,10 @@ function codexReasoningEffort(
   level: ZroModel["reasoning"]["levels"][number] | undefined
 ): string | undefined {
   if (!level) return undefined;
-  return level.codexEffort ?? CODEX_EFFORTS_BY_PI_LEVEL[level.piLevel] ?? level.id;
+  if (level.codexEffort && SUPPORTED_CODEX_EFFORTS.has(level.codexEffort)) {
+    return level.codexEffort;
+  }
+  return CODEX_EFFORTS_BY_PI_LEVEL[level.piLevel] ?? level.id;
 }
 
 export function buildCodexConfig(

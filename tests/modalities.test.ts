@@ -4,6 +4,28 @@ import { buildCodexConfig, buildCodexModelCatalog } from "../src/engine/tools/co
 import { buildOpenCodeConfig } from "../src/engine/tools/opencode.js";
 import { ZRO_MODELS } from "../src/engine/constants.js";
 
+function catalogModel(id: string, codexEffort: string) {
+  return {
+    id,
+    displayName: id,
+    contextWindow: 1048576,
+    maxOutputTokens: 64000,
+    modalities: { input: ["text"], output: ["text"] },
+    reasoning: {
+      defaultLevel: "max",
+      levels: [
+        {
+          id: "max",
+          description: "Maximum reasoning",
+          codexEffort,
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
+  };
+}
+
 describe("model modalities parsing", () => {
   it("carries image modalities through the catalog parser", () => {
     const catalog = parseModelCatalog({
@@ -164,6 +186,16 @@ describe("codex config writes a documented reasoning effort for every bundled de
     }
     const glm = remote.find((model) => model.id === "glm-5.3");
     expect(buildCodexConfig("glm-5.3", { modelSpec: glm })).toContain('model_reasoning_effort = "xhigh"');
+  });
+
+  it("rejects an undocumented codexEffort from a remote catalog and clamps via piLevel", () => {
+    const catalog = parseModelCatalog({
+      version: 1,
+      default: "server-model",
+      models: [catalogModel("server-model", "max")]
+    });
+    const config = buildCodexConfig("server-model", { modelSpec: catalog.models[0] });
+    expect(config).toContain('model_reasoning_effort = "xhigh"');
   });
 });
 

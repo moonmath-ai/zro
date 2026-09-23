@@ -32,6 +32,16 @@ describe("redact", () => {
     expect(redact("CONTEXT_TOKENS", "1048576", SECRET)).toBe("1048576");
   });
 
+  it("leaves non-secret AUTH-prefixed settings visible in previews", () => {
+    expect(redact("OMP_AUTH_BROKER_URL", "https://auth.example.com", SECRET))
+      .toBe("https://auth.example.com");
+    expect(redact("OMP_AUTH_BROKER_SNAPSHOT_TTL_MS", "0", SECRET)).toBe("0");
+  });
+
+  it("leaves empty values empty instead of rendering a fake masked secret", () => {
+    expect(redact("ZRO_API_KEY", "", SECRET)).toBe("");
+  });
+
   it("masks a secret under a key-shaped name even when the value differs from the selected key", () => {
     const masked = redact("OTHER_SERVICE_API_KEY", "different-plain-value", SECRET);
     expect(masked).toMatch(/\*\*\*\*/);

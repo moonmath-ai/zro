@@ -41,7 +41,8 @@ import {
   CatalogAuthenticationError,
   invalidateModelCatalog,
   loadModelCatalog,
-  type ModelCatalog,
+  type CatalogSource,
+  type LoadedModelCatalog,
 } from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
 import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
@@ -178,7 +179,7 @@ async function launch(
     io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
-  let catalog: ModelCatalog;
+  let catalog: LoadedModelCatalog;
   try {
     catalog = await loadModelCatalog({
       apiKey: key.apiKey,
@@ -200,7 +201,7 @@ async function launch(
 
   const model = request.model ?? catalog.default;
   if (!catalog.models.some((candidate) => candidate.id === model)) {
-    io.stderr.write(`Unknown model "${model}". It is not offered by your account's catalog. Run zro models.\n`);
+    io.stderr.write(unknownModelMessage(model, catalog.source));
     return 1;
   }
 
@@ -216,7 +217,7 @@ async function launch(
       return 1;
     }
     if (modelId && !catalog.models.some((candidate) => candidate.id === modelId)) {
-      io.stderr.write(`Unknown model "${modelId}" for alias ${slot.toLowerCase()}. It is not offered by your account's catalog. Run zro models.\n`);
+      io.stderr.write(`Unknown model "${modelId}" for alias ${slot.toLowerCase()}. ${unknownModelMessage(modelId, catalog.source).trim()}\n`);
       return 1;
     }
     modelAliases ??= {};
@@ -771,7 +772,7 @@ async function models(
     // A cached or bundled catalog remains useful before the user signs in.
   }
 
-  let catalog: ModelCatalog;
+  let catalog: LoadedModelCatalog;
   try {
     catalog = await loadModelCatalog({ apiKey, env, homeDir: io.homeDir, fetch: io.fetch });
   } catch (error) {
@@ -931,7 +932,18 @@ async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): P
   });
 }
 
+export function unknownModelMessage(model: string, source: CatalogSource): string {
+  if (source === "remote") {
+    return `Unknown model "${model}". It is not offered by your account's catalog. Run zro models.\n`;
+  }
+  if (source === "cache") {
+    return `Unknown model "${model}". It is not in the cached catalog from your last login. Run zro login to refresh your account's catalog.\n`;
+  }
+  return `Unknown model "${model}". It is not in the offline catalog bundled with zro. Run zro login to fetch your account's catalog.\n`;
+}
+
 export function redact(key: string, value: string, secret: string): string {
+  if (value === "") return value;
   const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
   if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
     return maskKey(value);
@@ -944,7 +956,6 @@ const SECRET_NAME_TOKENS = new Set([
   "APIKEYS",
   "APISECRET",
   "APISECRETS",
-  "AUTH",
   "AUTHORIZATION",
   "CREDENTIAL",
   "CREDENTIALS",

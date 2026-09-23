@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
+import { claudeTool } from "../src/engine/tools/claude.js";
 import type { SpawnOptions, SpawnProcess } from "../src/engine/types.js";
 import { run } from "../src/run.js";
 
@@ -152,7 +153,7 @@ describe("zro experience", () => {
     });
 
     expect(code).toBe(0);
-    expect(JSON.parse(await streamText(stdout))).toEqual(catalog);
+    expect(JSON.parse(await streamText(stdout))).toEqual({ ...catalog, source: "remote" });
   });
 
   it("accepts a remotely added model without a CLI release", async () => {
@@ -320,6 +321,91 @@ describe("zro experience", () => {
     expect(result.tool).toBe("claude");
     expect(result.model).toBe("kimi-k3");
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.3[1m]");
+  });
+
+  it("warns instead of staying silent when the selected model is in no catalog", async () => {
+    const stderr = new PassThrough();
+    const plan = await claudeTool.launch({
+      apiKey: "sk-warn-secret",
+      apiKeySource: "env",
+      env: {},
+      model: "uncatalogued-model",
+      models: [],
+      extraArgs: [],
+      homeDir: "/tmp",
+      cwd: "/tmp",
+      tempDir: "/tmp/zro-warn-test",
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr
+    });
+    expect(plan.env?.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBeUndefined();
+    expect(await streamText(stderr)).toContain(
+      'Warning: model "uncatalogued-model" is not in the Zro catalog'
+    );
+  });
+
+  it("lets an explicit alias target the selected model, reserving the rest by tier", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-self-"));
+    const stdout = new PassThrough();
+
+    const code = await run(["claude", "-m", "glm-5.3", "--alias", "opus=glm-5.3", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    expect(result.model).toBe("glm-5.3");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("kimi-k3[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("deepseek-v4.1-flash[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("auto[1m]");
+  });
+
+  it("budgets the smallest context window across the selection and filled alias slots", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-mixed-window-"));
+    const stdout = new PassThrough();
+    const cacheDir = path.join(home, ".cache", "zro");
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.writeFile(path.join(cacheDir, "model-catalog.json"), JSON.stringify({
+      version: 1,
+      default: "legacy-1m",
+      models: [
+        {
+          id: "legacy-512k",
+          displayName: "Legacy 512k",
+          contextWindow: 524288,
+          maxOutputTokens: 64000,
+          reasoning: {
+            defaultLevel: "high",
+            levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
+          }
+        },
+        {
+          id: "legacy-1m",
+          displayName: "Legacy 1M",
+          contextWindow: 1048576,
+          maxOutputTokens: 64000,
+          reasoning: {
+            defaultLevel: "high",
+            levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
+          }
+        }
+      ]
+    }));
+
+    const code = await run(["claude", "-m", "legacy-1m", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("524288");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("legacy-512k");
   });
 
   it("rejects alias overrides with unknown slots, unknown models, or other tools", async () => {

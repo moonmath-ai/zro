@@ -8,6 +8,12 @@ export const claudeTool: ToolModule = {
   label: "Claude Code",
   async launch(ctx) {
     const mcpConfigPath = path.join(ctx.tempDir, "claude", "mcp.json");
+    if (!ctx.models.some((model) => model.id === ctx.model)
+      && !ZRO_MODELS.some((model) => model.id === ctx.model)) {
+      ctx.stderr.write(
+        `Warning: model "${ctx.model}" is not in the Zro catalog; Claude Code will assume a 200k context window.\n`
+      );
+    }
     return {
       tool: "claude",
       label: "Claude Code",
@@ -83,20 +89,12 @@ function buildClaudeModelEnv(
     ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
   };
 
-  // The active catalog is authoritative, but a caller may pass a model the
-  // remote catalog no longer lists; fall back to the bundled lineup so the
-  // context limit is never silently missing.
-  const selectedSpec = modelSpecs.find((m) => m.id === selectedModel)
-    ?? ZRO_MODELS.find((m) => m.id === selectedModel);
-  if (selectedSpec) {
-    env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(selectedSpec.contextWindow);
-  }
-
-  // Alias slots: explicit --alias values win and reserve their model; the
-  // remaining slots fill from the unclaimed catalog, tier-mapped by output
-  // capacity (opus gets the beefiest, haiku — used for cheap background tasks
-  // — the smallest) with deterministic tie-breaks so the mapping never depends
-  // on catalog order. Writing these into plan.env is deliberate: Zro owns the
+  // Alias slots: explicit --alias values win and reserve their model — even
+  // when that inverts the tier ordering, the user asked for it; the remaining
+  // slots fill from the unclaimed catalog, tier-mapped by output capacity
+  // (opus gets the beefiest, haiku — used for cheap background tasks — the
+  // smallest) with deterministic tie-breaks so the mapping never depends on
+  // catalog order. Writing these into plan.env is deliberate: Zro owns the
   // alias routing for its launches, and dropping a slot with --alias haiku=
   // leaves any user shell value untouched.
   const claimed = new Set([selectedModel]);
@@ -124,11 +122,33 @@ function buildClaudeModelEnv(
     aliasMapping[slot] = fillCandidates[cursor++].id;
   }
 
+  // The active catalog is authoritative, but a caller may pass a model the
+  // remote catalog no longer lists; fall back to the bundled lineup so a
+  // known model still gets its real window. An unknown-in-both model gets no
+  // budget here — launch() warns so the degradation is not silent.
+  const selectedSpec = modelSpecs.find((m) => m.id === selectedModel)
+    ?? ZRO_MODELS.find((m) => m.id === selectedModel);
+
   for (const [slot, modelId] of Object.entries(aliasMapping)) {
     if (!modelSpecs.some((model) => model.id === modelId)) continue;
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL`] = claudeModelId(modelId, modelSpecs);
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_NAME`] = claudeModelName(modelId, modelSpecs);
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`;
+  }
+
+  // Claude Code holds one context budget per launch, but every model that can
+  // run in the session — the selection and each filled alias slot — has its
+  // own window. Budget for the smallest so a mixed-window catalog compacts
+  // instead of erroring.
+  const sessionSpecs = [
+    selectedSpec,
+    ...Object.values(aliasMapping)
+      .map((modelId) => modelSpecs.find((model) => model.id === modelId))
+  ].filter((spec): spec is ZroModel => Boolean(spec));
+  if (sessionSpecs.length > 0) {
+    env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(
+      Math.min(...sessionSpecs.map((spec) => spec.contextWindow))
+    );
   }
 
   return env;
