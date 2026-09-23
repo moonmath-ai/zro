@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { claudeTool } from "../src/engine/tools/claude.js";
+import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "../src/engine/tools/claude.js";
+import { ZRO_MODELS } from "../src/engine/constants.js";
 import type { SpawnOptions, SpawnProcess } from "../src/engine/types.js";
 import { run } from "../src/run.js";
 
@@ -279,7 +280,7 @@ describe("zro experience", () => {
     expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro Kimi K3[1m]");
   });
 
-  it("allowlists the tier aliases so Claude Code keeps their /model rows", async () => {
+  it("allowlists the seated tier aliases and the bare form of every emitted model id", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-allowlist-"));
     const stdout = new PassThrough();
 
@@ -292,10 +293,23 @@ describe("zro experience", () => {
     expect(code).toBe(0);
     const result = JSON.parse(await streamText(stdout));
     const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
+    const env = result.environment as Record<string, string>;
     expect(managed.enforceAvailableModels).toBe(true);
-    expect(managed.availableModels).toEqual(expect.arrayContaining(["opus", "sonnet", "fable", "haiku"]));
-    for (const id of ["deepseek-v4.1-flash", "glm-5.3", "glm-5.3-flash", "dolly1-security", "auto", "kimi-k3"]) {
-      expect(managed.availableModels).toContain(id);
+    // Derived from the resolved catalog, not hard-coded: every bundled model is
+    // allowlisted, and with six models every tier slot is seated.
+    expect(managed.availableModels).toEqual([
+      ...ZRO_MODELS.map((model) => model.id),
+      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
+    ]);
+    // The picker gate strips [1m] before matching, so the bare id of every
+    // emitted value must be allowlisted (the values themselves are suffixed).
+    const bare = (value: string) => value.replace(/\[1m\]$/i, "");
+    for (const key of [
+      "ANTHROPIC_CUSTOM_MODEL_OPTION",
+      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => `ANTHROPIC_DEFAULT_${slot}_MODEL`)
+    ]) {
+      const value = env[key];
+      if (value) expect(managed.availableModels).toContain(bare(value));
     }
   });
 
@@ -317,6 +331,11 @@ describe("zro experience", () => {
     expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("deepseek-v4.1-flash[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
+    // A dropped slot must not be allowlisted, or Claude Code re-enables its row
+    // resolving to the built-in Anthropic model against the Zro base URL.
+    const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
+    expect(managed.availableModels).not.toContain("haiku");
+    expect(managed.availableModels).toEqual(expect.arrayContaining(["opus", "sonnet", "fable"]));
   });
 
   it("forwards --alias overrides through zro again", async () => {
@@ -483,6 +502,14 @@ describe("zro experience", () => {
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("legacy-1m-plus[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("legacy-512k");
     expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
+    // Sub-1M slot names carry no [1m] marker.
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME).toBe("Zro Legacy 512k");
+    // The catalog fills only two slots; the unfilled ones must stay off the
+    // allowlist so Claude Code cannot surface built-in Anthropic rows for them.
+    const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
+    expect(managed.availableModels).toEqual(expect.arrayContaining(["opus", "sonnet"]));
+    expect(managed.availableModels).not.toContain("fable");
+    expect(managed.availableModels).not.toContain("haiku");
     expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("524288");
   });
 
@@ -620,6 +647,8 @@ describe("zro experience", () => {
     expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("glm-5.2");
     expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro GLM-5.2");
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
+    const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
+    expect(managed.availableModels).toEqual(["glm-5.2"]);
   });
 
   it("produces a JSON preview without exposing or writing the key", async () => {

@@ -14,6 +14,7 @@ export const claudeTool: ToolModule = {
         `Warning: model "${ctx.model}" is not in the Zro catalog; Claude Code will assume a 200k context window.\n`
       );
     }
+    const aliasPlan = resolveClaudeAliases(ctx.model, ctx.models, ctx.modelAliases);
     return {
       tool: "claude",
       label: "Claude Code",
@@ -23,7 +24,7 @@ export const claudeTool: ToolModule = {
         "--model",
         claudeModelId(ctx.model, ctx.models),
         "--managed-settings",
-        buildClaudeManagedSettingsArg(ctx.models),
+        buildClaudeManagedSettingsArg(ctx.models, aliasPlan),
         "--mcp-config",
         mcpConfigPath,
         ...ctx.extraArgs
@@ -31,7 +32,7 @@ export const claudeTool: ToolModule = {
       env: {
         ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
         ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
-        ...buildClaudeModelEnv(ctx.model, ctx.models, ctx.modelAliases),
+        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan),
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "0",
         CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
         CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
@@ -66,15 +67,20 @@ export const claudeTool: ToolModule = {
 // models need no code changes; users can override per slot with --alias.
 export const CLAUDE_MODEL_ALIAS_SLOTS = ["OPUS", "SONNET", "FABLE", "HAIKU"] as const;
 
-function buildClaudeManagedSettingsArg(modelSpecs: readonly ZroModel[]): string {
+// Only the tier aliases Zro actually seated may be allowlisted: with
+// enforceAvailableModels on, Claude Code drops any /model row whose value is
+// not in availableModels, and an allowlisted alias with no seated model
+// re-enables that row resolving to Claude Code's built-in Anthropic model —
+// which the Zro base URL cannot serve.
+function buildClaudeManagedSettingsArg(
+  modelSpecs: readonly ZroModel[],
+  aliasPlan: ClaudeAliasPlan
+): string {
+  const seatedSlots = CLAUDE_MODEL_ALIAS_SLOTS.filter((slot) => aliasPlan.mapping[slot]);
   return JSON.stringify({
-    // The tier aliases are routing tokens, not model IDs, but they must be in
-    // the allowlist too: with enforceAvailableModels on, Claude Code drops any
-    // /model row whose value is not listed here, and without them the picker
-    // collapses to only the custom option (the four tier rows disappear).
     availableModels: [
       ...modelSpecs.map((model) => model.id),
-      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
+      ...seatedSlots.map((slot) => slot.toLowerCase())
     ],
     enforceAvailableModels: true,
     permissions: {
@@ -85,31 +91,31 @@ function buildClaudeManagedSettingsArg(modelSpecs: readonly ZroModel[]): string 
 
 const ONE_MILLION = 1048576;
 
-function buildClaudeModelEnv(
+export interface ClaudeAliasPlan {
+  mapping: Record<string, string>;
+  dropped: Set<string>;
+}
+
+// Alias slots: explicit --alias values win and reserve their model — even
+// when that inverts the tier ordering, the user asked for it; the remaining
+// slots fill from the unclaimed catalog, tier-mapped by output capacity
+// (opus gets the beefiest, haiku — used for cheap background tasks — the
+// smallest) with deterministic tie-breaks so the mapping never depends on
+// catalog order. Writing these into plan.env is deliberate: Zro owns the
+// alias routing for its launches, and dropping a slot with --alias haiku=
+// leaves any user shell value untouched. Slots the catalog cannot fill stay
+// unfilled, and the caller must not advertise them either.
+export function resolveClaudeAliases(
   selectedModel: string,
   modelSpecs: readonly ZroModel[],
   modelAliases: Readonly<Record<string, string>> = {}
-): Record<string, string> {
-  const env: Record<string, string> = {
-    ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, modelSpecs),
-    ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: claudeModelName(selectedModel, modelSpecs),
-    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
-  };
-
-  // Alias slots: explicit --alias values win and reserve their model — even
-  // when that inverts the tier ordering, the user asked for it; the remaining
-  // slots fill from the unclaimed catalog, tier-mapped by output capacity
-  // (opus gets the beefiest, haiku — used for cheap background tasks — the
-  // smallest) with deterministic tie-breaks so the mapping never depends on
-  // catalog order. Writing these into plan.env is deliberate: Zro owns the
-  // alias routing for its launches, and dropping a slot with --alias haiku=
-  // leaves any user shell value untouched.
+): ClaudeAliasPlan {
   const claimed = new Set([selectedModel]);
   const dropped = new Set<string>();
-  const aliasMapping: Record<string, string> = {};
+  const mapping: Record<string, string> = {};
   for (const [slot, modelId] of Object.entries(modelAliases)) {
     if (modelId) {
-      aliasMapping[slot] = modelId;
+      mapping[slot] = modelId;
       claimed.add(modelId);
     } else {
       dropped.add(slot);
@@ -124,10 +130,25 @@ function buildClaudeModelEnv(
     );
   let cursor = 0;
   for (const slot of CLAUDE_MODEL_ALIAS_SLOTS) {
-    if (dropped.has(slot) || aliasMapping[slot]) continue;
+    if (dropped.has(slot) || mapping[slot]) continue;
     if (cursor >= fillCandidates.length) break;
-    aliasMapping[slot] = fillCandidates[cursor++].id;
+    mapping[slot] = fillCandidates[cursor++].id;
   }
+  return { mapping, dropped };
+}
+
+function buildClaudeModelEnv(
+  selectedModel: string,
+  modelSpecs: readonly ZroModel[],
+  aliasPlan: ClaudeAliasPlan
+): Record<string, string> {
+  const env: Record<string, string> = {
+    ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, modelSpecs),
+    ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: claudeModelName(selectedModel, modelSpecs),
+    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
+  };
+
+  const aliasMapping = aliasPlan.mapping;
 
   // The active catalog is authoritative, but a caller may pass a model the
   // remote catalog no longer lists; fall back to the bundled lineup so a
