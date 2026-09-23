@@ -24,7 +24,7 @@ export const claudeTool: ToolModule = {
         "--model",
         claudeModelId(ctx.model, ctx.models),
         "--managed-settings",
-        buildClaudeManagedSettingsArg(ctx.models, aliasPlan),
+        buildClaudeManagedSettingsArg(ctx.model, ctx.models, aliasPlan),
         "--mcp-config",
         mcpConfigPath,
         ...ctx.extraArgs
@@ -73,14 +73,21 @@ export const CLAUDE_MODEL_ALIAS_SLOTS = ["OPUS", "SONNET", "FABLE", "HAIKU"] as 
 // re-enables that row resolving to Claude Code's built-in Anthropic model —
 // which the Zro base URL cannot serve.
 function buildClaudeManagedSettingsArg(
+  selectedModel: string,
   modelSpecs: readonly ZroModel[],
   aliasPlan: ClaudeAliasPlan
 ): string {
   const seatedSlots = CLAUDE_MODEL_ALIAS_SLOTS.filter((slot) => aliasPlan.mapping[slot]);
   return JSON.stringify({
+    // The selection is listed too: on the exported launch boundary a caller can
+    // pass a model the catalog does not carry, and the custom-option row it
+    // backs must stay allowlisted or Claude Code drops it.
     availableModels: [
-      ...modelSpecs.map((model) => model.id),
-      ...seatedSlots.map((slot) => slot.toLowerCase())
+      ...new Set([
+        selectedModel,
+        ...modelSpecs.map((model) => model.id),
+        ...seatedSlots.map((slot) => slot.toLowerCase())
+      ])
     ],
     enforceAvailableModels: true,
     permissions: {
@@ -150,12 +157,6 @@ function buildClaudeModelEnv(
   modelSpecs: readonly ZroModel[],
   aliasPlan: ClaudeAliasPlan
 ): Record<string, string> {
-  const env: Record<string, string> = {
-    ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, modelSpecs),
-    ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: claudeModelName(selectedModel, modelSpecs),
-    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
-  };
-
   const aliasMapping = aliasPlan.mapping;
 
   // The active catalog is authoritative, but a caller may pass a model the
@@ -165,27 +166,37 @@ function buildClaudeModelEnv(
   const selectedSpec = modelSpecs.find((m) => m.id === selectedModel)
     ?? ZRO_MODELS.find((m) => m.id === selectedModel);
 
-  // aliasPlan.mapping is already filtered to models this catalog carries, so
-  // every seated slot here is emitted and every emitted slot is allowlisted.
-  for (const [slot, modelId] of Object.entries(aliasMapping)) {
-    env[`ANTHROPIC_DEFAULT_${slot}_MODEL`] = claudeModelId(modelId, modelSpecs);
-    env[`ANTHROPIC_DEFAULT_${slot}_MODEL_NAME`] = claudeModelName(modelId, modelSpecs);
-    env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`;
-  }
-
   // Claude Code holds one context budget per launch, but every model that can
   // run in the session — the selection and each filled alias slot — has its
   // own window. Budget for the smallest so a mixed-window catalog compacts
-  // instead of erroring.
+  // instead of erroring. The picker labels mark [1m] off this budget, not off
+  // each model's own window, so a row never advertises more than the session
+  // will actually grant.
   const sessionSpecs = [
     selectedSpec,
     ...Object.values(aliasMapping)
       .map((modelId) => modelSpecs.find((model) => model.id === modelId))
   ].filter((spec): spec is ZroModel => Boolean(spec));
-  if (sessionSpecs.length > 0) {
-    env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(
-      Math.min(...sessionSpecs.map((spec) => spec.contextWindow))
-    );
+  const sessionBudget = sessionSpecs.length > 0
+    ? Math.min(...sessionSpecs.map((spec) => spec.contextWindow))
+    : undefined;
+
+  const env: Record<string, string> = {
+    ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, modelSpecs),
+    ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: claudeModelName(selectedModel, modelSpecs, sessionBudget),
+    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
+  };
+
+  // aliasPlan.mapping is already filtered to models this catalog carries, so
+  // every seated slot here is emitted and every emitted slot is allowlisted.
+  for (const [slot, modelId] of Object.entries(aliasMapping)) {
+    env[`ANTHROPIC_DEFAULT_${slot}_MODEL`] = claudeModelId(modelId, modelSpecs);
+    env[`ANTHROPIC_DEFAULT_${slot}_MODEL_NAME`] = claudeModelName(modelId, modelSpecs, sessionBudget);
+    env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`;
+  }
+
+  if (sessionBudget !== undefined) {
+    env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(sessionBudget);
   }
 
   return env;
@@ -199,15 +210,20 @@ function claudeModelId(modelId: string, modelSpecs: readonly ZroModel[]): string
   return modelId;
 }
 
-function claudeModelName(modelId: string, modelSpecs: readonly ZroModel[]): string {
-  const spec = modelSpecs.find((model) => model.id === modelId);
-  const displayName = spec?.displayName ?? modelId;
-  return `${PROVIDER_NAME} ${displayName}${claudeContextSuffix(spec)}`;
+function claudeModelName(
+  modelId: string,
+  modelSpecs: readonly ZroModel[],
+  sessionBudget: number | undefined
+): string {
+  const displayName = modelSpecs.find((model) => model.id === modelId)?.displayName ?? modelId;
+  return `${PROVIDER_NAME} ${displayName}${claudeContextSuffix(sessionBudget)}`;
 }
 
-// Mirror the [1m] model-ID suffix in the human-readable name so the /model
-// picker shows which rows are 1M-context; the *_MODEL_NAME values are what
-// Claude Code renders as the row label.
-function claudeContextSuffix(spec: ZroModel | undefined): string {
-  return spec && spec.contextWindow >= ONE_MILLION ? "[1m]" : "";
+// Mirror the [1m] model-ID marker in the human-readable name so the /model
+// picker shows which sessions carry 1M context; the *_MODEL_NAME values are
+// what Claude Code renders as the row label. Keyed on the session budget (the
+// smallest window across the selection and every seated slot), because Claude
+// Code clamps the whole session to it.
+function claudeContextSuffix(sessionBudget: number | undefined): string {
+  return sessionBudget !== undefined && sessionBudget >= ONE_MILLION ? "[1m]" : "";
 }

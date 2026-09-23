@@ -295,11 +295,14 @@ describe("zro experience", () => {
     const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
     const env = result.environment as Record<string, string>;
     expect(managed.enforceAvailableModels).toBe(true);
-    // Derived from the resolved catalog, not hard-coded: every bundled model is
-    // allowlisted, and with six models every tier slot is seated.
+    // Derived from the resolved catalog, not hard-coded: the selection, every
+    // bundled model, and every seated tier alias are allowlisted, deduped.
     expect(managed.availableModels).toEqual([
-      ...ZRO_MODELS.map((model) => model.id),
-      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
+      ...new Set([
+        "kimi-k3",
+        ...ZRO_MODELS.map((model) => model.id),
+        ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
+      ])
     ]);
     // The picker gate strips [1m] before matching, so the bare id of every
     // emitted value must be allowlisted (the values themselves are suffixed).
@@ -340,9 +343,39 @@ describe("zro experience", () => {
     const managed = JSON.parse(plan.args![plan.args!.indexOf("--managed-settings") + 1]);
     expect(managed.availableModels).not.toContain("opus");
     expect(plan.env!.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
-    // The unrepresentable alias must not consume a slot either: the remaining
-    // slots fill from the catalog as if it were dropped.
-    expect(plan.env!.ANTHROPIC_DEFAULT_SONNET_MODEL).toBeDefined();
+    // The unrepresentable alias is dropped, not reassigned: the remaining
+    // slots fill from the catalog and keep their exact deterministic values.
+    expect(plan.env!.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("deepseek-v4.1-flash[1m]");
+    expect(plan.env!.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
+    expect(plan.env!.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("dolly1-security[1m]");
+  });
+
+  it("allowlists the selection even when the launch catalog omits it", async () => {
+    const stderr = new PassThrough();
+    const plan = await claudeTool.launch({
+      apiKey: "sk-boundary-secret",
+      apiKeySource: "env",
+      env: {},
+      model: "kimi-k3",
+      models: ZRO_MODELS.filter((model) => model.id !== "kimi-k3"),
+      extraArgs: [],
+      homeDir: "/tmp",
+      cwd: "/tmp",
+      tempDir: "/tmp/zro-boundary-missing-test",
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr
+    });
+    const managed = JSON.parse(plan.args![plan.args!.indexOf("--managed-settings") + 1]);
+    // availableModels is a strict superset of the catalog: the selected model
+    // is listed so the custom-option row survives the picker allowlist.
+    expect(managed.availableModels).toContain("kimi-k3");
+    for (const model of ZRO_MODELS.filter((model) => model.id !== "kimi-k3")) {
+      expect(managed.availableModels).toContain(model.id);
+    }
+    expect(managed.availableModels).not.toContain("glm-5.2");
+    const bare = (value: string) => value.replace(/\[1m\]$/i, "");
+    expect(managed.availableModels).toContain(bare(plan.env!.ANTHROPIC_CUSTOM_MODEL_OPTION!));
   });
 
   it("lets users override Claude alias slots with --alias, including dropping one", async () => {
@@ -534,8 +567,11 @@ describe("zro experience", () => {
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("legacy-1m-plus[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("legacy-512k");
     expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
-    // Sub-1M slot names carry no [1m] marker.
+    // The [1m] label keys off the session budget (512k here), not each model's
+    // own window, so a 1M model in a mixed session is not advertised as 1M.
     expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME).toBe("Zro Legacy 512k");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("Zro Legacy 1M Plus");
+    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro Legacy 1M");
     // The catalog fills only two slots; the unfilled ones must stay off the
     // allowlist so Claude Code cannot surface built-in Anthropic rows for them.
     const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
