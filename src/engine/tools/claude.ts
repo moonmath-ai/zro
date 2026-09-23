@@ -134,6 +134,14 @@ export function resolveClaudeAliases(
     if (cursor >= fillCandidates.length) break;
     mapping[slot] = fillCandidates[cursor++].id;
   }
+  // A slot is only seated when its model is representable in this catalog: the
+  // env writer cannot emit a value for a model the catalog does not carry, and
+  // an allowlisted-but-unemitted alias would re-enable Claude Code's built-in
+  // Anthropic row. Filtering here keeps the managed settings and the env in
+  // agreement for callers that reach launch() with a model outside `modelSpecs`.
+  for (const slot of Object.keys(mapping)) {
+    if (!modelSpecs.some((model) => model.id === mapping[slot])) delete mapping[slot];
+  }
   return { mapping, dropped };
 }
 
@@ -157,8 +165,9 @@ function buildClaudeModelEnv(
   const selectedSpec = modelSpecs.find((m) => m.id === selectedModel)
     ?? ZRO_MODELS.find((m) => m.id === selectedModel);
 
+  // aliasPlan.mapping is already filtered to models this catalog carries, so
+  // every seated slot here is emitted and every emitted slot is allowlisted.
   for (const [slot, modelId] of Object.entries(aliasMapping)) {
-    if (!modelSpecs.some((model) => model.id === modelId)) continue;
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL`] = claudeModelId(modelId, modelSpecs);
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_NAME`] = claudeModelName(modelId, modelSpecs);
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`;

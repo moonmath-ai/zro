@@ -311,6 +311,38 @@ describe("zro experience", () => {
       const value = env[key];
       if (value) expect(managed.availableModels).toContain(bare(value));
     }
+    // The reverse must hold too: every allowlisted tier alias is actually
+    // seated with an env value (no allowlisted-but-unemitted slot).
+    for (const slot of CLAUDE_MODEL_ALIAS_SLOTS) {
+      const allowlisted = managed.availableModels.includes(slot.toLowerCase());
+      const seated = Boolean(env[`ANTHROPIC_DEFAULT_${slot}_MODEL`]);
+      expect(allowlisted, slot).toBe(seated);
+    }
+  });
+
+  it("does not allowlist a slot whose model is outside the launch catalog", async () => {
+    const stderr = new PassThrough();
+    const plan = await claudeTool.launch({
+      apiKey: "sk-boundary-secret",
+      apiKeySource: "env",
+      env: {},
+      model: "kimi-k3",
+      models: ZRO_MODELS.filter((model) => model.id !== "glm-5.3"),
+      modelAliases: { OPUS: "glm-5.3" },
+      extraArgs: [],
+      homeDir: "/tmp",
+      cwd: "/tmp",
+      tempDir: "/tmp/zro-boundary-test",
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr
+    });
+    const managed = JSON.parse(plan.args![plan.args!.indexOf("--managed-settings") + 1]);
+    expect(managed.availableModels).not.toContain("opus");
+    expect(plan.env!.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
+    // The unrepresentable alias must not consume a slot either: the remaining
+    // slots fill from the catalog as if it were dropped.
+    expect(plan.env!.ANTHROPIC_DEFAULT_SONNET_MODEL).toBeDefined();
   });
 
   it("lets users override Claude alias slots with --alias, including dropping one", async () => {
