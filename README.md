@@ -83,7 +83,7 @@ zro logout                       # remove the stored login
 ```bash
 zro login
 zro claude            # open Claude Code on the default model
-zro codex -m glm-5.2  # pick a model for this session
+zro codex -m glm-5.3  # pick a model for this session
 ```
 
 `zro <tool> --install` installs a missing agent and opens it in one step.
@@ -95,9 +95,9 @@ zro codex -m glm-5.2  # pick a model for this session
 ```bash
 zro                         # interactive agent picker
 zro claude                  # open directly on the default model
-zro codex -m glm-5.2        # choose a model for this session
-zro kilo -m glm-5.2         # launch Kilo Code through Zro
-zro omp -m glm-5.2          # launch Oh My Pi through Zro
+zro codex -m glm-5.3        # choose a model for this session
+zro kilo -m glm-5.3         # launch Kilo Code through Zro
+zro omp -m glm-5.3          # launch Oh My Pi through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
 zro login                   # choose website or API key login

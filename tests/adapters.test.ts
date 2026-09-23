@@ -42,7 +42,7 @@ describe("tool adapters", () => {
       model: string;
       environment: Record<string, string>;
     };
-    expect(plan).toMatchObject({ tool, command: executable, model: "glm-5.2" });
+    expect(plan).toMatchObject({ tool, command: executable, model: "deepseek-v4.1-flash" });
     expect(text).not.toContain("sk-adapter-secret");
   });
 });
