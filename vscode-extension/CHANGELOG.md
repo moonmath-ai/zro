@@ -2,6 +2,21 @@
 
 All notable changes to the ZRO VS Code extension are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- **Reasoning no longer renders as answer text.** Reasoning deltas
+  (`reasoning_content` from GLM-5.3-Flash, Kimi-K3, DeepSeek, …) are now emitted
+  as thinking parts, so Copilot Chat shows them as a collapsible thinking block
+  instead of mixing them into the reply. Runtimes without thinking-part support
+  fall back to plain text, so the output is still visible.
+- **Vision models accept image attachments.** The extension dropped the
+  catalog's `modalities` block and hardcoded `imageInput: false`, so Copilot Chat
+  refused images for every ZRO model ("glm-5.3 flash doesn't support vision").
+  Image input is now derived from the live catalog; text-only models (`glm-5.3`,
+  `auto`) still refuse attachments.
+
 ## [0.1.3] — 2026-09-22
 
 ### Added

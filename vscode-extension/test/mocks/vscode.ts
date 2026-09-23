@@ -21,6 +21,19 @@ export class LanguageModelTextPart {
   constructor(public readonly value: string) {}
 }
 
+/**
+ * Stand-in for the runtime-only `LanguageModelThinkingPart` the provider
+ * reaches for structurally. Tests that exercise the fallback path delete this
+ * export from the mock module to simulate an older extension host.
+ */
+export class LanguageModelThinkingPart {
+  constructor(
+    public readonly value: string,
+    public readonly id?: string,
+    public readonly metadata?: Record<string, unknown>
+  ) {}
+}
+
 export class LanguageModelToolCallPart {
   constructor(
     public readonly callId: string,

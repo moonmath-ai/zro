@@ -71,6 +71,8 @@ export interface ZroModel {
   maxOutputTokens: number;
   reasoning?: ZroReasoningConfig;
   pricing?: ZroModelPricing;
+  /** True when the model's catalog row advertises image input. */
+  imageInput?: boolean;
 }
 
 /**

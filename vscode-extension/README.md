@@ -209,4 +209,12 @@ them up.
   remains the fallback UI.
 - A level a model doesn't support is clamped to that model's default rather than
   rejected, so a global setting is always safe to apply.
-- Image input is not advertised (`imageInput: false`).
+- Image input is advertised for vision-capable models, derived from the live
+  catalog's `modalities` block (`imageInput: true` for `glm-5.3-flash`,
+  `deepseek-v4.1-flash`, `dolly1-security`, and `kimi-k3`); text-only models
+  (`glm-5.3`, `auto`) still refuse attachments. When the catalog can't be
+  reached, models default to text-only until the next successful fetch.
+- Reasoning deltas (`reasoning_content`) are reported as thinking parts so
+  Copilot Chat renders them as a collapsible thinking block rather than answer
+  text. Models that stream their entire reply in `reasoning_content` (Kimi-K3
+  style) still surface their output.
