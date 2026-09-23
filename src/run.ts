@@ -18,7 +18,7 @@ import {
   resolveApiKey,
   writeStoredApiKey
 } from "./engine/key.js";
-import { claudeTool } from "./engine/tools/claude.js";
+import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "./engine/tools/claude.js";
 import {
   codexAppCredentialFilePath,
   codexAppTool,
@@ -41,7 +41,8 @@ import {
   CatalogAuthenticationError,
   invalidateModelCatalog,
   loadModelCatalog,
-  type ModelCatalog,
+  type CatalogSource,
+  type LoadedModelCatalog,
 } from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
 import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
@@ -131,7 +132,8 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       model: preferences.lastModel,
       dryRun: request.dryRun,
       output: request.output,
-      extraArgs: []
+      extraArgs: [],
+      aliases: request.aliases
     };
   }
 
@@ -177,7 +179,7 @@ async function launch(
     io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
-  let catalog: ModelCatalog;
+  let catalog: LoadedModelCatalog;
   try {
     catalog = await loadModelCatalog({
       apiKey: key.apiKey,
@@ -199,8 +201,27 @@ async function launch(
 
   const model = request.model ?? catalog.default;
   if (!catalog.models.some((candidate) => candidate.id === model)) {
-    io.stderr.write(`Unknown model "${model}". Run zro models.\n`);
+    io.stderr.write(unknownModelMessage(model, catalog.source));
     return 1;
+  }
+
+  let modelAliases: Record<string, string> | undefined;
+  for (const [slot, modelId] of Object.entries(request.aliases ?? {})) {
+    if (request.tool !== "claude") {
+      io.stderr.write("--alias is only supported for the claude tool.\n");
+      return 1;
+    }
+    if (!(CLAUDE_MODEL_ALIAS_SLOTS as readonly string[]).includes(slot)) {
+      const slots = CLAUDE_MODEL_ALIAS_SLOTS.map((name) => name.toLowerCase()).join(", ");
+      io.stderr.write(`Unknown alias slot "${slot.toLowerCase()}". Choose: ${slots}.\n`);
+      return 1;
+    }
+    if (modelId && !catalog.models.some((candidate) => candidate.id === modelId)) {
+      io.stderr.write(`Unknown model "${modelId}" for alias ${slot.toLowerCase()}. ${unknownModelMessage(modelId, catalog.source).trim()}\n`);
+      return 1;
+    }
+    modelAliases ??= {};
+    modelAliases[slot] = modelId;
   }
 
   const tempRoot = path.join(env.XDG_CACHE_HOME || path.join(io.homeDir, ".cache"), "zro", "sessions");
@@ -214,6 +235,7 @@ async function launch(
       model,
       models: catalog.models,
       extraArgs: request.extraArgs,
+      modelAliases,
       homeDir: io.homeDir,
       cwd: io.cwd,
       tempDir,
@@ -750,7 +772,7 @@ async function models(
     // A cached or bundled catalog remains useful before the user signs in.
   }
 
-  let catalog: ModelCatalog;
+  let catalog: LoadedModelCatalog;
   try {
     catalog = await loadModelCatalog({ apiKey, env, homeDir: io.homeDir, fetch: io.fetch });
   } catch (error) {
@@ -772,7 +794,7 @@ async function models(
     io.stdout.write(`\n  ${isDefault ? colors.accent("◆") : colors.muted("◇")} ${colors.strong(model.displayName)}  ${colors.muted(model.id)}${isDefault ? colors.accent("  default") : ""}\n`);
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }
-  io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.2\n");
+  io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.3\n");
   return 0;
 }
 
@@ -910,10 +932,42 @@ async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): P
   });
 }
 
-function redact(key: string, value: string, secret: string): string {
-  if (/KEY|TOKEN|SECRET|AUTH/i.test(key) || value.includes(secret)) return maskKey(value);
+export function unknownModelMessage(model: string, source: CatalogSource): string {
+  if (source === "remote") {
+    return `Unknown model "${model}". It is not offered by your account's catalog. Run zro models.\n`;
+  }
+  if (source === "cache") {
+    return `Unknown model "${model}". It is not in the cached catalog from your last login. Run zro login to refresh your account's catalog.\n`;
+  }
+  return `Unknown model "${model}". It is not in the offline catalog bundled with zro. Run zro login to fetch your account's catalog.\n`;
+}
+
+export function redact(key: string, value: string, secret: string): string {
+  if (value === "") return value;
+  const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
+  if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
+    return maskKey(value);
+  }
   return value;
 }
+
+const SECRET_NAME_TOKENS = new Set([
+  "APIKEY",
+  "APIKEYS",
+  "APISECRET",
+  "APISECRETS",
+  "AUTH",
+  "AUTHORIZATION",
+  "CREDENTIAL",
+  "CREDENTIALS",
+  "KEY",
+  "KEYS",
+  "PASSWORD",
+  "PASSPHRASE",
+  "SECRET",
+  "SECRETS",
+  "TOKEN"
+]);
 
 function shellPreview(argv: string[]): string {
   return argv.map((value) => /^[A-Za-z0-9_./:=@+-]+$/.test(value)

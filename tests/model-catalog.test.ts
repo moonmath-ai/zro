@@ -77,7 +77,10 @@ describe("dynamic model catalog", () => {
   it("uses bundled models when signed out with no cache", async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-bundled-"));
 
-    await expect(loadModelCatalog({ env: {}, homeDir })).resolves.toBe(BUNDLED_MODEL_CATALOG);
+    const catalog = await loadModelCatalog({ env: {}, homeDir });
+    expect(catalog.source).toBe("bundled");
+    expect(catalog.models).toEqual(BUNDLED_MODEL_CATALOG.models);
+    expect(catalog.default).toBe(BUNDLED_MODEL_CATALOG.default);
   });
 
   it("never hides an explicit authentication rejection behind a cache", async () => {
@@ -104,6 +107,7 @@ describe("dynamic model catalog", () => {
       fetch: async () => Response.json({ version: 1, default: "missing", models: [] }),
     });
 
-    expect(catalog).toBe(BUNDLED_MODEL_CATALOG);
+    expect(catalog.source).toBe("bundled");
+    expect(catalog.models).toEqual(BUNDLED_MODEL_CATALOG.models);
   });
 });
