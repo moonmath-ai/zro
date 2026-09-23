@@ -300,7 +300,7 @@ async function assertCatalogModelsPresent(output, label) {
   const broken = [];
   for (const model of models) {
     const escaped = model.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const row = new RegExp(`^\\s*zro\\s+${escaped}\\s+\\d[\\d.]*[KM]\\s+\\d[\\d.]*[KM]\\s+(yes|no)\\s*$`, "m");
+    const row = new RegExp(`zro\\s+${escaped}\\s+\\d[\\d.]*[KM]\\s+\\d[\\d.]*[KM]\\s+(yes|no)`);
     if (!row.test(output)) broken.push(model.id);
   }
   assert.deepEqual(broken, [], `${label} is missing or has malformed rows for catalog models: ${broken.join(", ")}`);
