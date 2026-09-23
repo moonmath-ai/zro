@@ -5,6 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { formatPiTokens, ompHasOffFallback, ompThinkingLevel, resolveLaunchModel } from "./probe-models.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_ID = "zro";
@@ -80,17 +81,24 @@ try {
   }
   report.clients.zro = firstNonEmptyLine(run(zroBin, ["--help"], "zro version"));
   const zroCatalog = JSON.parse(run(zroBin, ["models", "--json"], "Zro model catalog"));
-  assert.ok(Array.isArray(zroCatalog.models), "Zro model catalog emitted no models");
+  const launchModel = resolveLaunchModel(zroCatalog, process.env.ZRO_CI_MODEL);
+  report.launchModel = launchModel.id;
   const expectedModelIds = zroCatalog.models.map((model) => `${PROVIDER_ID}/${model.id}`).sort();
 
   if (harnesses.includes("codex")) {
-    const codexConfig = await readCodexAppServerConfig("glm-5.2");
-    assert.equal(codexConfig.model, "glm-5.2");
+    const codexConfig = await readCodexAppServerConfig(launchModel.id);
+    assert.equal(codexConfig.model, launchModel.id);
     assert.equal(codexConfig.model_provider, "zro");
     assert.equal(typeof codexConfig.model_catalog_json, "string");
     assert.equal(path.basename(codexConfig.model_catalog_json), "zro-models.json");
-    assert.equal(codexConfig.model_context_window, 524288);
-    assert.equal(codexConfig.model_reasoning_effort, "max");
+    assert.equal(codexConfig.model_context_window, launchModel.contextWindow);
+    // Mirrors the adapter: the model's default reasoning level, mapped through
+    // codexEffort when the level defines one.
+    const codexDefaultLevel = launchModel.reasoning.levels.find((level) => level.id === launchModel.reasoning.defaultLevel);
+    assert.equal(
+      codexConfig.model_reasoning_effort,
+      codexDefaultLevel ? (codexDefaultLevel.codexEffort ?? codexDefaultLevel.id) : launchModel.reasoning.defaultLevel
+    );
     assert.equal(codexConfig.model_providers?.zro?.base_url, "https://zro.moonmath.ai/v1");
     assert.equal(codexConfig.model_providers?.zro?.env_key, "ZRO_API_KEY");
     passed("Codex app server loads the selected Zro model as an isolated custom config");
@@ -99,7 +107,7 @@ try {
   if (harnesses.includes("grok")) {
     const grokVersion = run(
       zroBin,
-      ["launch", "grok", "--model", "glm-5.2", "--", "--version"],
+      ["launch", "grok", "--model", launchModel.id, "--", "--version"],
       "Grok Build isolated launch"
     );
     assert.match(grokVersion, /\d+\.\d+\.\d+/);
@@ -109,7 +117,7 @@ try {
   if (harnesses.includes("opencode")) {
     const openCodeOutput = run(
       zroBin,
-      ["launch", "opencode", "--model", "glm-5.2", "--", "models", "zro"],
+      ["launch", "opencode", "--model", launchModel.id, "--", "models", "zro"],
       "OpenCode model list"
     );
     assert.deepEqual(
@@ -122,7 +130,7 @@ try {
   if (harnesses.includes("kilo")) {
     const kiloOutput = run(
       zroBin,
-      ["launch", "kilo", "--model", "glm-5.2", "--", "models", PROVIDER_ID],
+      ["launch", "kilo", "--model", launchModel.id, "--", "models", PROVIDER_ID],
       "Kilo Code model list"
     );
     assert.deepEqual(
@@ -132,7 +140,7 @@ try {
 
     const verboseOutput = run(
       zroBin,
-      ["launch", "kilo", "--model", "glm-5.2", "--", "models", PROVIDER_ID, "--verbose"],
+      ["launch", "kilo", "--model", launchModel.id, "--", "models", PROVIDER_ID, "--verbose"],
       "Kilo Code verbose model list"
     );
     const verboseModels = parseKiloVerboseModels(verboseOutput);
@@ -154,7 +162,7 @@ try {
 
     const pathsOutput = run(
       zroBin,
-      ["launch", "kilo", "--model", "glm-5.2", "--", "debug", "paths"],
+      ["launch", "kilo", "--model", launchModel.id, "--", "debug", "paths"],
       "Kilo Code isolated paths"
     );
     const kiloPaths = parseKiloPaths(pathsOutput);
@@ -172,7 +180,7 @@ try {
   if (harnesses.includes("omp")) {
     const ompOutput = run(
       zroBin,
-      ["launch", "omp", "--model", "glm-5.2", "--", "models", PROVIDER_ID, "--json", "--no-extensions"],
+      ["launch", "omp", "--model", launchModel.id, "--", "models", PROVIDER_ID, "--json", "--no-extensions"],
       "Oh My Pi model list"
     );
     const ompModels = JSON.parse(ompOutput).models;
@@ -190,18 +198,17 @@ try {
       assert.equal(actual.reasoning, true);
       assert.ok(Array.isArray(actual.thinking) && actual.thinking.length > 0, `${model.id} has no thinking levels`);
       for (const level of model.reasoning.levels.filter((level) => level.piLevel !== "off")) {
-        const expectedLevel = ["minimal", "low", "medium", "high", "xhigh", "max"].includes(level.id)
-          ? level.id
-          : level.piLevel;
+        const expectedLevel = ompThinkingLevel(level);
         assert.ok(actual.thinking.includes(expectedLevel), `${model.id} omitted Oh My Pi thinking level ${expectedLevel}`);
       }
+      if (ompHasOffFallback(model)) {
+        assert.ok(actual.thinking.includes("minimal"), `${model.id} omitted the Oh My Pi off fallback level`);
+      }
     }
-    const ompGlm = ompModels.find((model) => model.id === "glm-5.2");
-    assert.ok(ompGlm.thinking.includes("minimal"), "GLM-5.2 omitted the Oh My Pi off fallback level");
 
     const ompConfigPath = run(
       zroBin,
-      ["launch", "omp", "--model", "glm-5.2", "--", "config", "path"],
+      ["launch", "omp", "--model", launchModel.id, "--", "config", "path"],
       "Oh My Pi isolated config path"
     ).trim();
     assert.ok(
@@ -211,12 +218,12 @@ try {
 
     const updateSetting = JSON.parse(run(
       zroBin,
-      ["launch", "omp", "--model", "glm-5.2", "--", "config", "get", "startup.checkUpdate", "--json"],
+      ["launch", "omp", "--model", launchModel.id, "--", "config", "get", "startup.checkUpdate", "--json"],
       "Oh My Pi update-check setting"
     ));
     const marketplaceSetting = JSON.parse(run(
       zroBin,
-      ["launch", "omp", "--model", "glm-5.2", "--", "config", "get", "marketplace.autoUpdate", "--json"],
+      ["launch", "omp", "--model", launchModel.id, "--", "config", "get", "marketplace.autoUpdate", "--json"],
       "Oh My Pi marketplace-update setting"
     ));
     assert.equal(updateSetting.value, false);
@@ -227,19 +234,19 @@ try {
   if (harnesses.includes("pi")) {
     const piOutput = run(
       zroBin,
-      ["launch", "pi", "--model", "glm-5.2", "--", "--list-models", "zro"],
+      ["launch", "pi", "--model", launchModel.id, "--", "--list-models", "zro"],
       "Pi model list"
     );
-    assert.match(piOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
-    assert.match(piOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
-    assert.match(piOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
+    for (const model of zroCatalog.models) {
+      assert.match(piOutput, piModelLineRegex(model.id, model.contextWindow, model.maxOutputTokens));
+    }
     passed("Pi lists all Zro models with their context limits");
   }
 
   if (harnesses.includes("prime")) {
     const primeResult = spawnSync(
       zroBin,
-      ["launch", "prime", "--model", "glm-5.2", "--", "model", "list", "zro"],
+      ["launch", "prime", "--model", launchModel.id, "--", "model", "list", "zro"],
       { cwd: process.cwd(), env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 60_000 }
     );
     if (primeResult.error) {
@@ -249,30 +256,30 @@ try {
       throw new Error(`Prime Agent model list exited ${primeResult.status}\n${redact(primeResult.stderr)}\n${redact(primeResult.stdout)}`.trim());
     }
     const primeOutput = (primeResult.stdout + primeResult.stderr).trim();
-    assert.match(primeOutput, /zro\s+glm-5\.2\s+524\.3K\s+64K\s+yes/);
-    assert.match(primeOutput, /zro\s+kimi-k3\s+1\.0M\s+1\.0M\s+yes/);
-    assert.match(primeOutput, /zro\s+deepseek-v4-flash-0731\s+1\.0M\s+384K\s+yes/);
+    for (const model of zroCatalog.models) {
+      assert.match(primeOutput, piModelLineRegex(model.id, model.contextWindow, model.maxOutputTokens));
+    }
     passed("Prime Agent lists all Zro models with their context limits");
   }
 
   if (harnesses.includes("claude")) {
-    const claudeLabels = {
-      "glm-5.2": "Zro GLM-5.2",
-      "kimi-k3": "Zro Kimi K3",
-      "deepseek-v4-flash-0731": "Zro DeepSeek V4 Flash"
-    };
-    for (const model of Object.keys(claudeLabels)) {
+    // The picker only warns about labels it cannot surface (the picker shows a
+    // bounded set of slots as the catalog grows); the gate is the selected model.
+    const claudeLabels = Object.fromEntries(
+      zroCatalog.models.map((model) => [model.id, `Zro ${model.displayName}`])
+    );
+    for (const model of zroCatalog.models) {
       run(
         "python3",
         [
           path.join(scriptDir, "check-claude-model-picker.py"),
-          model,
-          claudeLabels[model],
+          model.id,
+          claudeLabels[model.id],
           ...Object.values(claudeLabels)
         ],
-        `Claude Code /model picker (${model})`
+        `Claude Code /model picker (${model.id})`
       );
-      passed(`Claude Code /model lists all Zro models with ${model} selected`);
+      passed(`Claude Code /model lists all Zro models with ${model.id} selected`);
     }
   }
 
@@ -417,6 +424,18 @@ function parseKiloPaths(value) {
 function passed(name) {
   report.checks.push({ name, ok: true });
   console.log(`\u2713 ${name}`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Pi and Prime render each model as "zro <id> <context> <max output> yes",
+// with token counts formatted like formatPiTokens.
+function piModelLineRegex(modelId, contextWindow, maxOutputTokens) {
+  return new RegExp(
+    `zro\\s+${escapeRegExp(modelId)}\\s+${escapeRegExp(formatPiTokens(contextWindow))}\\s+${escapeRegExp(formatPiTokens(maxOutputTokens))}\\s+yes`
+  );
 }
 
 function redact(value = "") {
