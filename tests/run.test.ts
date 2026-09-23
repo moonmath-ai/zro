@@ -345,6 +345,48 @@ describe("zro experience", () => {
     );
   });
 
+  it("keeps self-targeting aliases explicit even though they cost a slot", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-seated-"));
+    const stdout = new PassThrough();
+    const cacheDir = path.join(home, ".cache", "zro");
+    await fs.mkdir(cacheDir, { recursive: true });
+    const catalogModel = (id: string, contextWindow: number, maxOutputTokens: number) => ({
+      id,
+      displayName: id,
+      contextWindow,
+      maxOutputTokens,
+      reasoning: {
+        defaultLevel: "high",
+        levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
+      }
+    });
+    await fs.writeFile(path.join(cacheDir, "model-catalog.json"), JSON.stringify({
+      version: 1,
+      default: "m-a",
+      models: [
+        catalogModel("m-a", 1048576, 131000),
+        catalogModel("m-b", 1048576, 384000),
+        catalogModel("m-c", 1048576, 131000),
+        catalogModel("m-d", 1048576, 64000),
+        catalogModel("m-e", 524288, 64000)
+      ]
+    }));
+
+    const code = await run(["claude", "-m", "m-a", "--alias", "opus=m-a", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("m-a[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("m-b[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("m-c[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("m-d[1m]");
+    expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1048576");
+  });
+
   it("lets an explicit alias target the selected model, reserving the rest by tier", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-self-"));
     const stdout = new PassThrough();
@@ -392,11 +434,24 @@ describe("zro experience", () => {
             defaultLevel: "high",
             levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
           }
+        },
+        {
+          id: "legacy-1m-plus",
+          displayName: "Legacy 1M Plus",
+          contextWindow: 1048576,
+          maxOutputTokens: 384000,
+          reasoning: {
+            defaultLevel: "high",
+            levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
+          }
         }
       ]
     }));
 
-    const code = await run(["claude", "-m", "legacy-1m", "--json"], {
+    // Dropping HAIKU makes legacy-512k reachable only through its filled slot
+    // (SONNET), so the budget must account for slot models, not just the
+    // selection's own window.
+    const code = await run(["claude", "-m", "legacy-1m", "--alias", "haiku=", "--json"], {
       ...io(home, stdout),
       env: { ZRO_API_KEY: "sk-context-secret" },
       fetch: async () => new Response(null, { status: 503 }),
@@ -404,8 +459,69 @@ describe("zro experience", () => {
 
     expect(code).toBe(0);
     const result = JSON.parse(await streamText(stdout));
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("legacy-1m-plus[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("legacy-512k");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
     expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("524288");
-    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("legacy-512k");
+  });
+
+  it("tailors unknown-model refusals to the catalog source", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-unknown-model-"));
+    const stdout = new PassThrough();
+
+    const remoteStderr = new PassThrough();
+    const remoteCode = await run(["claude", "-m", "missing", "--json"], {
+      ...io(home, stdout),
+      stderr: remoteStderr,
+      env: { ZRO_API_KEY: "sk-source-secret" },
+      fetch: async () => Response.json(dynamicCatalogResponse()),
+    });
+    expect(remoteCode).toBe(1);
+    expect(await streamText(remoteStderr)).toContain(
+      'Unknown model "missing". It is not offered by your account\'s catalog.'
+    );
+
+    const cacheDir = path.join(home, ".cache", "zro");
+    await fs.mkdir(cacheDir, { recursive: true });
+    await fs.writeFile(path.join(cacheDir, "model-catalog.json"), JSON.stringify({
+      version: 1,
+      default: "cached-model",
+      models: [{
+        id: "cached-model",
+        displayName: "Cached Model",
+        contextWindow: 1048576,
+        maxOutputTokens: 64000,
+        reasoning: {
+          defaultLevel: "high",
+          levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
+        }
+      }]
+    }));
+
+    const cacheStderr = new PassThrough();
+    const cacheCode = await run(["claude", "-m", "missing", "--json"], {
+      ...io(home, stdout),
+      stderr: cacheStderr,
+      env: { ZRO_API_KEY: "sk-source-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+    expect(cacheCode).toBe(1);
+    expect(await streamText(cacheStderr)).toContain(
+      'Unknown model "missing". It is not in the cached catalog from your last login. Run zro login'
+    );
+
+    const bundledStderr = new PassThrough();
+    const bundledHome = await fs.mkdtemp(path.join(os.tmpdir(), "zro-unknown-model-2-"));
+    const bundledCode = await run(["claude", "-m", "missing", "--json"], {
+      ...io(bundledHome, stdout),
+      stderr: bundledStderr,
+      env: { ZRO_API_KEY: "sk-source-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+    expect(bundledCode).toBe(1);
+    expect(await streamText(bundledStderr)).toContain(
+      'Unknown model "missing". It is not in the offline catalog bundled with zro.'
+    );
   });
 
   it("rejects alias overrides with unknown slots, unknown models, or other tools", async () => {

@@ -945,7 +945,7 @@ export function unknownModelMessage(model: string, source: CatalogSource): strin
 export function redact(key: string, value: string, secret: string): string {
   if (value === "") return value;
   const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
-  if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
+  if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || CREDENTIAL_SHAPE.test(value) || value.includes(secret)) {
     return maskKey(value);
   }
   return value;
@@ -967,6 +967,17 @@ const SECRET_NAME_TOKENS = new Set([
   "SECRETS",
   "TOKEN"
 ]);
+
+// Names cannot tell a credential from configuration ("AUTH" covers both
+// OMP_AUTH_BROKER_URL and a bearer token), so values are masked on shape too:
+// Authorization headers, sk- keys, JWTs, and opaque single-token strings of
+// credential length. Paths and URLs contain separators and stay visible.
+const CREDENTIAL_SHAPE = new RegExp([
+  "(?:^|\\s)(?:Bearer|Basic|Digest)\\s+\\S+",
+  "\\bsk-[A-Za-z0-9_-]{8,}\\b",
+  "\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+",
+  "\\b[A-Za-z0-9_-]{32,}\\b"
+].join("|"), "i");
 
 function shellPreview(argv: string[]): string {
   return argv.map((value) => /^[A-Za-z0-9_./:=@+-]+$/.test(value)

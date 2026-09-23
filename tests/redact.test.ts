@@ -38,6 +38,17 @@ describe("redact", () => {
     expect(redact("OMP_AUTH_BROKER_SNAPSHOT_TTL_MS", "0", SECRET)).toBe("0");
   });
 
+  it("masks credential-shaped values under an ambiguous AUTH name", () => {
+    expect(redact("X_AUTH", "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig", SECRET)).toMatch(/\*\*\*\*/);
+    expect(redact("AUTH_HEADER", "Basic dXNlcjpwYXNzd29yZA==", SECRET)).toMatch(/\*\*\*\*/);
+  });
+
+  it("masks credential-shaped values regardless of the name", () => {
+    expect(redact("BROKER_ENDPOINT", "sk-live-abcdef1234567890", SECRET)).toMatch(/\*\*\*\*/);
+    expect(redact("WORKER_IMAGE", "sha-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop", SECRET))
+      .toMatch(/\*\*\*\*/);
+  });
+
   it("leaves empty values empty instead of rendering a fake masked secret", () => {
     expect(redact("ZRO_API_KEY", "", SECRET)).toBe("");
   });
