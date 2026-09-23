@@ -274,8 +274,29 @@ describe("zro experience", () => {
     expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("auto[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("glm-5.3[1m]");
     expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("dolly1-security[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("Zro DeepSeek V4.1 Flash");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Zro Dolly 1 Security");
+    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("Zro DeepSeek V4.1 Flash[1m]");
+    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Zro Dolly 1 Security[1m]");
+    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro Kimi K3[1m]");
+  });
+
+  it("allowlists the tier aliases so Claude Code keeps their /model rows", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-allowlist-"));
+    const stdout = new PassThrough();
+
+    const code = await run(["claude", "-m", "kimi-k3", "--json"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-context-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+    });
+
+    expect(code).toBe(0);
+    const result = JSON.parse(await streamText(stdout));
+    const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
+    expect(managed.enforceAvailableModels).toBe(true);
+    expect(managed.availableModels).toEqual(expect.arrayContaining(["opus", "sonnet", "fable", "haiku"]));
+    for (const id of ["deepseek-v4.1-flash", "glm-5.3", "glm-5.3-flash", "dolly1-security", "auto", "kimi-k3"]) {
+      expect(managed.availableModels).toContain(id);
+    }
   });
 
   it("lets users override Claude alias slots with --alias, including dropping one", async () => {
@@ -597,6 +618,7 @@ describe("zro experience", () => {
     expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("524288");
     expect(modelArg).toBe("glm-5.2");
     expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("glm-5.2");
+    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro GLM-5.2");
     expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
   });
 

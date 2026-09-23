@@ -68,7 +68,14 @@ export const CLAUDE_MODEL_ALIAS_SLOTS = ["OPUS", "SONNET", "FABLE", "HAIKU"] as 
 
 function buildClaudeManagedSettingsArg(modelSpecs: readonly ZroModel[]): string {
   return JSON.stringify({
-    availableModels: modelSpecs.map((model) => model.id),
+    // The tier aliases are routing tokens, not model IDs, but they must be in
+    // the allowlist too: with enforceAvailableModels on, Claude Code drops any
+    // /model row whose value is not listed here, and without them the picker
+    // collapses to only the custom option (the four tier rows disappear).
+    availableModels: [
+      ...modelSpecs.map((model) => model.id),
+      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
+    ],
     enforceAvailableModels: true,
     permissions: {
       deny: ["WebSearch"]
@@ -163,6 +170,14 @@ function claudeModelId(modelId: string, modelSpecs: readonly ZroModel[]): string
 }
 
 function claudeModelName(modelId: string, modelSpecs: readonly ZroModel[]): string {
-  const displayName = modelSpecs.find((model) => model.id === modelId)?.displayName ?? modelId;
-  return `${PROVIDER_NAME} ${displayName}`;
+  const spec = modelSpecs.find((model) => model.id === modelId);
+  const displayName = spec?.displayName ?? modelId;
+  return `${PROVIDER_NAME} ${displayName}${claudeContextSuffix(spec)}`;
+}
+
+// Mirror the [1m] model-ID suffix in the human-readable name so the /model
+// picker shows which rows are 1M-context; the *_MODEL_NAME values are what
+// Claude Code renders as the row label.
+function claudeContextSuffix(spec: ZroModel | undefined): string {
+  return spec && spec.contextWindow >= ONE_MILLION ? "[1m]" : "";
 }
