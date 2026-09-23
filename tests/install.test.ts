@@ -28,10 +28,23 @@ function io(spawn: SpawnProcess, stdout = new PassThrough(), stderr = new PassTh
     cwd: "/tmp/zro-install-test",
     env: {},
     spawn,
+    platform: "linux" as const,
   };
 }
 
 describe("zro install", () => {
+  it("targets the package manager regardless of platform", async () => {
+    const { spawn, calls } = recorder();
+    const code = await run(["install", "claude"], { ...io(spawn), platform: "win32" });
+
+    expect(code).toBe(0);
+    // Only the dispatched command is asserted here; platform bridging is covered in process.test.ts.
+    expect(calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@anthropic-ai/claude-code@latest"],
+    });
+  });
+
   it("installs an agent's catalog package", async () => {
     const { spawn, calls } = recorder();
     const code = await run(["install", "claude"], io(spawn));

@@ -53,7 +53,9 @@ auth:
     await fs.writeFile(path.join(userAgentDir, "agent.db"), "private database\n");
     const outside = path.join(home, "outside.md");
     await fs.writeFile(outside, "outside\n");
-    await fs.symlink(outside, path.join(userAgentDir, "agents", "linked.md"));
+    if (process.platform !== "win32") {
+      await fs.symlink(outside, path.join(userAgentDir, "agents", "linked.md"));
+    }
 
     const ctx = context(home, tempDir, {
       PI_CODING_AGENT_DIR: userAgentDir,
@@ -326,6 +328,7 @@ function context(
     homeDir,
     cwd: homeDir,
     tempDir,
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),

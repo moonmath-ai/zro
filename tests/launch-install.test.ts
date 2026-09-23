@@ -38,6 +38,7 @@ function launchIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv): Ru
     cwd: home,
     env,
     spawn,
+    platform: "linux",
     fetch: async () => new Response(null, { status: 200 }),
   };
 }

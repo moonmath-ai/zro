@@ -152,7 +152,7 @@ reopen. Pass native tool arguments after `--`.
 - Kilo and Oh My Pi telemetry, OTLP export, automatic updates, sharing, and remote control are
   disabled; model and MCP requests still go to the configured Zro endpoints.
 - API keys are masked in human and JSON previews. `--dry-run` writes nothing and starts nothing.
-- macOS and Linux are supported; use WSL on Windows.
+- macOS, Linux, and Windows are supported.
 
 See [SECURITY.md](SECURITY.md) for the security model and private vulnerability reporting.
 

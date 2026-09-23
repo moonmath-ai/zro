@@ -67,7 +67,9 @@ describe("Kilo Code adapter", () => {
     await fs.writeFile(path.join(userRoot, "node_modules", "ignored", "index.js"), "ignored\n");
     const outside = path.join(home, "outside-secret.md");
     await fs.writeFile(outside, "outside\n");
-    await fs.symlink(outside, path.join(userRoot, "agents", "linked.md"));
+    if (process.platform !== "win32") {
+      await fs.symlink(outside, path.join(userRoot, "agents", "linked.md"));
+    }
 
     const ctx = context(home, tempDir, {
       XDG_CONFIG_HOME: path.join(home, "user-config"),
@@ -300,6 +302,7 @@ function context(
     homeDir,
     cwd: homeDir,
     tempDir,
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),

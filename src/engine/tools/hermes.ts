@@ -12,7 +12,7 @@ export const hermesTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".hermes", "config.yaml");
     const existing = await readConfig(path.join(ctx.homeDir, ".hermes", "config.yaml"), yamlSerializer);
-    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models);
+    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.model, ctx.models);
     return {
       tool: "hermes",
       label: "Hermes",
@@ -21,6 +21,10 @@ export const hermesTool: ToolModule = {
       args: ["--provider", PROVIDER_ID, "--model", ctx.model, ...ctx.extraArgs],
       env: {
         HOME: tempHome,
+        // Hermes resolves its home from HERMES_HOME on every platform; on Windows the
+        // $HOME override above is ignored (%LOCALAPPDATA%\hermes is the default), so
+        // without this the generated provider config is never loaded.
+        HERMES_HOME: path.join(tempHome, ".hermes"),
         [ZRO_ENV_KEY]: ctx.apiKey
       },
       files: [{
@@ -36,6 +40,7 @@ function buildHermesConfig(
   existing: Record<string, unknown>,
   apiKey: string,
   apiKeySource: ApiKeySource,
+  model: string,
   modelSpecs: readonly ZroModel[]
 ): Record<string, unknown> {
   const next = { ...existing };
@@ -94,6 +99,11 @@ function buildHermesConfig(
   const existingModelConfig = asPlainObject(next.model) ?? {};
   next.model = {
     ...existingModelConfig,
+    // Hermes' first-run guard only recognizes a provider when `model` carries
+    // provider/base_url — a custom_providers entry alone always triggers `hermes setup`.
+    provider: PROVIDER_ID,
+    base_url: BASE_URL,
+    default: model,
     default_headers: {
       ...(asPlainObject(existingModelConfig.default_headers) ?? {}),
       "User-Agent": "hermes"
