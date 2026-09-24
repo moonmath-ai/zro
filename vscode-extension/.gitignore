@@ -1,0 +1,8 @@
+node_modules/
+out/
+*.vsix
+.DS_Store
+artifacts/
+# Local proxy capture from scripts/capture-proxy.py. Contains a live API key —
+# must never be committed (see test/integration.test.ts).
+scripts/capture-log.jsonl
