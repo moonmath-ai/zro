@@ -42,6 +42,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Tooling
 
 - Switch the package manager to pnpm; CI installs and checks now run on pnpm.
+- Live and compatibility CI probes resolve their models from the online model
+  catalog at run time (picking models that offer the reasoning levels each
+  probe needs, and deriving model-list assertions from the catalog) instead of
+  hardcoding GLM-5.2, and honor a `ZRO_CI_MODEL` override — retiring a model no
+  longer breaks CI.
 
 ## [0.2.3] - 2026-09-01
 
