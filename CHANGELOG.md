@@ -5,7 +5,17 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.5] - 2026-09-27
+
+### Fixed
+
+- Claude Code and Hermes launches now carry the catalog's max-output budget, not just the window
+  budget: Claude Code gets `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (the smallest cap across the selection
+  and seated tier slots, same one-budget-per-launch rule as the context window), and Hermes gets
+  top-level `model.max_tokens` for the selected model. Codex stays without one — its config schema
+  rejects unknown fields and its model catalog has no such entry, so nothing is emitted there.
+
+## [0.2.4] - 2026-09-24
 
 ### Highlights
 
