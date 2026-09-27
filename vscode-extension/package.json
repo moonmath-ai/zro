@@ -1,0 +1,197 @@
+{
+  "name": "zro",
+  "publisher": "moonmathai",
+  "displayName": "ZRO",
+  "description": "Use ZRO models as a Copilot Chat model provider in VS Code.",
+  "version": "0.1.3",
+  "license": "UNLICENSED",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moonmath-ai/zro.git",
+    "directory": "vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/moonmath-ai/zro/issues"
+  },
+  "homepage": "https://moonmath.ai",
+  "keywords": [
+    "zro",
+    "copilot",
+    "chat",
+    "language model",
+    "ai",
+    "llm"
+  ],
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "zro",
+        "displayName": "ZRO",
+        "managementCommand": "zro.manage"
+      }
+    ],
+    "icons": {
+      "zro-logo": {
+        "description": "ZRO",
+        "default": {
+          "fontPath": "media/zro-logo.woff",
+          "fontCharacter": "\\e900"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "zro-sidebar",
+          "title": "ZRO",
+          "icon": "media/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "zro-sidebar": [
+        {
+          "type": "webview",
+          "id": "zro.dashboardView",
+          "name": "Dashboard",
+          "icon": "media/icon.svg",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "zro.manage",
+        "title": "ZRO: Enter API key",
+        "category": "ZRO"
+      },
+      {
+        "command": "zro.login",
+        "title": "Sign in with browser",
+        "category": "ZRO"
+      },
+      {
+        "command": "zro.dashboard",
+        "title": "Dashboard",
+        "category": "ZRO",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "zro.configureExtensions",
+        "title": "Configure in other extensions",
+        "category": "ZRO"
+      },
+      {
+        "command": "zro.setReasoningEffort",
+        "title": "Set reasoning effort",
+        "category": "ZRO",
+        "icon": "$(sparkle)"
+      }
+    ],
+    "configuration": {
+      "title": "ZRO",
+      "properties": {
+        "zro.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "default",
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "enumDescriptions": [
+            "Use each model's native server-side reasoning level (the default).",
+            "Disable reasoning for the lowest latency.",
+            "Use minimal reasoning effort.",
+            "Use low reasoning effort.",
+            "Use medium reasoning effort.",
+            "Use high reasoning effort.",
+            "Use extra-high reasoning effort.",
+            "Use maximum reasoning effort."
+          ],
+          "default": "default",
+          "markdownDescription": "Reasoning effort for ZRO models in Copilot Chat. `default` uses the model's native level. A level the selected model does not support falls back to that model's default. Override per model with `#zro.reasoningEffortByModel#`, or use the model picker's **Thinking Effort** dropdown / the **ZRO: Set reasoning effort** command."
+        },
+        "zro.reasoningEffortByModel": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "default",
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "default": {},
+          "markdownDescription": "Per-model reasoning-effort overrides, keyed by model id (for example `{ \"glm-5.2\": \"high\" }`). Takes precedence over `#zro.reasoningEffort#`."
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "zro.dashboard",
+          "when": "view == zro.dashboardView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "zro.login",
+          "when": "view == zro.dashboardView",
+          "group": "zro@1"
+        },
+        {
+          "command": "zro.manage",
+          "when": "view == zro.dashboardView",
+          "group": "zro@2"
+        },
+        {
+          "command": "zro.configureExtensions",
+          "when": "view == zro.dashboardView",
+          "group": "zro@3"
+        },
+        {
+          "command": "zro.setReasoningEffort",
+          "when": "view == zro.dashboardView",
+          "group": "zro@4"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "publish": "node scripts/publish.mjs",
+    "prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.104.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.4"
+  }
+}
