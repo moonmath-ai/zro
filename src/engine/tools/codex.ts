@@ -207,6 +207,8 @@ export function buildCodexConfig(
     const defaultReasoningLevel = modelSpec.reasoning.levels.find(
       (level) => level.id === modelSpec.reasoning.defaultLevel
     );
+    // Codex has no output-cap knob: config rejects unknown fields and the
+    // model catalog schema carries no output-token entry. Only the window.
     config.push(`model_context_window = ${modelSpec.contextWindow}`);
     config.push(
       `model_reasoning_effort = ${tomlString(

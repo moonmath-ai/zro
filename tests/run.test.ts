@@ -266,6 +266,10 @@ describe("zro experience", () => {
     const modelArg = result.args[result.args.indexOf("--model") + 1];
     expect(result.model).toBe("kimi-k3");
     expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1048576");
+    // The output cap is session-wide like the window: even though kimi-k3
+    // itself allows 1M output tokens, the haiku seat (dolly1-security, 64k)
+    // bounds what any model in this launch may be asked to produce.
+    expect(result.environment.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("64000");
     expect(modelArg).toBe("kimi-k3[1m]");
     expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("kimi-k3[1m]");
     // Deterministic tier mapping: unclaimed models sort by max output tokens
@@ -408,6 +412,7 @@ describe("zro experience", () => {
     expect(plan.env!.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("nowhere-model");
     expect(plan.env!.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro nowhere-model");
     expect(plan.env!.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBeUndefined();
+    expect(plan.env!.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBeUndefined();
   });
 
   it("lets users override Claude alias slots with --alias, including dropping one", async () => {
@@ -613,6 +618,9 @@ describe("zro experience", () => {
     expect(managed.availableModels).not.toContain("fable");
     expect(managed.availableModels).not.toContain("haiku");
     expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("524288");
+    // Output budget minimises over the same session set: 64k across the two
+    // seated slots and the selection, below opus's own 384k capacity.
+    expect(result.environment.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("64000");
   });
 
   it("tailors unknown-model refusals to the catalog source", async () => {

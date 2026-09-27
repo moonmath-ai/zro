@@ -16,6 +16,7 @@ export const claudeTool: ToolModule = {
     }
     const aliasPlan = resolveClaudeAliases(ctx.model, ctx.models, ctx.modelAliases);
     const sessionBudget = claudeSessionBudget(ctx.model, ctx.models, aliasPlan);
+    const sessionOutputBudget = claudeSessionOutputBudget(ctx.model, ctx.models, aliasPlan);
     return {
       tool: "claude",
       label: "Claude Code",
@@ -33,7 +34,7 @@ export const claudeTool: ToolModule = {
       env: {
         ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
         ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
-        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget),
+        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget, sessionOutputBudget),
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "0",
         CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
         CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
@@ -147,20 +148,42 @@ function resolveClaudeAliases(
   return { mapping };
 }
 
+// The session's shared model set: the selection plus every seated slot.
+// Claude Code holds one budget per launch for both window and output, so each
+// budget below must be satisfiable by the weakest seat, not just the driver.
+function claudeSessionSpecs(
+  selectedModel: string,
+  modelSpecs: readonly ZroModel[],
+  aliasPlan: ClaudeAliasPlan
+): ZroModel[] {
+  return [
+    claudeSpecFor(selectedModel, modelSpecs),
+    ...Object.values(aliasPlan.mapping).map((modelId) => claudeSpecFor(modelId, modelSpecs))
+  ].filter((spec): spec is ZroModel => Boolean(spec));
+}
+
 // The session's context budget: the smallest window across the selection and
-// every seated slot, since Claude Code holds one budget per launch. Undefined
-// when no model in the session has a known window (an unknown-in-both model
-// with no seated slots). launch() warns about the unknown selection.
+// every seated slot. Undefined when no model in the session has a known window
+// (an unknown-in-both model with no seated slots). launch() warns about the
+// unknown selection.
 function claudeSessionBudget(
   selectedModel: string,
   modelSpecs: readonly ZroModel[],
   aliasPlan: ClaudeAliasPlan
 ): number | undefined {
-  const specs = [
-    claudeSpecFor(selectedModel, modelSpecs),
-    ...Object.values(aliasPlan.mapping).map((modelId) => claudeSpecFor(modelId, modelSpecs))
-  ].filter((spec): spec is ZroModel => Boolean(spec));
+  const specs = claudeSessionSpecs(selectedModel, modelSpecs, aliasPlan);
   return specs.length > 0 ? Math.min(...specs.map((spec) => spec.contextWindow)) : undefined;
+}
+
+// The session's output budget: the smallest max-output across the same set, so
+// no seated model can be asked for more than its catalog capacity.
+function claudeSessionOutputBudget(
+  selectedModel: string,
+  modelSpecs: readonly ZroModel[],
+  aliasPlan: ClaudeAliasPlan
+): number | undefined {
+  const specs = claudeSessionSpecs(selectedModel, modelSpecs, aliasPlan);
+  return specs.length > 0 ? Math.min(...specs.map((spec) => spec.maxOutputTokens)) : undefined;
 }
 
 // The active catalog is authoritative, but a caller may pass a model the remote
@@ -177,7 +200,8 @@ function buildClaudeModelEnv(
   selectedModel: string,
   modelSpecs: readonly ZroModel[],
   aliasPlan: ClaudeAliasPlan,
-  sessionBudget: number | undefined
+  sessionBudget: number | undefined,
+  sessionOutputBudget: number | undefined
 ): Record<string, string> {
   const aliasMapping = aliasPlan.mapping;
 
@@ -201,6 +225,10 @@ function buildClaudeModelEnv(
 
   if (sessionBudget !== undefined) {
     env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(sessionBudget);
+  }
+
+  if (sessionOutputBudget !== undefined) {
+    env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(sessionOutputBudget);
   }
 
   return env;
