@@ -8,14 +8,11 @@ import path from "node:path";
 import { disableLevelOf, maxLevelOf, reasoningLevels, selectProbeModels } from "./probe-models.mjs";
 
 const apiKey = process.env.ZRO_API_KEY;
-// Max-effort reasoning turns can legitimately take longer than the default
-// cache-probe budget. Give the reasoning probes a more generous deadline.
+// Max-effort reasoning turns can exceed the default cache-probe budget.
 const REASONING_TIMEOUT_MS = 300_000;
 
-// Harnesses that the live-API check does not yet exercise. These are still
-// discovered by the matrix (so version + compatibility checks run), but they
-// have no cache/reasoning probes. They are recorded as explicitly skipped so
-// the report never shows a green `ok: true` with an empty `checks` array.
+// These harnesses are versions-checked by the matrix but have no cache/reasoning
+// probes; record them explicitly skipped so the report never shows green with no checks.
 const SKIPPED_LIVE_HARNESSES = new Set(["hermes", "openclaw"]);
 if (!apiKey || apiKey === "ci-fake-key") {
   throw new Error("ZRO_API_KEY must contain a live API test key");
@@ -452,7 +449,12 @@ async function checkPrime({ cacheModel, maxModel }) {
     readArgs: cacheArgs,
     parse: (turn) => primeTurn(turn, marker, { expectThinking: false }),
     readTokens: (turn) => turn.usage.cacheRead,
-    label: "Prime Agent"
+    label: "Prime Agent",
+    // Each prime launch spawns a fresh daemon + registry. Without cleanup between
+    // attempts, the next launch collides with the leftover registry entry from the
+    // previous daemon and dies with "daemon supervisor ... no longer owns its
+    // registry entry". Reset daemon+registry state before every attempt.
+    onAttemptStart: () => cleanupPrime()
   });
   passed("prime.cache", {
     model: cacheModel.id,
@@ -613,26 +615,25 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Prime Agent runs a shared per-user daemon (fixed socket
-// /tmp/prime-agent-<uid>/daemon.sock) plus a per-session supervisor registry.
-// A stale daemon or leftover registry from a prior launch causes
-// "daemon supervisor ... no longer owns its registry entry". Force a clean
-// state before each prime launch so probes never collide with a previous one.
+// Prime runs a shared per-user daemon + per-session supervisor registry; a stale
+// registry makes the next daemon die with "no longer owns its registry entry".
 async function cleanupPrime() {
   await run("prime-agent", ["shutdown", "--force"], "Prime Agent daemon shutdown", 15_000).catch(() => {});
-  await fs.rm("/tmp/prime-agent-1001", { recursive: true, force: true }).catch(() => {});
+  // The daemon's socket+registry live under /tmp/prime-agent-<uid>; derive the
+  // uid rather than hardcoding the CI runner's 1001 so this works on any runner.
+  await fs.rm(`/tmp/prime-agent-${os.userInfo().uid}`, { recursive: true, force: true }).catch(() => {});
   await fs.rm(path.join(home, "prime"), { recursive: true, force: true }).catch(() => {});
+  await fs.rm(path.join(home, ".prime"), { recursive: true, force: true }).catch(() => {});
 }
 
-// Cache probes depend on the backend actually returning a cache hit on the
-// read request, which is non-deterministic on a shared live service (load
-// balancing, eviction, replica affinity). Treat a miss as a transient and
-// re-warm + re-read, failing only after `attempts` consecutive misses.
-async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attempts = 4, afterWarm = async () => {}, strict = true }) {
+// A cache miss is non-deterministic on a shared live backend, so treat it as
+// transient: re-warm and re-read, failing only after `attempts` consecutive misses.
+async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attempts = 4, afterWarm = async () => {}, strict = true, onAttemptStart = async () => {} }) {
   let first, second;
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
+      await onAttemptStart(attempt);
       const suffix = attempt > 1 ? ` (attempt ${attempt}/${attempts})` : "";
       first = parse(await runZro(warmArgs, `${label} cache warm-up${suffix}`));
       await afterWarm();
@@ -647,6 +648,7 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
     }
     if (attempt < attempts) await sleep(5000 * attempt);
   }
+  report.lastError = lastError instanceof Error ? lastError.message : String(lastError);
   if (!strict) {
     // The OpenAI/Responses path (codex) does not currently get prompt-cache
     // reads from the backend, even though claude (Anthropic cache breakpoints)
@@ -659,8 +661,6 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
   throw new Error(`${label}: no cache-read tokens after ${attempts} attempts. Last error: ${detail}`);
 }
 
-// Reasoning probes can legitimately time out or return no reasoning content on a
-// busy live backend. Retry the whole probe a few times before failing.
 async function retryProbe(label, attempts, runOnce) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
