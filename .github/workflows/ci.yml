@@ -143,7 +143,9 @@ jobs:
       - name: Install ${{ matrix.harness.label }} (curl installer)
         if: matrix.harness.installer != ''
         run: |
-          curl -fsSL "${{ matrix.harness.installer.url }}" | bash -s -- ${{ matrix.harness.installer.args }}
+          # Transient 403s from the release-metadata endpoint are common; retry.
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+            "${{ matrix.harness.installer.url }}" | bash -s -- ${{ matrix.harness.installer.args }}
           echo "$HOME/${{ matrix.harness.installer.binDir }}" >> "$GITHUB_PATH"
 
       - name: Install Claude Code test dependency

@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import traceback
 
 import pexpect
 
@@ -36,7 +37,12 @@ def main() -> int:
         [zro_bin, "version"], capture_output=True, text=True, check=False
     ).stdout.strip()
 
-    with tempfile.TemporaryDirectory(prefix="zro-claude-models-") as home:
+    # ignore_cleanup_errors=True: claude appends to .claude.json on exit in the
+    # CI container; a lingering write would otherwise turn a probe failure into a
+    # confusing "Directory not empty" traceback during tempdir teardown.
+    with tempfile.TemporaryDirectory(
+        prefix="zro-claude-models-", ignore_cleanup_errors=True
+    ) as home:
         project = os.getcwd()
         state = {
             "hasCompletedOnboarding": True,
@@ -127,6 +133,7 @@ def main() -> int:
             if selected_label not in picker:
                 raise AssertionError(f"selected model {selected_label!r} not present")
         except (AssertionError, pexpect.EOF, pexpect.TIMEOUT) as error:
+            traceback.print_exc()
             transcript += child.before or ""
             plain = strip_terminal_sequences(transcript)[-4000:]
             print(f"Claude Code model discovery failed for {model}: {error}", file=sys.stderr)

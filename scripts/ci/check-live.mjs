@@ -630,6 +630,7 @@ async function cleanupPrime() {
 // re-warm + re-read, failing only after `attempts` consecutive misses.
 async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attempts = 4, afterWarm = async () => {}, strict = true }) {
   let first, second;
+  let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const suffix = attempt > 1 ? ` (attempt ${attempt}/${attempts})` : "";
@@ -637,10 +638,12 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
       await afterWarm();
       second = parse(await runZro(readArgs, `${label} cache read${suffix}`));
       if (readTokens(second) > 0) return { first, second };
+      lastError = new Error("cache read returned 0 tokens");
       console.log(`  ${label}: cache miss (${attempt}/${attempts}), re-warming...`);
     } catch (error) {
+      lastError = error;
       const message = error instanceof Error ? error.message : String(error);
-      console.log(`  ${label} failed (${attempt}/${attempts}): ${message.split("\n")[0].slice(0, 100)}`);
+      console.log(`  ${label} failed (${attempt}/${attempts}): ${message.split("\n")[0].slice(0, 120)}`);
     }
     if (attempt < attempts) await sleep(5000 * attempt);
   }
@@ -652,7 +655,8 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
     console.warn(`  ${label}: prompt cache not engaging after ${attempts} attempts (backend may not return cache reads for this path)`);
     return { first, second, cacheEngaged: false };
   }
-  throw new Error(`${label}: no cache-read tokens after ${attempts} attempts`);
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`${label}: no cache-read tokens after ${attempts} attempts. Last error: ${detail}`);
 }
 
 // Reasoning probes can legitimately time out or return no reasoning content on a
