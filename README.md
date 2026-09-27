@@ -53,6 +53,9 @@ pnpm add --global @moonmath-ai/zro
 their official shell installers; Oh My Pi ships a prebuilt binary so Bun is not required. Version
 validation and installer errors are reported directly by npm or the tool's official installer.
 
+Want a coding agent to do the setup? [SETUP_PROMPT.md](SETUP_PROMPT.md) has copy-paste prompts for
+both end-user installs and local development checkouts.
+
 ### Authentication
 
 Sign in once with `zro login`, then launch any supported agent:
