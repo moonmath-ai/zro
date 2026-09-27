@@ -2,7 +2,7 @@
 
 All notable changes to the ZRO VS Code extension are documented here.
 
-## [Unreleased]
+## [0.1.3] — 2026-09-24
 
 ### Fixed
 
@@ -16,8 +16,6 @@ All notable changes to the ZRO VS Code extension are documented here.
   refused images for every ZRO model ("glm-5.3 flash doesn't support vision").
   Image input is now derived from the live catalog; text-only models (`glm-5.3`,
   `auto`) still refuse attachments.
-
-## [0.1.3] — 2026-09-22
 
 ### Added
 
