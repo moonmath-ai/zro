@@ -80,7 +80,8 @@ try {
   let probeModels = null;
   const probeHarnesses = harnesses.filter((harness) => !SKIPPED_LIVE_HARNESSES.has(harness));
   if (probeHarnesses.length > 0) {
-    const catalog = JSON.parse(await run(zroBin, ["models", "--json"], "Zro model catalog", 30_000));
+    const catalogRun = await run(zroBin, ["models", "--json"], "Zro model catalog", 30_000);
+    const catalog = JSON.parse(catalogRun.stdout);
     probeModels = selectProbeModels(catalog, process.env.ZRO_CI_MODEL);
     report.probeModels = {
       cache: probeModels.cacheModel.id,
