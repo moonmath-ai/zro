@@ -12,7 +12,7 @@ export const hermesTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".hermes", "config.yaml");
     const existing = await readConfig(path.join(ctx.homeDir, ".hermes", "config.yaml"), yamlSerializer);
-    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models);
+    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models, ctx.model);
     return {
       tool: "hermes",
       label: "Hermes",
@@ -36,7 +36,8 @@ function buildHermesConfig(
   existing: Record<string, unknown>,
   apiKey: string,
   apiKeySource: ApiKeySource,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  selectedModel: string
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = Array.isArray(next.custom_providers) ? [...next.custom_providers] : [];
@@ -92,12 +93,16 @@ function buildHermesConfig(
   next.mcp_servers = mcpServers;
 
   const existingModelConfig = asPlainObject(next.model) ?? {};
+  // Hermes' per-launch output cap is top-level model.max_tokens (provider
+  // entries accept only context_length). Unknown selections keep any user value.
+  const selectedSpec = modelSpecs.find((model) => model.id === selectedModel);
   next.model = {
     ...existingModelConfig,
     default_headers: {
       ...(asPlainObject(existingModelConfig.default_headers) ?? {}),
       "User-Agent": "hermes"
-    }
+    },
+    ...(selectedSpec ? { max_tokens: selectedSpec.maxOutputTokens } : {})
   };
   next.custom_providers = providers;
   return next;

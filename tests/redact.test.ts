@@ -29,6 +29,7 @@ describe("redact", () => {
 
   it("does not mask token-count names that are not secrets", () => {
     expect(redact("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "1048576", SECRET)).toBe("1048576");
+    expect(redact("CLAUDE_CODE_MAX_OUTPUT_TOKENS", "64000", SECRET)).toBe("64000");
     expect(redact("CONTEXT_TOKENS", "1048576", SECRET)).toBe("1048576");
   });
 
