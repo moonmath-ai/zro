@@ -446,27 +446,26 @@ async function checkPrime({ cacheModel, maxModel }) {
     "--no-tools", "--no-session", "--thinking", cacheLevel.piLevel ?? "off", prompt
   ];
 
+  // Prime's daemon socket is global to the user (/tmp/prime-agent-<uid>), but
+  // its supervisor registry lives under the launch's temp HOME, which zro
+  // deletes when that launch exits. The warm-up therefore leaves a daemon whose
+  // registry record is already gone, so a second launch would die with "daemon
+  // supervisor ... no longer owns its registry entry". Reset the daemon between
+  // warm-up and read so the read starts a fresh one; server-side prompt cache is
+  // unaffected.
   const { first, second, cacheEngaged } = await probeCache({
     warmArgs: cacheArgs,
     readArgs: cacheArgs,
     parse: (turn) => primeTurn(turn, marker, { expectThinking: false }),
     readTokens: (turn) => turn.usage.cacheRead,
-    label: "Prime Agent",
-    // Lens-mode: like codex, Prime reaches zro over the OpenAI-compatible path,
-    // which does not return cache-read tokens — a backend gap, not a harness
-    // bug. Unlike codex, Prime's fresh daemon/registry per probe attempt needs
-    // cleanup between retries, hence onAttemptStart instead of afterWarm.
+    // Prime reaches zro over the OpenAI-compatible path; when that path stops
+    // reporting cache reads it is a recorded backend gap, not a probe failure.
+    // probeCache still throws when every attempt fails at the turn level, so a
+    // genuinely broken harness can't be masked by this relaxation.
     strict: false,
-    onAttemptStart: () => cleanupPrime()
+    onAttemptStart: () => cleanupPrime(),
+    afterWarm: () => cleanupPrime()
   });
-  // Guard: if the backend starts returning cache reads (cacheEngaged true) yet
-  // a turn-level error still exhausted attempts, the harness itself is broken —
-  // don't let the backend-gap skip mask it.
-  if (cacheEngaged === false && readTokens(second) > 0) {
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Prime Agent: cache engaged but probe still failed");
-  }
   passed("prime.cache", {
     model: cacheModel.id,
     effort: cacheLevel.piLevel ?? "off",
@@ -631,9 +630,10 @@ function sleep(ms) {
 // registry makes the next daemon die with "no longer owns its registry entry".
 async function cleanupPrime() {
   await run("prime-agent", ["shutdown", "--force"], "Prime Agent daemon shutdown", 15_000).catch(() => {});
-  // The daemon's socket+registry live under /tmp/prime-agent-<uid>; derive the
-  // uid rather than hardcoding the CI runner's 1001 so this works on any runner.
-  await fs.rm(`/tmp/prime-agent-${os.userInfo().uid}`, { recursive: true, force: true }).catch(() => {});
+  // The daemon's socket dir is <tmpdir>/prime-agent-<uid>; use os.tmpdir()
+  // rather than hardcoding /tmp because macOS reports a per-user path there.
+  // Derive the uid so this works on any runner instead of assuming 1001.
+  await fs.rm(path.join(os.tmpdir(), `prime-agent-${os.userInfo().uid}`), { recursive: true, force: true }).catch(() => {});
   await fs.rm(path.join(home, "prime"), { recursive: true, force: true }).catch(() => {});
   await fs.rm(path.join(home, ".prime"), { recursive: true, force: true }).catch(() => {});
 }
@@ -643,6 +643,7 @@ async function cleanupPrime() {
 async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attempts = 4, afterWarm = async () => {}, strict = true, onAttemptStart = async () => {} }) {
   let first, second;
   let lastError;
+  let sawCleanRead = false;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       await onAttemptStart(attempt);
@@ -650,6 +651,7 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
       first = parse(await runZro(warmArgs, `${label} cache warm-up${suffix}`));
       await afterWarm();
       second = parse(await runZro(readArgs, `${label} cache read${suffix}`));
+      sawCleanRead = true;
       if (readTokens(second) > 0) return { first, second };
       lastError = new Error("cache read returned 0 tokens");
       console.log(`  ${label}: cache miss (${attempt}/${attempts}), re-warming...`);
@@ -661,6 +663,12 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
     if (attempt < attempts) await sleep(5000 * attempt);
   }
   if (!strict) {
+    // Only a turn that *succeeded* yet reported zero cache reads is the known
+    // backend gap; if every attempt failed at the turn level (CLI error, daemon
+    // crash, timeout) the harness itself is broken, so surface the real error
+    // instead of masking it as a backend gap.
+    const detail = lastError instanceof Error ? lastError.message : String(lastError ?? "unknown error");
+    if (!sawCleanRead) throw new Error(`${label}: all ${attempts} attempts failed before a completed turn. Last error: ${detail}`);
     // The OpenAI/Responses path (codex) does not currently get prompt-cache
     // reads from the backend, even though claude (Anthropic cache breakpoints)
     // does. That's a backend gap, not a CI flake — record it and pass so CI
