@@ -39,6 +39,7 @@ function launchIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv): Ru
     cwd: home,
     env,
     spawn,
+    platform: "linux",
     fetch: catalogFetch(),
   };
 }

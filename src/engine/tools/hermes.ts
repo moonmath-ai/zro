@@ -21,6 +21,10 @@ export const hermesTool: ToolModule = {
       args: ["--provider", PROVIDER_ID, "--model", ctx.model, ...ctx.extraArgs],
       env: {
         HOME: tempHome,
+        // Hermes resolves its home from HERMES_HOME on every platform; on Windows the
+        // $HOME override above is ignored (%LOCALAPPDATA%\hermes is the default), so
+        // without this the generated provider config is never loaded.
+        HERMES_HOME: path.join(tempHome, ".hermes"),
         [ZRO_ENV_KEY]: ctx.apiKey
       },
       files: [{

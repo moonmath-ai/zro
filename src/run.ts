@@ -45,6 +45,7 @@ import {
   type LoadedModelCatalog,
 } from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
+import { spawnCommand } from "./process.js";
 import { banner, chooseConnectMethod, chooseInstall, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
 
 const tools: Record<ToolId, ToolModule> = {
@@ -66,11 +67,6 @@ const PACKAGE_VERSION = (
 ).version;
 
 export async function run(argv: string[], io: RunIo = defaultIo()): Promise<number> {
-  if ((io.platform ?? process.platform) === "win32") {
-    io.stderr.write("zro supports macOS and Linux. Use WSL on Windows.\n");
-    return 1;
-  }
-
   let request: CliRequest;
   try {
     request = parseArgs(argv);
@@ -243,6 +239,7 @@ async function launch(
       homeDir: io.homeDir,
       cwd: io.cwd,
       tempDir,
+      platform: io.platform ?? process.platform,
       stdin: io.stdin,
       stdout: io.stdout,
       stderr: io.stderr
@@ -289,8 +286,24 @@ async function launch(
     io.stderr.write(`Could not open ${plan.label}: ${messageOf(error)}\n`);
     return 1;
   } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+    await removeSessionDir(tempDir, io);
   }
+}
+
+// Windows keeps files locked briefly after a child exits (antivirus, plugin clones), so a
+// single rm can fail with EBUSY/EPERM even though the session is over. Retry, then warn rather
+// than crash after the session.
+async function removeSessionDir(tempDir: string, io: RunIo): Promise<void> {
+  for (const delayMs of [0, 250, 1000, 3000]) {
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+      return;
+    } catch {
+      // Retry.
+    }
+  }
+  io.stderr.write(`Could not remove ${tempDir}; it may hold session files, so delete it manually.\n`);
 }
 
 async function verifyApiKey(
@@ -969,7 +982,7 @@ async function writeLaunchFiles(plan: LaunchPlan): Promise<void> {
 
 async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): Promise<number> {
   const spawn = io.spawn ?? (nodeSpawn as SpawnProcess);
-  const child = spawn(plan.command, plan.args, {
+  const child = spawnCommand(spawn, io.platform ?? process.platform, plan.command, plan.args, {
     cwd: io.cwd,
     env: { ...env, ...(plan.env ?? {}) },
     stdio: "inherit"
@@ -1050,11 +1063,21 @@ function messageOf(error: unknown): string {
 }
 
 async function openBrowserWithSystem(url: string, platform: NodeJS.Platform): Promise<boolean> {
-  const command = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : null;
+  // explorer.exe is a single-instance shell: a spawned process just forwards its argument to the
+  // running shell, which often opens a File Explorer window instead of the URL. rundll32 goes
+  // straight through the URL protocol handler, so the default browser always opens.
+  const command = platform === "darwin"
+    ? "open"
+    : platform === "linux"
+      ? "xdg-open"
+      : platform === "win32"
+        ? "rundll32"
+        : null;
   if (!command) return false;
+  const args = platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url];
 
   return new Promise((resolve) => {
-    const child = nodeSpawn(command, [url], { detached: true, stdio: "ignore" });
+    const child = nodeSpawn(command, args, { detached: true, stdio: "ignore" });
     let settled = false;
     child.once("error", () => {
       if (settled) return;

@@ -9,6 +9,15 @@ import { hermesTool } from "../src/engine/tools/hermes.js";
 import type { LaunchContext } from "../src/engine/types.js";
 
 describe("Hermes adapter", () => {
+  it("points HERMES_HOME at the generated config directory", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-home-"));
+    const plan = await hermesTool.launch(context(home, "glm-5.3"));
+    const hermesHome = path.join(home, "session", "home", ".hermes");
+
+    expect(plan.env?.HERMES_HOME).toBe(hermesHome);
+    expect(plan.files![0].path).toBe(path.join(hermesHome, "config.yaml"));
+  });
+
   it("caps launch output at the selected model's catalog max output tokens", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-output-"));
     const plan = await hermesTool.launch(context(home, "glm-5.3"));
@@ -58,6 +67,7 @@ function context(homeDir: string, model: string): LaunchContext {
     homeDir,
     cwd: homeDir,
     tempDir: path.join(homeDir, "session"),
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough()
