@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  BUNDLED_MODEL_CATALOG,
   CatalogAuthenticationError,
+  CatalogUnavailableError,
   loadModelCatalog,
   modelCatalogCachePath,
 } from "../src/model-catalog.js";
@@ -74,13 +74,13 @@ describe("dynamic model catalog", () => {
     expect(catalog.default).toBe("future-model");
   });
 
-  it("uses bundled models when signed out with no cache", async () => {
-    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-bundled-"));
-
-    const catalog = await loadModelCatalog({ env: {}, homeDir });
-    expect(catalog.source).toBe("bundled");
-    expect(catalog.models).toEqual(BUNDLED_MODEL_CATALOG.models);
-    expect(catalog.default).toBe(BUNDLED_MODEL_CATALOG.default);
+  it("requires a login when signed out with no cache", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-public-"));
+    await expect(loadModelCatalog({
+      env: {},
+      homeDir,
+      fetch: async () => new Response(null, { status: 500 }),
+    })).rejects.toThrow("Run zro login");
   });
 
   it("never hides an explicit authentication rejection behind a cache", async () => {
@@ -98,16 +98,25 @@ describe("dynamic model catalog", () => {
     await expect(fs.stat(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("rejects malformed remote catalogs and falls back safely", async () => {
+  it("rejects a malformed remote catalog", async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-invalid-"));
-    const catalog = await loadModelCatalog({
+    await expect(loadModelCatalog({
       apiKey: "sk-secret",
       env: {},
       homeDir,
       fetch: async () => Response.json({ version: 1, default: "missing", models: [] }),
-    });
+    })).rejects.toThrow(/Could not reach the Zro model catalog \(The model catalog is empty\.\)/);
+  });
 
-    expect(catalog.source).toBe("bundled");
-    expect(catalog.models).toEqual(BUNDLED_MODEL_CATALOG.models);
+  it("does not tell a signed-in user to log in when the catalog is unreachable", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-unreachable-"));
+    const attempt = loadModelCatalog({
+      apiKey: "sk-secret",
+      env: {},
+      homeDir,
+      fetch: async () => new Response(null, { status: 500 }),
+    });
+    await expect(attempt).rejects.toBeInstanceOf(CatalogUnavailableError);
+    await expect(attempt).rejects.not.toThrow("zro login");
   });
 });

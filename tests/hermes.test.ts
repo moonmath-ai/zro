@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { ZRO_MODELS } from "../src/engine/constants.js";
+import { TIER_MODELS } from "./fixtures.js";
 import { yamlSerializer } from "../src/engine/serializers.js";
 import { hermesTool } from "../src/engine/tools/hermes.js";
 import type { LaunchContext } from "../src/engine/types.js";
@@ -34,7 +34,7 @@ describe("Hermes adapter", () => {
     // Hermes' first-run guard counts `model.provider`/`model.base_url` as configured.
     expect(config.model?.provider).toBe("zro");
     expect(config.model?.base_url).toContain("/v1");
-    expect(config.model?.default).toBe("glm-5.2");
+    expect(config.model?.default).toBe("glm-5.3");
   });
 
   it("stores the api key in the config when it came from a stored credential", async () => {
@@ -95,8 +95,8 @@ function context(
     apiKey: "sk-hermes-secret",
     apiKeySource: options.apiKeySource ?? "env",
     env: {},
-    model: options.model ?? "glm-5.2",
-    models: ZRO_MODELS,
+    model: options.model ?? "glm-5.3",
+    models: TIER_MODELS,
     extraArgs: [],
     homeDir,
     cwd: homeDir,

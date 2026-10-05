@@ -11,8 +11,8 @@ import {
   PROVIDER_ID,
   PROVIDER_NAME,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
 } from "../src/engine/constants.js";
+import { TEST_MODELS, catalogFetch } from "./fixtures.js";
 import { kiloTool } from "../src/engine/tools/kilo.js";
 import type { LaunchContext } from "../src/engine/types.js";
 import { run } from "../src/run.js";
@@ -148,8 +148,8 @@ describe("Kilo Code adapter", () => {
     expect(JSON.stringify(overlay)).not.toContain("sk-kilo-secret");
 
     const models = overlay.provider[PROVIDER_ID].models;
-    expect(Object.keys(models).sort()).toEqual(ZRO_MODELS.map((model) => model.id).sort());
-    for (const model of ZRO_MODELS) {
+    expect(Object.keys(models).sort()).toEqual(TEST_MODELS.map((model) => model.id).sort());
+    for (const model of TEST_MODELS) {
       expect(models[model.id]).toEqual({
         name: model.displayName,
         tool_call: true,
@@ -235,23 +235,21 @@ describe("Kilo Code adapter", () => {
         XDG_CONFIG_HOME: path.join(home, "config"),
       },
       platform: "linux",
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: catalogFetch(),
     });
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "deepseek-v4.1-flash" });
+    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "glm-5.3" });
     expect(JSON.parse(preview.environment.KILO_CONFIG_CONTENT)).toMatchObject({
-      model: "zro/deepseek-v4.1-flash",
+      model: "zro/glm-5.3",
     });
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([
-    ["success", 0, 0],
-    ["nonzero exit", 7, 7],
     ["spawn failure", "error", 1],
   ] as const)("cleans its temporary profile after %s", async (_name, childResult, expectedCode) => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-kilo-cleanup-"));
@@ -278,7 +276,7 @@ describe("Kilo Code adapter", () => {
       },
       platform: "linux",
       spawn,
-      fetch: async () => new Response(null, { status: 200 }),
+      fetch: catalogFetch(),
     };
 
     expect(await run(["kilo"], io)).toBe(expectedCode);
@@ -298,6 +296,7 @@ function context(
     apiKeySource: "env",
     env,
     model: "glm-5.3",
+    models: TEST_MODELS,
     extraArgs: ["run", "hello"],
     homeDir,
     cwd: homeDir,

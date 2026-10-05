@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, ZRO_MODELS, type ZroModel } from "../constants.js";
+import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, type ZroModel } from "../constants.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 
@@ -8,8 +8,7 @@ export const claudeTool: ToolModule = {
   label: "Claude Code",
   async launch(ctx) {
     const mcpConfigPath = path.join(ctx.tempDir, "claude", "mcp.json");
-    if (!ctx.models.some((model) => model.id === ctx.model)
-      && !ZRO_MODELS.some((model) => model.id === ctx.model)) {
+    if (!ctx.models.some((model) => model.id === ctx.model)) {
       ctx.stderr.write(
         `Warning: model "${ctx.model}" is not in the Zro catalog; Claude Code will assume a 200k context window.\n`
       );
@@ -186,14 +185,11 @@ function claudeSessionOutputBudget(
   return specs.length > 0 ? Math.min(...specs.map((spec) => spec.maxOutputTokens)) : undefined;
 }
 
-// The active catalog is authoritative, but a caller may pass a model the remote
-// catalog no longer lists; fall back to the bundled lineup so a known model
-// still gets its real window. An unknown-in-both model resolves to undefined.
 function claudeSpecFor(
   modelId: string,
   modelSpecs: readonly ZroModel[]
 ): ZroModel | undefined {
-  return modelSpecs.find((m) => m.id === modelId) ?? ZRO_MODELS.find((m) => m.id === modelId);
+  return modelSpecs.find((m) => m.id === modelId);
 }
 
 function buildClaudeModelEnv(
