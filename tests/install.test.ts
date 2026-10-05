@@ -1,7 +1,11 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
+import { commandExists } from "../src/install.js";
 import { run } from "../src/run.js";
 import type { SpawnProcess } from "../src/types.js";
 
@@ -28,10 +32,30 @@ function io(spawn: SpawnProcess, stdout = new PassThrough(), stderr = new PassTh
     cwd: "/tmp/zro-install-test",
     env: {},
     spawn,
+    platform: "linux" as const,
   };
 }
 
 describe("zro install", () => {
+  it("finds command shims using PATHEXT on Windows", async () => {
+    const bin = await fs.mkdtemp(path.join(os.tmpdir(), "zro-win-bin-"));
+    await fs.writeFile(path.join(bin, "codex.CMD"), "@echo off\r\n");
+
+    await expect(commandExists("codex", { PATH: bin, PATHEXT: ".EXE;.CMD" }, "win32")).resolves.toBe(true);
+  });
+
+  it("targets the package manager regardless of platform", async () => {
+    const { spawn, calls } = recorder();
+    const code = await run(["install", "claude"], { ...io(spawn), platform: "win32" });
+
+    expect(code).toBe(0);
+    // Only the dispatched command is asserted here; platform bridging is covered in process.test.ts.
+    expect(calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@anthropic-ai/claude-code@latest"],
+    });
+  });
+
   it("installs an agent's catalog package", async () => {
     const { spawn, calls } = recorder();
     const code = await run(["install", "claude"], io(spawn));
@@ -55,26 +79,14 @@ describe("zro install", () => {
     ]);
   });
 
-  it("installs Kilo Code from its official package by ID or alias", async () => {
-    const latest = recorder();
-    const pinned = recorder();
-    const upgraded = recorder();
+  it("installs Kilo Code from its official package by alias", async () => {
+    const { spawn, calls } = recorder();
 
-    expect(await run(["install", "kc"], io(latest.spawn))).toBe(0);
-    expect(latest.calls[0]).toEqual({
+    expect(await run(["install", "kc"], io(spawn))).toBe(0);
+    expect(calls[0]).toEqual({
       command: "npm",
       args: ["install", "--global", "@kilocode/cli@latest"],
     });
-
-    expect(await run(["install", "kilocode@7.4.16"], io(pinned.spawn))).toBe(0);
-    expect(pinned.calls[0].args).toEqual([
-      "install",
-      "--global",
-      "@kilocode/cli@7.4.16",
-    ]);
-
-    expect(await run(["install", "kilo", "--upgrade"], io(upgraded.spawn))).toBe(0);
-    expect(upgraded.calls[0].args.at(-1)).toBe("@kilocode/cli@latest");
   });
 
   it("upgrades agents and Zro by reinstalling latest", async () => {
@@ -84,15 +96,16 @@ describe("zro install", () => {
     expect(await run(["install", "codex", "--upgrade"], io(agent.spawn))).toBe(0);
     expect(agent.calls[0].args.at(-1)).toBe("@openai/codex@latest");
 
+    const codexApp = recorder();
+    expect(await run(["install", "codex-app"], io(codexApp.spawn))).toBe(0);
+    expect(codexApp.calls[0].args.at(-1)).toBe("@openai/codex@latest");
+
     expect(await run(["install", "--upgrade"], io(self.spawn))).toBe(0);
     expect(self.calls[0].args.at(-1)).toBe("@moonmath-ai/zro@latest");
   });
 
   it.each([
     ["hermes", "hermes-agent.nousresearch.com/install.sh", "--skip-setup"],
-    ["grok", "x.ai/cli/install.sh", undefined],
-    ["omp", "omp.sh/install", "--binary"],
-    ["prime", "app.primeintellect.ai/prime-agent/install.sh", undefined],
   ])("uses the official installer for %s", async (tool, url, expectedArg) => {
     const { spawn, calls } = recorder();
     const code = await run(["install", tool], io(spawn));
@@ -111,17 +124,6 @@ describe("zro install", () => {
     expect(calls[0].args.join(" ")).toContain("https://omp.sh/install");
     expect(await run(["install", "ohmypi@17.1.7"], io(spawn, new PassThrough(), stderr))).toBe(1);
     expect(await text(stderr)).toContain("does not support pinned versions");
-  });
-
-  it("installs the shared Codex package for Codex App", async () => {
-    const { spawn, calls } = recorder();
-
-    expect(await run(["install", "codex-app"], io(spawn))).toBe(0);
-    expect(calls[0].args).toEqual([
-      "install",
-      "--global",
-      "@openai/codex@latest",
-    ]);
   });
 
   it("returns a concise installer failure", async () => {

@@ -6,6 +6,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/run.js";
+import { catalogFetch } from "./fixtures.js";
 import type { RunIo, SpawnProcess } from "../src/types.js";
 
 function harness(options: {
@@ -38,7 +39,8 @@ function launchIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv): Ru
     cwd: home,
     env,
     spawn,
-    fetch: async () => new Response(null, { status: 200 }),
+    platform: "linux",
+    fetch: catalogFetch(),
   };
 }
 
@@ -155,3 +157,58 @@ describe("zro <tool> --install", () => {
     expect(calls[0].command).toBe("npm");
   });
 });
+
+describe("zro <tool> with a missing harness", () => {
+  function ttyIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv, stdout: PassThrough) {
+    const stdin = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      isRaw: boolean;
+      setRawMode(mode: boolean): void;
+    };
+    stdin.isTTY = true;
+    stdin.isRaw = false;
+    stdin.setRawMode = (mode) => { stdin.isRaw = mode; };
+    (stdout as PassThrough & { isTTY: boolean }).isTTY = true;
+    return { io: { ...launchIo(home, spawn, env), stdin, stdout }, stdin };
+  }
+
+  it("offers to install a missing harness, then launches it", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-missing-install-"));
+    const stdout = new PassThrough();
+    let launched = false;
+    const { spawn, calls } = harness({ onLaunch: () => { launched = true; } });
+    const { io, stdin } = ttyIo(home, spawn, { PATH: "" }, stdout);
+
+    const result = run(["claude", "--api-key", "sk-test"], io);
+    queueMicrotask(() => stdin.write("\r"));
+
+    expect(await result).toBe(0);
+    expect(calls[0]).toEqual({
+      command: "npm",
+      args: ["install", "--global", "@anthropic-ai/claude-code@latest"],
+    });
+    expect(calls.at(-1)?.command).toBe("claude");
+    expect(launched).toBe(true);
+    expect(await streamText(stdout)).toContain("Claude Code is not installed yet.");
+  });
+
+  it("exits without installing when the user declines", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-missing-decline-"));
+    const stdout = new PassThrough();
+    const { spawn, calls } = harness();
+    const { io, stdin } = ttyIo(home, spawn, { PATH: "" }, stdout);
+
+    const result = run(["claude", "--api-key", "sk-test"], io);
+    queueMicrotask(() => stdin.write("\u001b[B\r"));
+
+    expect(await result).toBe(0);
+    expect(calls.some((call) => call.command === "npm")).toBe(false);
+  });
+});
+
+async function streamText(stream: PassThrough): Promise<string> {
+  stream.end();
+  let output = "";
+  for await (const chunk of stream) output += chunk.toString();
+  return output;
+}

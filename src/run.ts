@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_ENV_KEY } from "./engine/constants.js";
+import { ENDPOINT_ROOT, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -18,7 +18,7 @@ import {
   resolveApiKey,
   writeStoredApiKey
 } from "./engine/key.js";
-import { claudeTool } from "./engine/tools/claude.js";
+import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "./engine/tools/claude.js";
 import {
   codexAppCredentialFilePath,
   codexAppTool,
@@ -34,17 +34,19 @@ import { piTool } from "./engine/tools/pi.js";
 import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
-import { describeTool, TOOLS } from "./catalog.js";
+import { describeTool } from "./catalog.js";
 import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import {
   CatalogAuthenticationError,
   invalidateModelCatalog,
   loadModelCatalog,
-  type ModelCatalog,
+  type CatalogSource,
+  type LoadedModelCatalog,
 } from "./model-catalog.js";
 import type { CliRequest, RunIo } from "./types.js";
-import { banner, chooseConnectMethod, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
+import { spawnCommand } from "./process.js";
+import { banner, chooseConnectMethod, chooseInstall, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -65,11 +67,6 @@ const PACKAGE_VERSION = (
 ).version;
 
 export async function run(argv: string[], io: RunIo = defaultIo()): Promise<number> {
-  if ((io.platform ?? process.platform) === "win32") {
-    io.stderr.write("zro supports macOS and Linux. Use WSL on Windows.\n");
-    return 1;
-  }
-
   let request: CliRequest;
   try {
     request = parseArgs(argv);
@@ -131,13 +128,9 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       model: preferences.lastModel,
       dryRun: request.dryRun,
       output: request.output,
-      extraArgs: []
+      extraArgs: [],
+      aliases: request.aliases
     };
-  }
-
-  if (request.install && !request.dryRun) {
-    const ready = await ensureHarnessInstalled(request.tool, io, env);
-    if (!ready) return 1;
   }
 
   return launch(request, io, env, colors);
@@ -152,32 +145,21 @@ async function launch(
   let key;
   try {
     key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
-  } catch (error) {
+  } catch {
     if (!isTty(io.stdin) || !isTty(io.stdout)) {
       io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
       return 1;
     }
-    io.stdout.write(`${colors.strong("Connect once to keep going.")}\n\n`);
-    const loggedIn = await loginWithWebsite({
-      command: "login",
-      method: "browser",
-      openBrowser: true,
-      output: "human",
-    }, io, env, colors);
-    if (loggedIn !== 0) return loggedIn;
-    try {
-      key = await resolveApiKey({ env, homeDir: io.homeDir });
-    } catch (resolutionError) {
-      io.stderr.write(`${messageOf(resolutionError)}\n`);
-      return 1;
-    }
+    const connected = await connectInteractively(io, env, colors);
+    if (typeof connected === "number") return connected;
+    key = connected;
   }
 
   if (request.apiKey) {
     io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
-  let catalog: ModelCatalog;
+  let catalog: LoadedModelCatalog;
   try {
     catalog = await loadModelCatalog({
       apiKey: key.apiKey,
@@ -193,14 +175,53 @@ async function launch(
       );
       return 1;
     }
-    io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
+    io.stderr.write(`${messageOf(error)} Agent was not started.\n`);
     return 1;
   }
 
   const model = request.model ?? catalog.default;
   if (!catalog.models.some((candidate) => candidate.id === model)) {
-    io.stderr.write(`Unknown model "${model}". Run zro models.\n`);
+    io.stderr.write(unknownModelMessage(model, catalog.source));
     return 1;
+  }
+
+  const tool = describeTool(request.tool);
+  if (
+    !request.dryRun &&
+    !await commandExists(tool.executable, env) &&
+    (request.install || (isTty(io.stdin) && isTty(io.stdout)))
+  ) {
+    if (!request.install) {
+      let choice: "install" | "cancel";
+      try {
+        choice = await chooseInstall(tool.name, io.stdin, io.stdout, colors);
+      } catch (error) {
+        if (messageOf(error) !== "Cancelled.") io.stderr.write(`${messageOf(error)}\n`);
+        return messageOf(error) === "Cancelled." ? 0 : 1;
+      }
+      if (choice === "cancel") return 0;
+    }
+    const ready = await ensureHarnessInstalled(request.tool, io, env);
+    if (!ready) return 1;
+  }
+
+  let modelAliases: Record<string, string> | undefined;
+  for (const [slot, modelId] of Object.entries(request.aliases ?? {})) {
+    if (request.tool !== "claude") {
+      io.stderr.write("--alias is only supported for the claude tool.\n");
+      return 1;
+    }
+    if (!(CLAUDE_MODEL_ALIAS_SLOTS as readonly string[]).includes(slot)) {
+      const slots = CLAUDE_MODEL_ALIAS_SLOTS.map((name) => name.toLowerCase()).join(", ");
+      io.stderr.write(`Unknown alias slot "${slot.toLowerCase()}". Choose: ${slots}.\n`);
+      return 1;
+    }
+    if (modelId && !catalog.models.some((candidate) => candidate.id === modelId)) {
+      io.stderr.write(`Unknown model "${modelId}" for alias ${slot.toLowerCase()}. ${unknownModelMessage(modelId, catalog.source).trim()}\n`);
+      return 1;
+    }
+    modelAliases ??= {};
+    modelAliases[slot] = modelId;
   }
 
   const tempRoot = path.join(env.XDG_CACHE_HOME || path.join(io.homeDir, ".cache"), "zro", "sessions");
@@ -214,9 +235,11 @@ async function launch(
       model,
       models: catalog.models,
       extraArgs: request.extraArgs,
+      modelAliases,
       homeDir: io.homeDir,
       cwd: io.cwd,
       tempDir,
+      platform: io.platform ?? process.platform,
       stdin: io.stdin,
       stdout: io.stdout,
       stderr: io.stderr
@@ -228,7 +251,7 @@ async function launch(
   }
 
   if (request.dryRun) {
-    printPreview(plan, request.output, io, key.apiKey, colors);
+    printPreview(plan, request.output, io, key.apiKey, colors, catalog.models);
     await fs.rm(tempDir, { recursive: true, force: true });
     return 0;
   }
@@ -263,8 +286,24 @@ async function launch(
     io.stderr.write(`Could not open ${plan.label}: ${messageOf(error)}\n`);
     return 1;
   } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+    await removeSessionDir(tempDir, io);
   }
+}
+
+// Windows keeps files locked briefly after a child exits (antivirus, plugin clones), so a
+// single rm can fail with EBUSY/EPERM even though the session is over. Retry, then warn rather
+// than crash after the session.
+async function removeSessionDir(tempDir: string, io: RunIo): Promise<void> {
+  for (const delayMs of [0, 250, 1000, 3000]) {
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    try {
+      await fs.rm(tempDir, { recursive: true, force: true });
+      return;
+    } catch {
+      // Retry.
+    }
+  }
+  io.stderr.write(`Could not remove ${tempDir}; it may hold session files, so delete it manually.\n`);
 }
 
 async function verifyApiKey(
@@ -314,18 +353,46 @@ async function verifyApiKey(
   return false;
 }
 
+async function connectInteractively(
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+  colors: ReturnType<typeof theme>,
+): Promise<Awaited<ReturnType<typeof resolveApiKey>> | number> {
+  io.stdout.write(`${colors.strong("Connect once to keep going.")}\n\n`);
+  const loggedIn = await login(
+    {
+      command: "login",
+      method: "choose",
+      openBrowser: true,
+      output: "human",
+    },
+    io,
+    env,
+    colors,
+    false,
+  );
+  if (loggedIn !== 0) return loggedIn;
+  try {
+    return await resolveApiKey({ env, homeDir: io.homeDir });
+  } catch (error) {
+    io.stderr.write(`${messageOf(error)}\n`);
+    return 1;
+  }
+}
+
 async function login(
   request: Extract<CliRequest, { command: "login" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
-  colors: ReturnType<typeof theme>
+  colors: ReturnType<typeof theme>,
+  showBanner = true,
 ): Promise<number> {
   let method = request.method;
-  let showWebsiteBanner = true;
+  let showWebsiteBanner = showBanner;
 
   if (method === "choose") {
     if (request.output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
-      io.stdout.write(`${banner(colors)}\n\n`);
+      if (showBanner) io.stdout.write(`${banner(colors)}\n\n`);
       try {
         method = await chooseConnectMethod(io.stdin, io.stdout, colors);
       } catch (error) {
@@ -539,16 +606,9 @@ async function status(
   const source = envKey ? "environment" : stored ? "stored" : "none";
   const credential = envKey ?? stored;
   const preferences = await readPreferences({ homeDir: io.homeDir, env });
-  const [installed, accountResult] = await Promise.all([
-    Promise.all(TOOLS.map(async (tool) => ({
-      id: tool.id,
-      name: tool.name,
-      installed: await commandExists(tool.executable, env)
-    }))),
-    credential
-      ? fetchAccountStatus(credential, io, env)
-      : Promise.resolve({ state: "not_connected" } as const),
-  ]);
+  const accountResult = credential
+    ? await fetchAccountStatus(credential, io, env)
+    : { state: "not_connected" } as const;
   const connected = source !== "none" && accountResult.state !== "rejected";
   if (accountResult.state === "rejected") {
     await invalidateModelCatalog({ homeDir: io.homeDir, env }).catch(() => {});
@@ -563,31 +623,39 @@ async function status(
       lastSession: preferences.lastTool && preferences.lastModel
         ? { tool: preferences.lastTool, model: preferences.lastModel }
         : null,
-      tools: installed
     }, null, 2)}\n`);
     return 0;
   }
 
-  io.stdout.write(`${banner(colors)}\n\n`);
-  io.stdout.write(`${!connected ? colors.muted("◇") : colors.good("◆")} Connection  `);
-  io.stdout.write(source === "none"
-    ? `${colors.muted("not logged in")}\n  Run zro login\n`
-    : accountResult.state === "rejected"
-      ? `${colors.muted("API key rejected")}\n  Run zro login --manual\n`
-    : `${colors.strong(source)} ${colors.muted(`· ${maskKey(credential!)}`)}\n`);
+  io.stdout.write(`${banner(colors)}\n`);
+
+  io.stdout.write(`\n${colors.muted("CONNECTION")}\n`);
+  if (source === "none") {
+    io.stdout.write(`  ${colors.muted("◇")} Not logged in\n`);
+    io.stdout.write(`    ${colors.muted("Run")} zro login ${colors.muted("to connect")}\n`);
+  } else if (accountResult.state === "rejected") {
+    io.stdout.write(`  ${colors.muted("◇")} API key rejected\n`);
+    io.stdout.write(`    ${colors.muted("Run")} zro login --manual ${colors.muted("with a valid key")}\n`);
+  } else {
+    io.stdout.write(`  ${colors.good("◆")} ${colors.strong(source)} ${colors.muted(maskKey(credential!))}\n`);
+  }
+
   if (accountResult.state === "available") {
     printAccountStatus(accountResult.account, io, colors);
   } else if (accountResult.state === "unavailable") {
-    io.stdout.write(`${colors.muted("◇")} Account     ${colors.muted("details unavailable")}\n`);
+    io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
+    io.stdout.write(`  ${colors.muted("◇")} Details unavailable\n`);
   }
+
+  io.stdout.write(`\n${colors.muted("LAST SESSION")}\n`);
   if (preferences.lastTool && preferences.lastModel) {
-    io.stdout.write(`${colors.accent("◆")} Last session  ${describeTool(preferences.lastTool).name} ${colors.muted(`· ${preferences.lastModel}`)}\n`);
+    io.stdout.write(
+      `  ${colors.accent("◆")} ${colors.strong(describeTool(preferences.lastTool).name)} ` +
+      `${colors.muted(preferences.lastModel)}\n`,
+    );
+    io.stdout.write(`    ${colors.muted("Reopen with")} zro again\n`);
   } else {
-    io.stdout.write(`${colors.muted("◇")} Last session  ${colors.muted("none yet")}\n`);
-  }
-  io.stdout.write("\nTools\n");
-  for (const tool of installed) {
-    io.stdout.write(`  ${tool.installed ? colors.good("◆") : colors.muted("◇")} ${pad(tool.name, 13)} ${tool.installed ? "ready" : colors.muted("not installed")}\n`);
+    io.stdout.write(`  ${colors.muted("◇")} None yet — start with ${colors.muted("zro claude")}\n`);
   }
   return 0;
 }
@@ -699,28 +767,32 @@ function printAccountStatus(
   colors: ReturnType<typeof theme>,
 ): void {
   const plan = account.billing.plan;
-  io.stdout.write("\nAccount\n");
+  const currency = account.billing.currency;
+  const packs = account.billing.usagePacks;
+  const activity = account.activity30d;
+
+  io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
   io.stdout.write(
-    `  ${colors.good("◆")} Plan         ${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
-    `${colors.muted(`· ${account.billing.status}`)}\n`,
+    `  ${plan ? colors.good("◆") : colors.muted("◇")} Plan           ` +
+    `${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
+    `${colors.muted(account.billing.status)}\n`,
   );
   if (plan) {
+    const ratio = plan.allowance > 0 ? Math.min(Math.max(plan.used / plan.allowance, 0), 1) : 0;
+    const width = 24;
+    const filled = Math.round(ratio * width);
+    const bar = colors.good("█".repeat(filled)) + colors.muted("░".repeat(width - filled));
     io.stdout.write(
-      `  ${colors.good("◆")} Plan usage   ${money(plan.used, account.billing.currency)} of ` +
-      `${money(plan.allowance, account.billing.currency)} · ${money(plan.remaining, account.billing.currency)} left\n`,
+      `    ${bar}  ${colors.strong(`${Math.round(ratio * 100)}%`)} ${colors.muted("used")}\n`,
     );
   }
-  const packs = account.billing.usagePacks;
   io.stdout.write(
-    `  ${packs.remaining > 0 ? colors.good("◆") : colors.muted("◇")} Usage packs  ` +
-    `${money(packs.remaining, account.billing.currency)} left · ${money(packs.total, account.billing.currency)} total\n`,
+    `  ${packs.remaining > 0 ? colors.good("◆") : colors.muted("◇")} Top-up credits ` +
+    `${colors.strong(money(packs.remaining, currency))} ${colors.muted(`left · ${money(packs.total, currency)} total`)}\n`,
   );
   io.stdout.write(
-    `  ${colors.good("◆")} Available    ${money(account.billing.totalRemaining, account.billing.currency)} total\n`,
-  );
-  io.stdout.write(
-    `  ${colors.muted("◇")} Last 30 days ${formatInteger(account.activity30d.requests)} requests · ` +
-    `${formatInteger(account.activity30d.totalTokens)} tokens\n`,
+    `  ${colors.muted("◇")} Activity       ${formatInteger(activity.requests)} ${colors.muted("requests ·")} ` +
+    `${formatTokens(activity.totalTokens)} ${colors.muted("tokens")} ${colors.muted("(30d)")}\n`,
   );
 }
 
@@ -747,10 +819,10 @@ async function models(
   try {
     apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
   } catch {
-    // A cached or bundled catalog remains useful before the user signs in.
+    // A cached catalog remains useful before the user signs in.
   }
 
-  let catalog: ModelCatalog;
+  let catalog: LoadedModelCatalog;
   try {
     catalog = await loadModelCatalog({ apiKey, env, homeDir: io.homeDir, fetch: io.fetch });
   } catch (error) {
@@ -758,8 +830,24 @@ async function models(
       io.stderr.write(`Authentication failed: ${error.message} Run zro login --manual with a valid API key.\n`);
       return 1;
     }
-    io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
-    return 1;
+    if (output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
+      const connected = await connectInteractively(io, env, colors);
+      if (typeof connected === "number") return connected;
+      try {
+        catalog = await loadModelCatalog({
+          apiKey: connected.apiKey,
+          env,
+          homeDir: io.homeDir,
+          fetch: io.fetch,
+        });
+      } catch (retryError) {
+        io.stderr.write(`Could not load the Zro model catalog: ${messageOf(retryError)}\n`);
+        return 1;
+      }
+    } else {
+      io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
+      return 1;
+    }
   }
 
   if (output === "json") {
@@ -772,7 +860,7 @@ async function models(
     io.stdout.write(`\n  ${isDefault ? colors.accent("◆") : colors.muted("◇")} ${colors.strong(model.displayName)}  ${colors.muted(model.id)}${isDefault ? colors.accent("  default") : ""}\n`);
     io.stdout.write(`    ${formatTokens(model.contextWindow)} context · ${formatTokens(model.maxOutputTokens)} max output · ${model.reasoning.levels.map((level) => level.id).join(" / ")}\n`);
   }
-  io.stdout.write("\nChoose per session with -m, for example: zro codex -m glm-5.2\n");
+  io.stdout.write(`\nChoose per session with -m, for example: zro codex -m ${catalog.default}\n`);
   return 0;
 }
 
@@ -851,7 +939,8 @@ function printPreview(
   output: "human" | "json",
   io: RunIo,
   secret: string,
-  colors: ReturnType<typeof theme>
+  colors: ReturnType<typeof theme>,
+  models: readonly ZroModel[]
 ): void {
   const safeEnv = Object.fromEntries(
     Object.entries(plan.env ?? {}).map(([key, value]) => [key, redact(key, value, secret)])
@@ -870,7 +959,7 @@ function printPreview(
   }
   io.stdout.write(`${banner(colors)}\n\n${colors.strong("Session preview")}\n`);
   io.stdout.write(`  Tool     ${describeTool(plan.tool).name}\n`);
-  io.stdout.write(`  Model    ${modelName(plan.model)} ${colors.muted(`· ${plan.model}`)}\n`);
+  io.stdout.write(`  Model    ${modelName(plan.model, models)} ${colors.muted(`· ${plan.model}`)}\n`);
   io.stdout.write(`  Command  ${shellPreview([plan.command, ...plan.args])}\n`);
   const entries = Object.entries(safeEnv);
   if (entries.length) {
@@ -893,7 +982,7 @@ async function writeLaunchFiles(plan: LaunchPlan): Promise<void> {
 
 async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): Promise<number> {
   const spawn = io.spawn ?? (nodeSpawn as SpawnProcess);
-  const child = spawn(plan.command, plan.args, {
+  const child = spawnCommand(spawn, io.platform ?? process.platform, plan.command, plan.args, {
     cwd: io.cwd,
     env: { ...env, ...(plan.env ?? {}) },
     stdio: "inherit"
@@ -910,10 +999,39 @@ async function spawnPlan(plan: LaunchPlan, io: RunIo, env: NodeJS.ProcessEnv): P
   });
 }
 
-function redact(key: string, value: string, secret: string): string {
-  if (/KEY|TOKEN|SECRET|AUTH/i.test(key) || value.includes(secret)) return maskKey(value);
+export function unknownModelMessage(model: string, source: CatalogSource): string {
+  if (source === "remote") {
+    return `Unknown model "${model}". It is not offered by your account's catalog. Run zro models.\n`;
+  }
+  return `Unknown model "${model}". It is not in the cached catalog from your last login. Run zro login to refresh your account's catalog.\n`;
+}
+
+export function redact(key: string, value: string, secret: string): string {
+  if (value === "") return value;
+  const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
+  if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
+    return maskKey(value);
+  }
   return value;
 }
+
+const SECRET_NAME_TOKENS = new Set([
+  "APIKEY",
+  "APIKEYS",
+  "APISECRET",
+  "APISECRETS",
+  "AUTH",
+  "AUTHORIZATION",
+  "CREDENTIAL",
+  "CREDENTIALS",
+  "KEY",
+  "KEYS",
+  "PASSWORD",
+  "PASSPHRASE",
+  "SECRET",
+  "SECRETS",
+  "TOKEN"
+]);
 
 function shellPreview(argv: string[]): string {
   return argv.map((value) => /^[A-Za-z0-9_./:=@+-]+$/.test(value)
@@ -926,12 +1044,18 @@ function compactPath(cwd: string, homeDir: string): string {
 }
 
 function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".0", "")}M`;
-  return `${Math.round(value / 1_000)}K`;
-}
-
-function pad(value: string, width: number): string {
-  return value + " ".repeat(Math.max(1, width - value.length));
+  const units: Array<[number, string]> = [
+    [1_000_000_000, "B"],
+    [1_000_000, "M"],
+    [1_000, "K"],
+  ];
+  for (const [threshold, suffix] of units) {
+    if (value >= threshold) {
+      const scaled = value / threshold;
+      return `${scaled >= 10 ? Math.round(scaled) : scaled.toFixed(1)}${suffix}`;
+    }
+  }
+  return String(value);
 }
 
 function messageOf(error: unknown): string {
@@ -939,11 +1063,21 @@ function messageOf(error: unknown): string {
 }
 
 async function openBrowserWithSystem(url: string, platform: NodeJS.Platform): Promise<boolean> {
-  const command = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : null;
+  // explorer.exe is a single-instance shell: a spawned process just forwards its argument to the
+  // running shell, which often opens a File Explorer window instead of the URL. rundll32 goes
+  // straight through the URL protocol handler, so the default browser always opens.
+  const command = platform === "darwin"
+    ? "open"
+    : platform === "linux"
+      ? "xdg-open"
+      : platform === "win32"
+        ? "rundll32"
+        : null;
   if (!command) return false;
+  const args = platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url];
 
   return new Promise((resolve) => {
-    const child = nodeSpawn(command, [url], { detached: true, stdio: "ignore" });
+    const child = nodeSpawn(command, args, { detached: true, stdio: "ignore" });
     let settled = false;
     child.once("error", () => {
       if (settled) return;

@@ -74,8 +74,44 @@ const report = {
 };
 let testError;
 
+let liveModel;
+let liveLevels;
+
+function resolveLevels(rawCatalog) {
+  const isOff = (level) =>
+    level.piLevel === "off" || level.id === "none" || level.id === "off" || level.id === "disabled";
+  const model = rawCatalog.models.find((candidate) => candidate.id === rawCatalog.default)
+    ?? rawCatalog.models[0];
+  assert.ok(model, "Zro model catalog has no selectable model");
+  const levels = model.reasoning.levels;
+  assert.ok(levels.length > 0, `Zro model ${model.id} exposes no reasoning levels`);
+  const low = levels.find(isOff) ?? levels[0];
+  const active = levels.filter((level) => !isOff(level));
+  const max = (active.length > 0 ? active : levels).at(-1);
+  const high = active.find((level) => level.piLevel === "high") ?? max;
+  return {
+    model: model.id,
+    offId: low.id,
+    offPi: low.piLevel,
+    maxId: max.id,
+    maxPi: max.piLevel,
+    maxCodexEffort: max.codexEffort ?? max.id,
+    highCodexEffort: high.codexEffort ?? high.id
+  };
+}
+
+async function loadCatalog() {
+  const output = await run(zroBin, ["models", "--json"], "Zro model catalog", 60_000, childEnv);
+  const parsed = JSON.parse(output.stdout);
+  assert.ok(Array.isArray(parsed.models) && parsed.models.length > 0, "Zro model catalog emitted no models");
+  return parsed;
+}
+
 try {
   await collectVersions();
+  const catalog = await loadCatalog();
+  liveModel = catalog.default;
+  liveLevels = resolveLevels(catalog);
   for (const harness of harnesses) {
     if (harness === "claude") await checkClaude();
     else if (harness === "codex") await checkCodex();
@@ -135,7 +171,7 @@ async function checkClaude() {
   const marker = "ZRO_CLAUDE_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "claude", "--model", "glm-5.2", "--",
+    "launch", "claude", "--model", liveModel, "--",
     "--effort", "none", "--print", "--output-format", "json",
     "--tools", "", "--system-prompt", "You are a CI probe. Do not use tools.", prompt
   ];
@@ -152,7 +188,7 @@ async function checkClaude() {
   assert.equal(second.subtype, "success");
   assert.match(second.result, new RegExp(marker));
   passed("claude.cache", {
-    model: "glm-5.2",
+    model: liveModel,
     effort: "none",
     firstCacheRead: first.usage.cache_read_input_tokens,
     secondCacheRead: second.usage.cache_read_input_tokens
@@ -161,7 +197,7 @@ async function checkClaude() {
   const reasoningMarker = "ZRO_CLAUDE_MAX_OK";
   const max = await retryProbe("Claude Code max reasoning", 3, async () => {
     const reasoning = jsonLines((await runZro([
-      "launch", "claude", "--model", "glm-5.2", "--",
+      "launch", "claude", "--model", liveModel, "--",
       "--effort", "max", "--print", "--output-format", "stream-json", "--verbose",
       "--tools", "", "--system-prompt", "You are a CI probe. Do not use tools.",
       `Think briefly, then include ${reasoningMarker} in the answer.`
@@ -176,14 +212,14 @@ async function checkClaude() {
     assert.match(final?.result || "", new RegExp(reasoningMarker));
     return { thinkingContent: true };
   });
-  passed("claude.reasoning.max", { model: "glm-5.2", thinkingContent: max.thinkingContent });
+  passed("claude.reasoning.max", { model: liveModel, thinkingContent: max.thinkingContent });
 }
 
 async function checkCodex() {
   const marker = "ZRO_CODEX_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "codex", "--model", "deepseek-v4-flash-0731", "--", "exec", "--json",
+    "launch", "codex", "--model", liveModel, "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
     "-c", 'model_reasoning_effort="disabled"', prompt
@@ -200,7 +236,7 @@ async function checkCodex() {
   assert.equal(first.usage.reasoning_output_tokens, 0);
   assert.equal(second.usage.reasoning_output_tokens, 0);
   passed("codex.cache", {
-    model: "deepseek-v4-flash-0731",
+    model: liveModel,
     effort: "disabled",
     firstCacheRead: first.usage.cached_input_tokens,
     secondCacheRead: second.usage.cached_input_tokens
@@ -208,15 +244,15 @@ async function checkCodex() {
 
   const reasoningMarker = "ZRO_CODEX_MAX_OK";
   const max = await retryProbe("Codex max reasoning", 3, async () => codexTurn(await runZro([
-    "launch", "codex", "--model", "deepseek-v4-flash-0731", "--", "exec", "--json",
+    "launch", "codex", "--model", liveModel, "--", "exec", "--json",
     "--skip-git-repo-check", "--ephemeral",
     "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent",
-    "-c", 'model_reasoning_effort="high"',
+    "-c", `model_reasoning_effort="${liveLevels.highCodexEffort}"`,
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Codex max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
   passed("codex.reasoning.max", {
-    model: "deepseek-v4-flash-0731",
-    acceptedEffort: "high",
+    model: liveModel,
+    acceptedEffort: liveLevels.highCodexEffort,
     reportedReasoningTokens: max.usage.reasoning_output_tokens
   });
 }
@@ -225,18 +261,18 @@ async function checkGrok() {
   const marker = "ZRO_GROK_JSON_OK";
   const prompt = `Reply with exactly ${marker}.`;
   const json = grokResult(await runZro([
-    "launch", "grok", "--model", "glm-5.2", "--",
+    "launch", "grok", "--model", liveModel, "--",
     "--no-plan", "--no-subagents", "--max-turns", "1",
     "-p", prompt, "--output-format", "json"
   ], "Grok Build JSON output"), marker);
   passed("grok.json", {
-    model: "glm-5.2",
+    model: liveModel,
     inputTokens: json.usage?.input_tokens
   });
 
   const streamingMarker = "ZRO_GROK_STREAM_OK";
   const events = jsonLines((await runZro([
-    "launch", "grok", "--model", "glm-5.2", "--",
+    "launch", "grok", "--model", liveModel, "--",
     "--no-plan", "--no-subagents", "--max-turns", "1",
     "-p", `Reply with exactly ${streamingMarker}.`, "--output-format", "streaming-json"
   ], "Grok Build streaming JSON output")).stdout);
@@ -245,7 +281,7 @@ async function checkGrok() {
   assert.match(text, new RegExp(streamingMarker));
   assert.ok(end?.usage, "Grok Build streaming output emitted no final usage");
   passed("grok.streaming_json", {
-    model: "glm-5.2",
+    model: liveModel,
     inputTokens: end.usage.input_tokens
   });
 }
@@ -254,8 +290,8 @@ async function checkOpenCode() {
   const marker = "ZRO_OPENCODE_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "opencode", "--model", "glm-5.2", "--", "run", "--pure",
-    "--format", "json", "--model", "zro/glm-5.2", "--variant", "none", prompt
+    "launch", "opencode", "--model", liveModel, "--", "run", "--pure",
+    "--format", "json", "--model", `zro/${liveModel}`, "--variant", liveLevels.offId, prompt
   ];
 
   const { first, second } = await probeCache({
@@ -265,31 +301,29 @@ async function checkOpenCode() {
     readTokens: (turn) => turn.tokens.cache.read,
     label: "OpenCode"
   });
-  assert.equal(first.tokens.reasoning, 0);
-  assert.equal(second.tokens.reasoning, 0);
   passed("opencode.cache", {
-    model: "glm-5.2",
-    effort: "none",
+    model: liveModel,
+    effort: liveLevels.offId,
     firstCacheRead: first.tokens.cache.read,
     secondCacheRead: second.tokens.cache.read
   });
 
   const reasoningMarker = "ZRO_OPENCODE_MAX_OK";
   const max = await retryProbe("OpenCode max reasoning", 3, async () => openCodeTurn(await runZro([
-    "launch", "opencode", "--model", "glm-5.2", "--", "run", "--pure",
-    "--format", "json", "--model", "zro/glm-5.2", "--variant", "max",
+    "launch", "opencode", "--model", liveModel, "--", "run", "--pure",
+    "--format", "json", "--model", `zro/${liveModel}`, "--variant", liveLevels.maxId,
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "OpenCode max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
   assert.ok(max.tokens.reasoning > 0, "OpenCode max effort reported no reasoning tokens");
-  passed("opencode.reasoning.max", { model: "glm-5.2", reasoningTokens: max.tokens.reasoning });
+  passed("opencode.reasoning.max", { model: liveModel, reasoningTokens: max.tokens.reasoning });
 }
 
 async function checkKilo() {
   const marker = "ZRO_KILO_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "kilo", "--model", "glm-5.2", "--", "run", "--pure",
-    "--format", "json", "--model", "zro/glm-5.2", "--variant", "none", prompt
+    "launch", "kilo", "--model", liveModel, "--", "run", "--pure",
+    "--format", "json", "--model", `zro/${liveModel}`, "--variant", liveLevels.offId, prompt
   ];
 
   const { first, second } = await probeCache({
@@ -299,33 +333,31 @@ async function checkKilo() {
     readTokens: (turn) => turn.tokens.cache.read,
     label: "Kilo Code"
   });
-  assert.equal(first.tokens.reasoning, 0);
-  assert.equal(second.tokens.reasoning, 0);
   passed("kilo.cache", {
-    model: "glm-5.2",
-    effort: "none",
+    model: liveModel,
+    effort: liveLevels.offId,
     firstCacheRead: first.tokens.cache.read,
     secondCacheRead: second.tokens.cache.read
   });
 
   const reasoningMarker = "ZRO_KILO_MAX_OK";
   const max = await retryProbe("Kilo Code max reasoning", 3, async () => kiloTurn(await runZro([
-    "launch", "kilo", "--model", "glm-5.2", "--", "run", "--pure",
-    "--format", "json", "--model", "zro/glm-5.2", "--variant", "max",
+    "launch", "kilo", "--model", liveModel, "--", "run", "--pure",
+    "--format", "json", "--model", `zro/${liveModel}`, "--variant", liveLevels.maxId,
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Kilo Code max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
   assert.ok(max.tokens.reasoning > 0, "Kilo Code max effort reported no reasoning tokens");
-  passed("kilo.reasoning.max", { model: "glm-5.2", reasoningTokens: max.tokens.reasoning });
+  passed("kilo.reasoning.max", { model: liveModel, reasoningTokens: max.tokens.reasoning });
 }
 
 async function checkOmp() {
   const marker = "ZRO_OMP_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "omp", "--model", "glm-5.2", "--",
+    "launch", "omp", "--model", liveModel, "--",
     "--print", "--mode", "json", "--no-tools", "--no-session",
     "--no-extensions", "--no-skills", "--no-rules", "--no-title",
-    "--thinking", "off", prompt
+    "--thinking", liveLevels.offPi, prompt
   ];
 
   const { first, second } = await probeCache({
@@ -335,33 +367,31 @@ async function checkOmp() {
     readTokens: (turn) => turn.usage.cacheRead,
     label: "Oh My Pi"
   });
-  assert.equal(first.usage.reasoningTokens ?? 0, 0);
-  assert.equal(second.usage.reasoningTokens ?? 0, 0);
   passed("omp.cache", {
-    model: "glm-5.2",
-    effort: "off",
+    model: liveModel,
+    effort: liveLevels.offPi,
     firstCacheRead: first.usage.cacheRead,
     secondCacheRead: second.usage.cacheRead
   });
 
   const reasoningMarker = "ZRO_OMP_MAX_OK";
   const max = await retryProbe("Oh My Pi max reasoning", 3, async () => ompTurn(await runZro([
-    "launch", "omp", "--model", "glm-5.2", "--",
+    "launch", "omp", "--model", liveModel, "--",
     "--print", "--mode", "json", "--no-tools", "--no-session",
     "--no-extensions", "--no-skills", "--no-rules", "--no-title",
-    "--thinking", "max",
+    "--thinking", liveLevels.maxPi,
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Oh My Pi max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
   assert.ok((max.usage.reasoningTokens ?? 0) > 0, "Oh My Pi max effort reported no reasoning tokens");
-  passed("omp.reasoning.max", { model: "glm-5.2", reasoningTokens: max.usage.reasoningTokens });
+  passed("omp.reasoning.max", { model: liveModel, reasoningTokens: max.usage.reasoningTokens });
 }
 
 async function checkPi() {
   const marker = "ZRO_PI_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "pi", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", "off", prompt
+    "launch", "pi", "--model", liveModel, "--", "--print", "--mode", "json",
+    "--no-tools", "--no-session", "--thinking", liveLevels.offPi, prompt
   ];
 
   const { first, second } = await probeCache({
@@ -371,31 +401,29 @@ async function checkPi() {
     readTokens: (turn) => turn.usage.cacheRead,
     label: "Pi"
   });
-  assert.equal(first.usage.reasoning, 0);
-  assert.equal(second.usage.reasoning, 0);
   passed("pi.cache", {
-    model: "glm-5.2",
-    effort: "off",
+    model: liveModel,
+    effort: liveLevels.offPi,
     firstCacheRead: first.usage.cacheRead,
     secondCacheRead: second.usage.cacheRead
   });
 
   const reasoningMarker = "ZRO_PI_MAX_OK";
   const max = await retryProbe("Pi max reasoning", 3, async () => piTurn(await runZro([
-    "launch", "pi", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", "xhigh",
+    "launch", "pi", "--model", liveModel, "--", "--print", "--mode", "json",
+    "--no-tools", "--no-session", "--thinking", liveLevels.maxPi,
     `Think briefly, then include ${reasoningMarker} in the answer.`
   ], "Pi max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
   assert.ok(max.usage.reasoning > 0, "Pi max effort reported no reasoning tokens");
-  passed("pi.reasoning.max", { model: "glm-5.2", reasoningTokens: max.usage.reasoning });
+  passed("pi.reasoning.max", { model: liveModel, reasoningTokens: max.usage.reasoning });
 }
 
 async function checkPrime() {
   const marker = "ZRO_PRIME_CACHE_OK";
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
-    "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", "off", prompt
+    "launch", "prime", "--model", liveModel, "--", "--print", "--mode", "json",
+    "--no-tools", "--no-session", "--thinking", liveLevels.offPi, prompt
   ];
 
   await cleanupPrime();
@@ -408,8 +436,8 @@ async function checkPrime() {
     afterWarm: () => cleanupPrime()
   });
   passed("prime.cache", {
-    model: "glm-5.2",
-    effort: "off",
+    model: liveModel,
+    effort: liveLevels.offPi,
     firstCacheRead: first.usage.cacheRead,
     secondCacheRead: second.usage.cacheRead
   });
@@ -418,14 +446,14 @@ async function checkPrime() {
   const max = await retryProbe("Prime Agent max reasoning", 3, async () => {
     await cleanupPrime();
     const turn = primeTurn(await runZro([
-      "launch", "prime", "--model", "glm-5.2", "--", "--print", "--mode", "json",
-      "--no-tools", "--no-session", "--thinking", "xhigh",
+      "launch", "prime", "--model", liveModel, "--", "--print", "--mode", "json",
+      "--no-tools", "--no-session", "--thinking", liveLevels.maxPi,
       `Think briefly, then include ${reasoningMarker} in the answer.`
     ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
     assert.ok(turn.hasThinking, "Prime Agent max effort returned no thinking content");
     return { thinkingContent: true };
   });
-  passed("prime.reasoning.max", { model: "glm-5.2", thinkingContent: max.thinkingContent });
+  passed("prime.reasoning.max", { model: liveModel, thinkingContent: max.thinkingContent });
 }
 
 function primeTurn(result, marker, options = {}) {

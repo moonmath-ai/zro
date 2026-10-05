@@ -12,7 +12,7 @@ export const hermesTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".hermes", "config.yaml");
     const existing = await readConfig(path.join(ctx.homeDir, ".hermes", "config.yaml"), yamlSerializer);
-    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models);
+    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models, ctx.model);
     return {
       tool: "hermes",
       label: "Hermes",
@@ -21,6 +21,10 @@ export const hermesTool: ToolModule = {
       args: ["--provider", PROVIDER_ID, "--model", ctx.model, ...ctx.extraArgs],
       env: {
         HOME: tempHome,
+        // Hermes resolves its home from HERMES_HOME on every platform; on Windows the
+        // $HOME override above is ignored (%LOCALAPPDATA%\hermes is the default), so
+        // without this the generated provider config is never loaded.
+        HERMES_HOME: path.join(tempHome, ".hermes"),
         [ZRO_ENV_KEY]: ctx.apiKey
       },
       files: [{
@@ -36,7 +40,8 @@ function buildHermesConfig(
   existing: Record<string, unknown>,
   apiKey: string,
   apiKeySource: ApiKeySource,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  selectedModel: string
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = Array.isArray(next.custom_providers) ? [...next.custom_providers] : [];
@@ -92,12 +97,16 @@ function buildHermesConfig(
   next.mcp_servers = mcpServers;
 
   const existingModelConfig = asPlainObject(next.model) ?? {};
+  // Hermes' per-launch output cap is top-level model.max_tokens (provider
+  // entries accept only context_length). Unknown selections keep any user value.
+  const selectedSpec = modelSpecs.find((model) => model.id === selectedModel);
   next.model = {
     ...existingModelConfig,
     default_headers: {
       ...(asPlainObject(existingModelConfig.default_headers) ?? {}),
       "User-Agent": "hermes"
-    }
+    },
+    ...(selectedSpec ? { max_tokens: selectedSpec.maxOutputTokens } : {})
   };
   next.custom_providers = providers;
   return next;

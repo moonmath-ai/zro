@@ -7,6 +7,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-27
+
+### Fixed
+
+- Claude Code and Hermes launches now carry the catalog's max-output budget, not just the window
+  budget: Claude Code gets `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (the smallest cap across the selection
+  and seated tier slots, same one-budget-per-launch rule as the context window), and Hermes gets
+  top-level `model.max_tokens` for the selected model. Codex stays without one — its config schema
+  rejects unknown fields and its model catalog has no such entry, so nothing is emitted there.
+
+## [0.2.4] - 2026-09-24
+
+### Highlights
+
+- **Claude Code model tiers map to Zro models.** Claude Code's opus / sonnet / fable / haiku
+  aliases now resolve to Zro models derived from the active catalog (tier-mapped by output
+  capacity with deterministic tie-breaks), so background and subagent work never falls through to
+  models the Zro endpoint cannot serve. Explicit slots are reserved and the rest backfill around
+  them. Override or drop any slot per launch with `--alias`: `zro claude --alias opus=glm-5.3
+  --alias haiku=`.
+- The bundled fallback catalog tracks the live lineup: `deepseek-v4.1-flash` (new default),
+  `glm-5.3`, `glm-5.3-flash`, `dolly1-security`, `auto`, and `kimi-k3` replace the retired
+  `glm-5.2` and `deepseek-v4-flash-0731` entries.
+
+### Fixed
+
+- Claude Code compacts at each model's real context window instead of assuming 200k: Zro sets
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` from the catalog and launches 1M-context models with the
+  `[1m]` suffix. Secret redaction no longer masks `CONTEXT_TOKENS` as a credential, and the
+  segment-based matcher keeps masking every `*_API_KEY` / `*_TOKEN` / `*_AUTHORIZATION`-style name.
+- Codex configs for the new lineup now carry documented reasoning efforts (`xhigh` for maximum,
+  `medium` for the Auto router) instead of bare level IDs like `max` or `auto`.
+
+### Tooling
+
+- Harness CI jobs run on Node 24; OpenClaw's installer rejects the Node 22 runner version.
+
 ### Highlights
 
 - Open-sourcing: a full contributor package — CONTRIBUTING, AGENTS, SECURITY, SETUP_PROMPT, and a

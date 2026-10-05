@@ -30,8 +30,9 @@ zro login
 zro claude
 ```
 
-Available now: **GLM-5.2, GLM-5.3 Flash, DeepSeek V4 Flash 0731, and Kimi K3**.
-Region availability is shown when you create an API key.
+Run `zro models` for the models available to your key, or see
+[zro.moonmath.ai/pricing](https://zro.moonmath.ai/pricing). Region availability is shown when you
+create an API key.
 
 ---
 
@@ -40,7 +41,7 @@ Region availability is shown when you create an API key.
 ```bash
 zro login                 # website or API key login
 zro claude                # open Claude Code on the default model
-zro codex -m glm-5.2      # pick a model for this session
+zro codex -m <model>      # pick a model for this session
 zro models                # browse the model catalog
 zro status                # connection, installed tools, last session, usage
 ```
@@ -51,10 +52,12 @@ zro status                # connection, installed tools, last session, usage
 
 ## Installation
 
-- **Requirements:** Node.js 22 or later, macOS or Linux (WSL on Windows).
+- **Requirements:** Node.js 22 or later on macOS, Linux, or Windows.
 - **Install:** `npm install --global @moonmath-ai/zro` (also `pnpm add --global @moonmath-ai/zro`).
 - **Upgrade:** `zro install --upgrade` (upgrade zro); `zro install <tool> --upgrade`
   or `zro install claude@2.1.105` / `zro install claude --version 2.1.105` for an agent.
+- **Agent-assisted setup:** [SETUP_PROMPT.md](SETUP_PROMPT.md) has copy-paste prompts for end-user
+  installs and local development checkouts.
 
 ### Authentication
 
@@ -103,9 +106,9 @@ tool/model pair is remembered and reopened with `zro again`.
 ```bash
 zro                         # interactive agent picker
 zro claude                  # open directly on the default model
-zro codex -m glm-5.2        # choose a model for this session
-zro omp -m glm-5.2          # launch Oh My Pi through Zro
-zro kilo -m glm-5.2         # launch Kilo Code through Zro
+zro codex -m <model>        # choose a model for this session
+zro omp -m <model>          # launch Oh My Pi through Zro
+zro kilo -m <model>         # launch Kilo Code through Zro
 zro oc -- --help            # short aliases + native tool arguments
 zro again                   # reopen the last tool/model pair
 zro models                  # readable model catalog
@@ -143,7 +146,7 @@ shape, output length, and cache reads. [See the live pricing page](https://zro.m
 - Kilo and Oh My Pi telemetry, OTLP export, automatic updates, sharing, and remote control are
   disabled; model and MCP requests still go to the configured Zro endpoints.
 - API keys are masked in human and JSON previews. `--dry-run` writes nothing and starts nothing.
-- macOS and Linux are supported; use WSL on Windows.
+- macOS, Linux, and Windows are supported.
 
 See [SECURITY.md](SECURITY.md) for the security model and private vulnerability reporting.
 

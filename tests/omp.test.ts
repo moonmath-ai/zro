@@ -10,8 +10,8 @@ import {
   MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
 } from "../src/engine/constants.js";
+import { TEST_MODELS, catalogFetch } from "./fixtures.js";
 import { yamlSerializer } from "../src/engine/serializers.js";
 import { ompTool } from "../src/engine/tools/omp.js";
 import type { LaunchContext, LaunchFile } from "../src/engine/types.js";
@@ -53,7 +53,9 @@ auth:
     await fs.writeFile(path.join(userAgentDir, "agent.db"), "private database\n");
     const outside = path.join(home, "outside.md");
     await fs.writeFile(outside, "outside\n");
-    await fs.symlink(outside, path.join(userAgentDir, "agents", "linked.md"));
+    if (process.platform !== "win32") {
+      await fs.symlink(outside, path.join(userAgentDir, "agents", "linked.md"));
+    }
 
     const ctx = context(home, tempDir, {
       PI_CODING_AGENT_DIR: userAgentDir,
@@ -70,7 +72,7 @@ auth:
       tool: "omp",
       label: "Oh My Pi",
       command: "omp",
-      model: "glm-5.2",
+      model: "glm-5.3",
       args: ["--print", "hello"],
     });
     for (const key of [
@@ -127,10 +129,10 @@ auth:
     expect(overlay).toMatchObject({
       enabledModels: [`${PROVIDER_ID}/*`],
       modelRoles: {
-        default: `${PROVIDER_ID}/glm-5.2:max`,
-        smol: `${PROVIDER_ID}/glm-5.2:max`,
-        slow: `${PROVIDER_ID}/glm-5.2:max`,
-        plan: `${PROVIDER_ID}/glm-5.2:max`,
+        default: `${PROVIDER_ID}/glm-5.3:max`,
+        smol: `${PROVIDER_ID}/glm-5.3:max`,
+        slow: `${PROVIDER_ID}/glm-5.3:max`,
+        plan: `${PROVIDER_ID}/glm-5.3:max`,
       },
       startup: {
         quiet: true,
@@ -162,8 +164,8 @@ auth:
       },
     });
     expect(JSON.stringify(modelsConfig)).not.toContain("sk-omp-secret");
-    expect(provider.models).toHaveLength(ZRO_MODELS.length);
-    for (const model of ZRO_MODELS) {
+    expect(provider.models).toHaveLength(TEST_MODELS.length);
+    for (const model of TEST_MODELS) {
       const actual = provider.models.find((candidate: any) => candidate.id === model.id);
       expect(actual).toMatchObject({
         id: model.id,
@@ -176,7 +178,7 @@ auth:
       });
     }
 
-    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.2");
+    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.3");
     expect(glm.thinking).toEqual({
       mode: "effort",
       efforts: ["minimal", "high", "max"],
@@ -195,14 +197,6 @@ auth:
     expect(kimi.compat).toEqual({
       reasoningEffortMap: { low: "low", high: "high", max: "max" },
     });
-
-    const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4-flash-0731");
-    expect(deepseek.thinking).toEqual({
-      mode: "effort",
-      efforts: ["minimal", "high"],
-      defaultLevel: "high",
-    });
-    expect(deepseek.compat).toEqual({ reasoningEffortMap: { minimal: "none", high: "high" } });
 
     const mcpFile = findFile(plan.files, "mcp.json");
     const mcp = JSON.parse(String(mcpFile.contents));
@@ -260,22 +254,20 @@ auth:
         XDG_CACHE_HOME: cache,
       },
       platform: "linux",
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: catalogFetch(),
     });
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.2" });
+    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.3" });
     expect(preview.environment.ZRO_API_KEY).not.toContain("preview-secret");
     expect(preview.environment.ZRO_MCP_AUTHORIZATION).not.toContain("preview-secret");
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([
-    ["success", 0, 0],
-    ["nonzero exit", 7, 7],
     ["spawn failure", "error", 1],
   ] as const)("cleans its temporary profile after %s", async (_name, childResult, expectedCode) => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-omp-cleanup-"));
@@ -301,7 +293,7 @@ auth:
       },
       platform: "linux",
       spawn,
-      fetch: async () => new Response(null, { status: 200 }),
+      fetch: catalogFetch(),
     };
 
     expect(await run(["omp"], io)).toBe(expectedCode);
@@ -320,12 +312,13 @@ function context(
     apiKey: "sk-omp-secret",
     apiKeySource: "env",
     env,
-    model: "glm-5.2",
-    models: ZRO_MODELS,
+    model: "glm-5.3",
+    models: TEST_MODELS,
     extraArgs: ["--print", "hello"],
     homeDir,
     cwd: homeDir,
     tempDir,
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),

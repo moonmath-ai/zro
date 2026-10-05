@@ -13,9 +13,11 @@ export interface LaunchContext {
   model: string;
   models: readonly ZroModel[];
   extraArgs: string[];
+  modelAliases?: Record<string, string>;
   homeDir: string;
   cwd: string;
   tempDir: string;
+  platform: NodeJS.Platform;
   stdin: Readable;
   stdout: Writable;
   stderr: Writable;
@@ -48,6 +50,7 @@ export interface SpawnOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   stdio: "inherit";
+  windowsVerbatimArguments?: boolean;
 }
 
 export type SpawnProcess = (

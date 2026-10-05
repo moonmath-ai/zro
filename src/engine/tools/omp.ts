@@ -6,7 +6,6 @@ import {
   MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
   type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer, yamlSerializer } from "../serializers.js";
@@ -156,7 +155,7 @@ export const ompTool: ToolModule = {
 
 export function buildOmpConfigOverlay(
   model: string,
-  modelSpecs: readonly ZroModel[] = ZRO_MODELS,
+  modelSpecs: readonly ZroModel[],
 ): Record<string, unknown> {
   const modelSpec = modelSpecs.find((candidate) => candidate.id === model);
   const thinkingLevel = modelSpec ? defaultThinkingLevel(modelSpec) : undefined;

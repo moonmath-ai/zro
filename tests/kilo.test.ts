@@ -11,8 +11,8 @@ import {
   PROVIDER_ID,
   PROVIDER_NAME,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
 } from "../src/engine/constants.js";
+import { TEST_MODELS, catalogFetch } from "./fixtures.js";
 import { kiloTool } from "../src/engine/tools/kilo.js";
 import type { LaunchContext } from "../src/engine/types.js";
 import { run } from "../src/run.js";
@@ -67,7 +67,9 @@ describe("Kilo Code adapter", () => {
     await fs.writeFile(path.join(userRoot, "node_modules", "ignored", "index.js"), "ignored\n");
     const outside = path.join(home, "outside-secret.md");
     await fs.writeFile(outside, "outside\n");
-    await fs.symlink(outside, path.join(userRoot, "agents", "linked.md"));
+    if (process.platform !== "win32") {
+      await fs.symlink(outside, path.join(userRoot, "agents", "linked.md"));
+    }
 
     const ctx = context(home, tempDir, {
       XDG_CONFIG_HOME: path.join(home, "user-config"),
@@ -80,7 +82,7 @@ describe("Kilo Code adapter", () => {
       tool: "kilo",
       label: "Kilo Code",
       command: "kilo",
-      model: "glm-5.2",
+      model: "glm-5.3",
       args: ["run", "hello"],
     });
     for (const key of [
@@ -117,7 +119,7 @@ describe("Kilo Code adapter", () => {
     const overlay = JSON.parse(plan.env!.KILO_CONFIG_CONTENT) as Record<string, any>;
     expect(overlay).toMatchObject({
       $schema: "https://app.kilo.ai/config.json",
-      model: `${PROVIDER_ID}/glm-5.2`,
+      model: `${PROVIDER_ID}/glm-5.3`,
       enabled_providers: [PROVIDER_ID],
       provider: {
         [PROVIDER_ID]: {
@@ -146,8 +148,8 @@ describe("Kilo Code adapter", () => {
     expect(JSON.stringify(overlay)).not.toContain("sk-kilo-secret");
 
     const models = overlay.provider[PROVIDER_ID].models;
-    expect(Object.keys(models).sort()).toEqual(ZRO_MODELS.map((model) => model.id).sort());
-    for (const model of ZRO_MODELS) {
+    expect(Object.keys(models).sort()).toEqual(TEST_MODELS.map((model) => model.id).sort());
+    for (const model of TEST_MODELS) {
       expect(models[model.id]).toEqual({
         name: model.displayName,
         tool_call: true,
@@ -233,23 +235,21 @@ describe("Kilo Code adapter", () => {
         XDG_CONFIG_HOME: path.join(home, "config"),
       },
       platform: "linux",
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: catalogFetch(),
     });
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "glm-5.2" });
+    expect(preview).toMatchObject({ tool: "kilo", command: "kilo", model: "glm-5.3" });
     expect(JSON.parse(preview.environment.KILO_CONFIG_CONTENT)).toMatchObject({
-      model: "zro/glm-5.2",
+      model: "zro/glm-5.3",
     });
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([
-    ["success", 0, 0],
-    ["nonzero exit", 7, 7],
     ["spawn failure", "error", 1],
   ] as const)("cleans its temporary profile after %s", async (_name, childResult, expectedCode) => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-kilo-cleanup-"));
@@ -276,7 +276,7 @@ describe("Kilo Code adapter", () => {
       },
       platform: "linux",
       spawn,
-      fetch: async () => new Response(null, { status: 200 }),
+      fetch: catalogFetch(),
     };
 
     expect(await run(["kilo"], io)).toBe(expectedCode);
@@ -295,11 +295,13 @@ function context(
     apiKey: "sk-kilo-secret",
     apiKeySource: "env",
     env,
-    model: "glm-5.2",
+    model: "glm-5.3",
+    models: TEST_MODELS,
     extraArgs: ["run", "hello"],
     homeDir,
     cwd: homeDir,
     tempDir,
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),

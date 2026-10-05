@@ -1,11 +1,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_MODELS, DEFAULT_MODEL, type ZroModel } from "./engine/constants.js";
+import {
+  ENDPOINT_ROOT,
+  type ZroModel,
+  type ZroModality,
+  type ZroModalities,
+} from "./engine/constants.js";
 
 export interface ModelCatalog {
   version: 1;
   default: string;
   models: readonly ZroModel[];
+}
+
+export type CatalogSource = "remote" | "cache";
+
+export interface LoadedModelCatalog extends ModelCatalog {
+  source: CatalogSource;
 }
 
 type CatalogOptions = {
@@ -23,29 +34,38 @@ export class CatalogAuthenticationError extends Error {
   }
 }
 
-export const BUNDLED_MODEL_CATALOG: ModelCatalog = {
-  version: 1,
-  default: DEFAULT_MODEL,
-  models: ZRO_MODELS,
-};
+export class CatalogUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`Could not reach the Zro model catalog (${reason}). Check your connection and try again.`);
+    this.name = "CatalogUnavailableError";
+  }
+}
 
-export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
+export async function loadModelCatalog(options: CatalogOptions): Promise<LoadedModelCatalog> {
+  let fetchFailure: unknown;
   if (options.apiKey) {
     try {
-      const catalog = await fetchModelCatalog(options);
+      const catalog = await fetchAuthenticatedCatalog(options, options.apiKey);
       if (options.cacheRemote !== false) {
         await writeCachedCatalog(options, catalog).catch(() => {});
       }
-      return catalog;
+      return { ...catalog, source: "remote" };
     } catch (error) {
       if (error instanceof CatalogAuthenticationError) {
         await invalidateModelCatalog(options).catch(() => {});
         throw error;
       }
+      fetchFailure = error;
     }
   }
 
-  return await readCachedCatalog(options) ?? BUNDLED_MODEL_CATALOG;
+  const cached = await readCachedCatalog(options);
+  if (cached) return { ...cached, source: "cache" };
+
+  if (fetchFailure) {
+    throw new CatalogUnavailableError(fetchFailure instanceof Error ? fetchFailure.message : String(fetchFailure));
+  }
+  throw new Error("No model catalog is available. Run zro login to load models.");
 }
 
 export async function invalidateModelCatalog(
@@ -64,13 +84,11 @@ export function modelCatalogCachePath(options: Pick<CatalogOptions, "env" | "hom
   return path.join(cacheRoot, "zro", "model-catalog.json");
 }
 
-async function fetchModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
+async function fetchAuthenticatedCatalog(options: CatalogOptions, apiKey: string): Promise<ModelCatalog> {
   const fetcher = options.fetch ?? globalThis.fetch;
-  const endpointRoot = (
-    options.env.ZRO_AUTH_URL || options.env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT
-  ).replace(/\/+$/, "");
+  const endpointRoot = catalogRoot(options.env);
   const response = await fetcher(`${endpointRoot}/api/cli/models`, {
-    headers: { Authorization: `Bearer ${options.apiKey}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(5_000),
   });
 
@@ -84,6 +102,10 @@ async function fetchModelCatalog(options: CatalogOptions): Promise<ModelCatalog>
   }
 
   return parseModelCatalog(await response.json());
+}
+
+function catalogRoot(env: NodeJS.ProcessEnv): string {
+  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
 }
 
 async function readCachedCatalog(options: CatalogOptions): Promise<ModelCatalog | null> {
@@ -151,8 +173,34 @@ function parseModel(value: unknown): ZroModel {
     displayName: requiredString(model.displayName, "model display name"),
     contextWindow: positiveInteger(model.contextWindow, "context window"),
     maxOutputTokens: positiveInteger(model.maxOutputTokens, "max output tokens"),
+    modalities: parseModalities(model.modalities),
     reasoning: { defaultLevel, levels },
   };
+}
+
+const KNOWN_MODALITIES = new Set<string>(["text", "image", "video", "audio", "pdf"]);
+
+function parseModalities(value: unknown): ZroModalities {
+  // Older catalogs may omit the field entirely; default to text-only rather
+  // than rejecting cached catalogs on disk.
+  if (value === undefined) return { input: ["text"], output: ["text"] };
+
+  const modalities = asRecord(value, "model modalities");
+  const input = parseModalityList(modalities.input, "input");
+  const output = parseModalityList(modalities.output, "output");
+  return { input, output };
+}
+
+function parseModalityList(value: unknown, label: string): readonly ZroModality[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`A model has no ${label} modalities.`);
+  }
+  return value.map((entry) => {
+    if (typeof entry !== "string" || !KNOWN_MODALITIES.has(entry)) {
+      throw new Error(`A model has an invalid ${label} modality.`);
+    }
+    return entry as ZroModality;
+  });
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {
