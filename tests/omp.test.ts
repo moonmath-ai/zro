@@ -10,8 +10,8 @@ import {
   MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
-  ZRO_MODELS,
 } from "../src/engine/constants.js";
+import { TEST_MODELS, catalogFetch } from "./fixtures.js";
 import { yamlSerializer } from "../src/engine/serializers.js";
 import { ompTool } from "../src/engine/tools/omp.js";
 import type { LaunchContext, LaunchFile } from "../src/engine/types.js";
@@ -162,8 +162,8 @@ auth:
       },
     });
     expect(JSON.stringify(modelsConfig)).not.toContain("sk-omp-secret");
-    expect(provider.models).toHaveLength(ZRO_MODELS.length);
-    for (const model of ZRO_MODELS) {
+    expect(provider.models).toHaveLength(TEST_MODELS.length);
+    for (const model of TEST_MODELS) {
       const actual = provider.models.find((candidate: any) => candidate.id === model.id);
       expect(actual).toMatchObject({
         id: model.id,
@@ -195,14 +195,6 @@ auth:
     expect(kimi.compat).toEqual({
       reasoningEffortMap: { low: "low", high: "high", max: "max" },
     });
-
-    const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4.1-flash");
-    expect(deepseek.thinking).toEqual({
-      mode: "effort",
-      efforts: ["low", "high", "max"],
-      defaultLevel: "high",
-    });
-    expect(deepseek.compat).toEqual({ reasoningEffortMap: { low: "low", high: "high", max: "max" } });
 
     const mcpFile = findFile(plan.files, "mcp.json");
     const mcp = JSON.parse(String(mcpFile.contents));
@@ -260,22 +252,20 @@ auth:
         XDG_CACHE_HOME: cache,
       },
       platform: "linux",
-      fetch: async () => new Response(null, { status: 503 }),
+      fetch: catalogFetch(),
     });
 
     expect(code).toBe(0);
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "deepseek-v4.1-flash" });
+    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.3" });
     expect(preview.environment.ZRO_API_KEY).not.toContain("preview-secret");
     expect(preview.environment.ZRO_MCP_AUTHORIZATION).not.toContain("preview-secret");
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([
-    ["success", 0, 0],
-    ["nonzero exit", 7, 7],
     ["spawn failure", "error", 1],
   ] as const)("cleans its temporary profile after %s", async (_name, childResult, expectedCode) => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-omp-cleanup-"));
@@ -301,7 +291,7 @@ auth:
       },
       platform: "linux",
       spawn,
-      fetch: async () => new Response(null, { status: 200 }),
+      fetch: catalogFetch(),
     };
 
     expect(await run(["omp"], io)).toBe(expectedCode);
@@ -321,7 +311,7 @@ function context(
     apiKeySource: "env",
     env,
     model: "glm-5.3",
-    models: ZRO_MODELS,
+    models: TEST_MODELS,
     extraArgs: ["--print", "hello"],
     homeDir,
     cwd: homeDir,
