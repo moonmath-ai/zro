@@ -103,3 +103,12 @@ export const TIER_MODELS: readonly ZroModel[] = [
   sized("auto", "Auto", 131_000, TEXT, AUTO_REASONING),
   sized("kimi-k3", "Kimi K3", 1_048_576, VISION),
 ];
+
+export const TEST_CATALOG_RESPONSE = { version: 1, default: "glm-5.3", models: TEST_MODELS };
+
+export function catalogFetch(otherStatus = 200) {
+  return async (input: string | URL | Request): Promise<Response> =>
+    String(input).endsWith("/api/cli/models")
+      ? Response.json(TEST_CATALOG_RESPONSE)
+      : new Response(null, { status: otherStatus });
+}

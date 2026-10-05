@@ -7,7 +7,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "../src/engine/tools/claude.js";
-import { TIER_MODELS } from "./fixtures.js";
+import { TEST_CATALOG_RESPONSE, TIER_MODELS } from "./fixtures.js";
 import type { SpawnOptions, SpawnProcess } from "../src/engine/types.js";
 import { run } from "../src/run.js";
 
@@ -191,7 +191,7 @@ describe("zro experience", () => {
       env: { ZRO_API_KEY: "sk-new-secret" },
       fetch: async (input, init) => {
         if (String(input).endsWith("/api/cli/models")) {
-          return Response.json(glmCatalogResponse());
+          return Response.json(TEST_CATALOG_RESPONSE);
         }
         expect(String(input)).toBe("https://zro.moonmath.ai/v1/models");
         expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer sk-new-secret");
@@ -1046,36 +1046,6 @@ function dynamicCatalogResponse() {
         displayName: "Future Model",
         contextWindow: 200_000,
         maxOutputTokens: 20_000,
-        modalities: {
-          input: ["text"] as const,
-          output: ["text"] as const,
-        },
-        reasoning: {
-          defaultLevel: "high",
-          levels: [
-            {
-              id: "high",
-              description: "Reason carefully",
-              piLevel: "high",
-              openCodeOptions: { reasoningEffort: "high" },
-            },
-          ],
-        },
-      },
-    ],
-  };
-}
-
-function glmCatalogResponse() {
-  return {
-    version: 1,
-    default: "glm-5.3",
-    models: [
-      {
-        id: "glm-5.3",
-        displayName: "GLM-5.2",
-        contextWindow: 524_288,
-        maxOutputTokens: 64_000,
         modalities: {
           input: ["text"] as const,
           output: ["text"] as const,

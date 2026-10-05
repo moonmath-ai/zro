@@ -4,6 +4,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/run.js";
+import { catalogFetch } from "./fixtures.js";
 
 const adapters = [
   ["claude", "claude"],
@@ -31,9 +32,7 @@ describe("tool adapters", () => {
       cwd: home,
       env: { ZRO_API_KEY: "sk-adapter-secret", XDG_CONFIG_HOME: path.join(home, ".config") },
       platform: "linux",
-      fetch: async (input) => String(input).endsWith("/api/cli/models")
-        ? Response.json(defaultCatalogResponse())
-        : new Response(null, { status: 503 }),
+      fetch: catalogFetch(503),
     });
 
     expect(code).toBe(0);
@@ -54,31 +53,4 @@ async function streamText(stream: PassThrough): Promise<string> {
   let output = "";
   for await (const chunk of stream) output += chunk.toString();
   return output;
-}
-
-function defaultCatalogResponse() {
-  return {
-    version: 1,
-    default: "glm-5.3",
-    models: [
-      {
-        id: "glm-5.3",
-        displayName: "GLM-5.2",
-        contextWindow: 524_288,
-        maxOutputTokens: 64_000,
-        modalities: { input: ["text"], output: ["text"] },
-        reasoning: {
-          defaultLevel: "high",
-          levels: [
-            {
-              id: "high",
-              description: "Reason carefully",
-              piLevel: "high",
-              openCodeOptions: { reasoningEffort: "high" },
-            },
-          ],
-        },
-      },
-    ],
-  };
 }

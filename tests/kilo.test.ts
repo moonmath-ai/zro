@@ -12,7 +12,7 @@ import {
   PROVIDER_NAME,
   ZRO_ENV_KEY,
 } from "../src/engine/constants.js";
-import { TEST_MODELS } from "./fixtures.js";
+import { TEST_MODELS, catalogFetch } from "./fixtures.js";
 import { kiloTool } from "../src/engine/tools/kilo.js";
 import type { LaunchContext } from "../src/engine/types.js";
 import { run } from "../src/run.js";
@@ -233,7 +233,7 @@ describe("Kilo Code adapter", () => {
         XDG_CONFIG_HOME: path.join(home, "config"),
       },
       platform: "linux",
-      fetch: catalogFetch,
+      fetch: catalogFetch(),
     });
 
     expect(code).toBe(0);
@@ -276,7 +276,7 @@ describe("Kilo Code adapter", () => {
       },
       platform: "linux",
       spawn,
-      fetch: catalogFetch,
+      fetch: catalogFetch(),
     };
 
     expect(await run(["kilo"], io)).toBe(expectedCode);
@@ -321,34 +321,4 @@ async function readOptionalDirectory(directory: string): Promise<string[]> {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
-}
-
-async function catalogFetch(input: string | URL | Request): Promise<Response> {
-  if (String(input).endsWith("/api/cli/models")) {
-    return Response.json({
-      version: 1,
-      default: "glm-5.3",
-      models: [
-        {
-          id: "glm-5.3",
-          displayName: "GLM-5.2",
-          contextWindow: 524_288,
-          maxOutputTokens: 64_000,
-          modalities: { input: ["text"], output: ["text"] },
-          reasoning: {
-            defaultLevel: "high",
-            levels: [
-              {
-                id: "high",
-                description: "Reason carefully",
-                piLevel: "high",
-                openCodeOptions: { reasoningEffort: "high" },
-              },
-            ],
-          },
-        },
-      ],
-    });
-  }
-  return new Response(null, { status: 200 });
 }
