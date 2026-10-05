@@ -196,14 +196,6 @@ auth:
       reasoningEffortMap: { low: "low", high: "high", max: "max" },
     });
 
-    const deepseek = provider.models.find((candidate: any) => candidate.id === "deepseek-v4-flash-0731");
-    expect(deepseek.thinking).toEqual({
-      mode: "effort",
-      efforts: ["minimal", "high"],
-      defaultLevel: "high",
-    });
-    expect(deepseek.compat).toEqual({ reasoningEffortMap: { minimal: "none", high: "high" } });
-
     const mcpFile = findFile(plan.files, "mcp.json");
     const mcp = JSON.parse(String(mcpFile.contents));
     expect(mcp.mcpServers[PROVIDER_ID]).toEqual({

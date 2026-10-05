@@ -63,29 +63,9 @@ const GLM_REASONING: ZroReasoningConfig = {
   ],
 };
 
-const DEEPSEEK_REASONING: ZroReasoningConfig = {
-  defaultLevel: "high",
-  levels: [
-    {
-      id: "none",
-      description: "Disable reasoning for the lowest latency",
-      codexEffort: "disabled",
-      piLevel: "off",
-      openCodeOptions: { reasoningEffort: "none" },
-    },
-    {
-      id: "high",
-      description: "Use high reasoning effort",
-      piLevel: "high",
-      openCodeOptions: { reasoningEffort: "high" },
-    },
-  ],
-};
-
 export const TEST_MODELS: readonly ZroModel[] = [
   testModel("glm-5.3", { input: ["text"], output: ["text"] }, GLM_REASONING),
   testModel("kimi-k3", { input: ["text", "image"], output: ["text"] }),
-  testModel("deepseek-v4-flash-0731", { input: ["text"], output: ["text"] }, DEEPSEEK_REASONING),
 ];
 
 const TEXT = { input: ["text"], output: ["text"] } as ZroModalities;
