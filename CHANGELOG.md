@@ -7,6 +7,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-05
+
+### Highlights
+
+- **Windows support.** `zro` now runs natively on Windows; WSL is no longer required. npm-installed
+  agents (`.cmd` shims) are found through `PATHEXT` and launched through `cmd.exe`, and
+  `zro login` opens the browser with `explorer.exe`.
+- **The model catalog comes from the Zro API.** Models load from the authenticated
+  `/api/cli/models` endpoint and are cached locally, so new models reach users without a CLI
+  release. A failed fetch falls back to the cached catalog; a rejected key clears it.
+
+### Changed
+
+- The bundled fallback catalog is removed. Signed-out users with no cached catalog are asked to run
+  `zro login`, and a signed-in user with no cache sees a clear "could not reach the Zro model
+  catalog" error if the first fetch fails.
+- `zro <tool>` offers to install a missing agent in an interactive terminal. Dry runs never install.
+- `zro status` no longer lists installed tools.
+- README rewritten product-first, with pricing and links to zro.moonmath.ai.
+
+### Tooling
+
+- CI runs the test suite on `windows-latest` alongside the Ubuntu matrix, and the build uses a
+  cross-platform `scripts/build.mjs`.
+
 ## [0.2.5] - 2026-09-27
 
 ### Fixed
