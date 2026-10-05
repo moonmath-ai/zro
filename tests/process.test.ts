@@ -62,17 +62,20 @@ describe("escapeShimArgument", () => {
 });
 
 describe("real cmd.exe", () => {
-  it.runIf(process.platform === "win32")("passes metacharacters to a shim as plain text", async () => {
+  it.runIf(process.platform === "win32")("delivers metacharacters to a forwarding shim as plain arguments", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-shim-"));
     const marker = path.join(dir, "pwned.txt");
-    await fs.writeFile(path.join(dir, "echo.cmd"), "@echo off\r\necho %~1\r\n");
+    await fs.writeFile(path.join(dir, "print-args.js"), "process.stdout.write(JSON.stringify(process.argv.slice(2)));");
+    // Like npm's shims: forward %* to node, which parses the command line itself.
+    await fs.writeFile(path.join(dir, "shim.cmd"), `@echo off\r\n"${process.execPath}" "%~dp0print-args.js" %*\r\n`);
+    const args = [`x" & echo hacked > "${marker}" & "`, 'say "hi" & bye', "plain"];
 
     const output = await new Promise<string>((resolve, reject) => {
       const child = spawnCommand(
         nodeSpawn as never,
         "win32",
-        path.join(dir, "echo.cmd"),
-        [`x" & echo hacked > "${marker}" & "`],
+        path.join(dir, "shim.cmd"),
+        args,
         { cwd: dir, env: process.env, stdio: "pipe" as never },
       );
       let stdout = "";
@@ -82,6 +85,6 @@ describe("real cmd.exe", () => {
     });
 
     await expect(fs.access(marker)).rejects.toBeTruthy();
-    expect(output).toContain("hacked");
+    expect(JSON.parse(output)).toEqual(args);
   });
 });
