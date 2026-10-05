@@ -25,7 +25,7 @@
   },
   "packageManager": "pnpm@11.20.0",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "test:clients": "node scripts/ci/check-clients.mjs",
