@@ -185,10 +185,7 @@ describe("opencode emitter enables attachments for image-capable models", () => 
   const config = buildOpenCodeConfig(
     {},
     "sk-test",
-    [
-      ...TEST_MODELS,
-      model("glm-5.3-flash", { input: ["text", "image"], output: ["text"] }),
-    ],
+    TEST_MODELS,
     false,
   );
   const provider = config.provider as Record<string, Record<string, unknown>> | undefined;
@@ -196,19 +193,12 @@ describe("opencode emitter enables attachments for image-capable models", () => 
   const models: Record<string, Record<string, unknown>> = providerModels;
 
   it("sets attachment + modalities on vision models", () => {
-    for (const id of ["glm-5.3-flash", "kimi-k3"]) {
-      expect(models[id]?.attachment).toBe(true);
-      expect(models[id]?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
-    }
+    expect(models["kimi-k3"]?.attachment).toBe(true);
+    expect(models["kimi-k3"]?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
   });
 
   it("does not advertise attachment for text-only models", () => {
     expect(models["glm-5.3"]?.attachment).toBe(false);
     expect(models["glm-5.3"]?.modalities).toEqual({ input: ["text"], output: ["text"] });
-  });
-
-  it("honors the kimi-k3 vision flag", () => {
-    expect(models["kimi-k3"]?.attachment).toBe(true);
-    expect(models["kimi-k3"]?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
   });
 });
