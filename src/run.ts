@@ -286,14 +286,14 @@ async function launch(
     io.stderr.write(`Could not open ${plan.label}: ${messageOf(error)}\n`);
     return 1;
   } finally {
-    await removeSessionDir(tempDir);
+    await removeSessionDir(tempDir, io);
   }
 }
 
 // Windows keeps files locked briefly after a child exits (antivirus, plugin clones), so a
-// single rm can fail with EBUSY/EPERM even though the session is over. Retry, then give up
-// silently: a leaked temp dir is harmless, a crash after the session is not.
-async function removeSessionDir(tempDir: string): Promise<void> {
+// single rm can fail with EBUSY/EPERM even though the session is over. Retry, then warn rather
+// than crash after the session.
+async function removeSessionDir(tempDir: string, io: RunIo): Promise<void> {
   for (const delayMs of [0, 250, 1000, 3000]) {
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     try {
@@ -303,6 +303,7 @@ async function removeSessionDir(tempDir: string): Promise<void> {
       // Retry.
     }
   }
+  io.stderr.write(`Could not remove ${tempDir}; it may hold session files, so delete it manually.\n`);
 }
 
 async function verifyApiKey(

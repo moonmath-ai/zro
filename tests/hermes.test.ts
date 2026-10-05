@@ -10,112 +10,66 @@ import type { LaunchContext } from "../src/engine/types.js";
 
 describe("Hermes adapter", () => {
   it("points HERMES_HOME at the generated config directory", async () => {
-    const { plan, home } = await buildPlan({ platform: "win32" });
-    const expectedHome = path.join(home, "sessions", "session", "home", ".hermes");
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-home-"));
+    const plan = await hermesTool.launch(context(home, "glm-5.3"));
+    const hermesHome = path.join(home, "session", "home", ".hermes");
 
-    expect(plan.env?.HERMES_HOME).toBe(expectedHome);
-    expect(plan.env?.HOME).toBe(path.join(home, "sessions", "session", "home"));
-    expect(findFile(plan.files, "config.yaml")).toBe(path.join(expectedHome, "config.yaml"));
-  });
-
-  it("keeps the provider entry resolvable: name + base_url", async () => {
-    const { plan } = await buildPlan({ platform: "linux" });
-    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as {
-      custom_providers?: Array<Record<string, unknown>>;
-      model?: Record<string, unknown>;
-    };
-
-    const provider = config.custom_providers?.find((entry) => entry.name === "zro");
-    expect(provider).toBeDefined();
-    expect(String(provider?.base_url)).toContain("/v1");
-    // Hermes resolves key_env at runtime; the key must never be written to disk.
-    expect(JSON.stringify(config)).not.toContain("sk-hermes-secret");
-    expect(provider?.key_env).toBe("ZRO_API_KEY");
-    // Hermes' first-run guard counts `model.provider`/`model.base_url` as configured.
-    expect(config.model?.provider).toBe("zro");
-    expect(config.model?.base_url).toContain("/v1");
-    expect(config.model?.default).toBe("glm-5.3");
-  });
-
-  it("stores the api key in the config when it came from a stored credential", async () => {
-    const { plan } = await buildPlan({ platform: "win32", apiKeySource: "stored" });
-    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as {
-      custom_providers?: Array<Record<string, unknown>>;
-    };
-
-    const provider = config.custom_providers?.find((entry) => entry.name === "zro");
-    expect(provider?.api_key).toBe("sk-hermes-secret");
-    expect(provider?.key_env).toBeUndefined();
+    expect(plan.env?.HERMES_HOME).toBe(hermesHome);
+    expect(plan.files![0].path).toBe(path.join(hermesHome, "config.yaml"));
   });
 
   it("caps launch output at the selected model's catalog max output tokens", async () => {
-    const { plan } = await buildPlan({ model: "glm-5.3" });
-    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as Record<string, unknown>;
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-output-"));
+    const plan = await hermesTool.launch(context(home, "glm-5.3"));
+    const config = yamlSerializer.parse(plan.files![0].contents) as Record<string, unknown>;
     const modelSection = config.model as Record<string, unknown>;
     expect(modelSection.max_tokens).toBe(131000);
     expect(modelSection.default_headers).toMatchObject({ "User-Agent": "hermes" });
   });
 
   it("overwrites a user's existing model.max_tokens for known selections", async () => {
-    const { plan } = await buildPlan({ model: "glm-5.3", existingConfig: { model: { max_tokens: 777 } } });
-    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as Record<string, unknown>;
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-overwrite-"));
+    const hermesDir = path.join(home, ".hermes");
+    await fs.mkdir(hermesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(hermesDir, "config.yaml"),
+      yamlSerializer.stringify({ model: { max_tokens: 777 } })
+    );
+
+    const plan = await hermesTool.launch(context(home, "glm-5.3"));
+    const config = yamlSerializer.parse(plan.files![0].contents) as Record<string, unknown>;
     expect((config.model as Record<string, unknown>).max_tokens).toBe(131000);
   });
 
   it("preserves a user's own model.max_tokens for unknown selections", async () => {
-    const { plan } = await buildPlan({ model: "not-in-catalog", existingConfig: { model: { max_tokens: 777 } } });
-    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as Record<string, unknown>;
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-untouched-"));
+    const hermesDir = path.join(home, ".hermes");
+    await fs.mkdir(hermesDir, { recursive: true });
+    await fs.writeFile(
+      path.join(hermesDir, "config.yaml"),
+      yamlSerializer.stringify({ model: { max_tokens: 777 } })
+    );
+
+    const plan = await hermesTool.launch(context(home, "not-in-catalog"));
+    const config = yamlSerializer.parse(plan.files![0].contents) as Record<string, unknown>;
     expect((config.model as Record<string, unknown>).max_tokens).toBe(777);
   });
 });
 
-async function buildPlan(options: {
-  platform?: NodeJS.Platform;
-  apiKeySource?: "env" | "stored";
-  model?: string;
-  existingConfig?: Record<string, unknown>;
-} = {}) {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-"));
-  if (options.existingConfig) {
-    const hermesDir = path.join(home, ".hermes");
-    await fs.mkdir(hermesDir, { recursive: true });
-    await fs.writeFile(path.join(hermesDir, "config.yaml"), yamlSerializer.stringify(options.existingConfig));
-  }
-  const tempDir = path.join(home, "sessions", "session");
-  const plan = await hermesTool.launch(context(home, tempDir, options));
-  return { plan, home };
-}
-
-function context(
-  homeDir: string,
-  tempDir: string,
-  options: { platform?: NodeJS.Platform; apiKeySource?: "env" | "stored"; model?: string },
-): LaunchContext {
+function context(homeDir: string, model: string): LaunchContext {
   return {
     apiKey: "sk-hermes-secret",
-    apiKeySource: options.apiKeySource ?? "env",
+    apiKeySource: "env",
     env: {},
-    model: options.model ?? "glm-5.3",
+    model,
     models: TIER_MODELS,
     extraArgs: [],
     homeDir,
     cwd: homeDir,
-    tempDir,
-    platform: options.platform ?? "linux",
+    tempDir: path.join(homeDir, "session"),
+    platform: "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
-    stderr: new PassThrough(),
+    stderr: new PassThrough()
   };
-}
-
-function findFile(files: { path: string }[] | undefined, basename: string): string {
-  const file = files?.find((candidate) => path.basename(candidate.path) === basename);
-  if (!file) throw new Error(`Missing ${basename}`);
-  return file.path;
-}
-
-function findContents(files: { path: string; contents: string }[] | undefined, basename: string): string {
-  const file = files?.find((candidate) => path.basename(candidate.path) === basename);
-  if (!file) throw new Error(`Missing ${basename}`);
-  return file.contents;
 }

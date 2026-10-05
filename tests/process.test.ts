@@ -1,118 +1,102 @@
+import { spawn as nodeSpawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  findOnPath,
-  isCommandShim,
-  launcherScript,
-  resolveArgs,
-  resolveCommand,
-  resolveWindowsCommand,
-  windowsExecutableExtensions,
-} from "../src/process.js";
+import type { SpawnOptions } from "../src/engine/types.js";
+import { escapeShimArgument, resolveWindowsCommand, spawnCommand } from "../src/process.js";
 
 const windowsEnv = {
-  SystemRoot: "C:\\Windows",
   ComSpec: "C:\\Windows\\system32\\cmd.exe",
   PATHEXT: ".COM;.EXE;.BAT;.CMD",
   PATH: "",
 } as NodeJS.ProcessEnv;
 
-describe("windows executable extensions", () => {
-  it("defaults to the standard PATHEXT list", () => {
-    expect(windowsExecutableExtensions(undefined)).toEqual([".com", ".exe", ".bat", ".cmd"]);
+function record(platform: NodeJS.Platform, command: string, args: string[], env = windowsEnv) {
+  const calls: Array<{ command: string; args: string[]; options: SpawnOptions }> = [];
+  spawnCommand(
+    ((c: string, a: string[], options: SpawnOptions) => {
+      calls.push({ command: c, args: a, options });
+      return undefined as never;
+    }),
+    platform,
+    command,
+    args,
+    { cwd: "/tmp", env, stdio: "inherit" },
+  );
+  return calls[0];
+}
+
+describe("spawnCommand", () => {
+  it("leaves commands untouched off Windows", () => {
+    const call = record("linux", "claude", ["-p", "a&b"]);
+    expect(call.command).toBe("claude");
+    expect(call.args).toEqual(["-p", "a&b"]);
   });
 
-  it("normalises a custom PATHEXT list", () => {
-    expect(windowsExecutableExtensions(" .EXE ; .CMD ")).toEqual([".exe", ".cmd"]);
-  });
-});
-
-describe("command resolution on Windows", () => {
-  it("leaves commands untouched on POSIX platforms", () => {
-    expect(resolveCommand("claude", "linux", windowsEnv)).toBe("claude");
-    expect(resolveWindowsCommand("claude", "linux", windowsEnv)).toBe("claude");
-    expect(resolveArgs("claude", ["-p", "hi"], "linux")).toEqual(["-p", "hi"]);
+  it("routes .cmd shims through cmd.exe with escaped, verbatim arguments", () => {
+    const call = record("win32", "claude.cmd", ["--settings", '{"a":"b & c"}']);
+    expect(call.command).toBe(windowsEnv.ComSpec);
+    expect(call.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
+    expect(call.options.windowsVerbatimArguments).toBe(true);
+    expect(call.args[3]).not.toMatch(/(^|[^^])&/);
   });
 
-  it("routes .cmd and .bat shims through cmd.exe", () => {
-    expect(isCommandShim("claude.cmd")).toBe(true);
-    expect(isCommandShim("claude.bat")).toBe(true);
-    expect(isCommandShim("claude.exe")).toBe(false);
-    expect(resolveCommand("claude.cmd", "win32", windowsEnv)).toBe("C:\\Windows\\system32\\cmd.exe");
+  it("does not wrap real executables", () => {
+    const call = record("win32", "C:\\tools\\claude.exe", ["-p", "a&b"]);
+    expect(call.command).toBe("C:\\tools\\claude.exe");
+    expect(call.args).toEqual(["-p", "a&b"]);
   });
 
-  it("does not rewrite commands that already carry an executable extension", () => {
-    expect(resolveCommand("C:\\tools\\claude.exe", "win32", windowsEnv))
-      .toBe("C:\\tools\\claude.exe");
-    expect(resolveCommand("C:\\tools\\claude.exe", "win32", { ...windowsEnv, PATH: "" }))
-      .toBe("C:\\tools\\claude.exe");
-  });
-
-  // These touch the real filesystem and resolve with win32 path rules, so they only hold on Windows.
-  it.runIf(process.platform === "win32")("finds an npm shim through PATHEXT instead of relying on bare spawn", async () => {
-    const bin = await fs.mkdtemp(path.join(os.tmpdir(), "zro-path-"));
-    await fs.writeFile(path.join(bin, "claude.cmd"), "@echo off\r\n");
-
-    const env = { ...windowsEnv, PATH: bin };
-    expect(findOnPath("claude", windowsExecutableExtensions(env.PATHEXT), env))
-      .toBe(path.join(bin, "claude.cmd"));
-    expect(resolveWindowsCommand("claude", "win32", env)).toBe(path.join(bin, "claude.cmd"));
-
-    // The shim now routes through cmd.exe rather than being spawned directly.
-    expect(resolveCommand(resolveWindowsCommand("claude", "win32", env), "win32", env))
-      .toBe(env.ComSpec);
-  });
-
-  it.runIf(process.platform === "win32")("prefers .exe over .cmd in PATHEXT order", async () => {
-    const bin = await fs.mkdtemp(path.join(os.tmpdir(), "zro-path-"));
-    await fs.writeFile(path.join(bin, "claude.cmd"), "@echo off\r\n");
-    await fs.writeFile(path.join(bin, "claude.exe"), "");
-
-    const env = { ...windowsEnv, PATH: bin };
-    expect(resolveWindowsCommand("claude", "win32", env)).toBe(path.join(bin, "claude.exe"));
-  });
-
-  it("keeps the original command when nothing matches", () => {
+  it("keeps the original command when nothing on PATH matches", () => {
     const env = { ...windowsEnv, PATH: path.join(os.tmpdir(), "zro-definitely-missing") };
-    expect(resolveWindowsCommand("claude", "win32", env)).toBe("claude");
+    expect(resolveWindowsCommand("claude", env)).toBe("claude");
+  });
+
+  it("never resolves a command from the working directory", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-cwd-"));
+    await fs.writeFile(path.join(dir, "claude.cmd"), "@echo off\r\n");
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      expect(resolveWindowsCommand("claude", { ...windowsEnv, PATH: "" })).toBe("claude");
+    } finally {
+      process.chdir(previous);
+    }
   });
 });
 
-describe("argument bridging on Windows", () => {
-  it("passes shim arguments through cmd.exe without extra quoting", () => {
-    const args = ["--managed-settings", '{"a":["b c"]}', "--", "-p", "hello world"];
-    expect(resolveArgs("claude.cmd", args, "win32")).toEqual(["/d", "/s", "/c", "claude.cmd", ...args]);
+describe("escapeShimArgument", () => {
+  it("escapes cmd metacharacters twice and quotes the argument", () => {
+    expect(escapeShimArgument("a&b")).toBe("^^^\"a^^^&b^^^\"");
   });
 
-  it("launches PowerShell through a script so `--` reaches the agent untouched", () => {
-    const built = resolveArgs("powershell.exe", ["-s", "--", "curl", "-fsSL"], "win32", windowsEnv);
-    expect(built.slice(0, 4)).toEqual(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"]);
-    expect(built[4]).toBe(path.join(os.tmpdir(), "zro", "windows-launcher.ps1"));
-    expect(built[5]).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-  });
-
-  it("leaves ordinary Windows commands alone", () => {
-    expect(resolveArgs("npm", ["install", "--global", "pkg"], "win32", windowsEnv))
-      .toEqual(["install", "--global", "pkg"]);
+  it("doubles a backslash that precedes a quote", () => {
+    expect(escapeShimArgument('a\\"b')).toBe('^^^"a\\\\\\^^^"b^^^"');
   });
 });
 
-describe("windows launcher script", () => {
-  it("splats the forwarded argv without a param block", () => {
-    const script = launcherScript();
-    // A param() block would bind agent flags such as -p or --help as PowerShell parameters.
-    expect(script).not.toMatch(/^\s*param\s*\(/m);
-    expect(script).toContain("$target = $args[0]");
-    expect(script).toContain("$forward = @($args[1..($args.Count - 1)])");
-    expect(script).toContain("& $target @forward");
-    expect(script).toContain("exit $LASTEXITCODE");
-  });
+describe("real cmd.exe", () => {
+  it.runIf(process.platform === "win32")("passes metacharacters to a shim as plain text", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-shim-"));
+    const marker = path.join(dir, "pwned.txt");
+    await fs.writeFile(path.join(dir, "echo.cmd"), "@echo off\r\necho %~1\r\n");
 
-  it("forces UTF-8 output and tolerates a missing console", () => {
-    const script = launcherScript();
-    expect(script).toContain("[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)");
-    expect(script).toContain("catch { $OutputEncoding }");
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawnCommand(
+        nodeSpawn as never,
+        "win32",
+        path.join(dir, "echo.cmd"),
+        [`x" & echo hacked > "${marker}" & "`],
+        { cwd: dir, env: process.env, stdio: "pipe" as never },
+      );
+      let stdout = "";
+      child.stdout?.on("data", (chunk) => { stdout += chunk; });
+      child.once("error", reject);
+      child.once("exit", () => resolve(stdout));
+    });
+
+    await expect(fs.access(marker)).rejects.toBeTruthy();
+    expect(output).toContain("hacked");
   });
 });

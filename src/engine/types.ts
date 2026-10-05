@@ -50,6 +50,7 @@ export interface SpawnOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   stdio: "inherit";
+  windowsVerbatimArguments?: boolean;
 }
 
 export type SpawnProcess = (

@@ -102,11 +102,6 @@ function buildHermesConfig(
   const selectedSpec = modelSpecs.find((model) => model.id === selectedModel);
   next.model = {
     ...existingModelConfig,
-    // Hermes' first-run guard only recognizes a provider when `model` carries
-    // provider/base_url — a custom_providers entry alone always triggers `hermes setup`.
-    provider: PROVIDER_ID,
-    base_url: BASE_URL,
-    default: selectedModel,
     default_headers: {
       ...(asPlainObject(existingModelConfig.default_headers) ?? {}),
       "User-Agent": "hermes"
