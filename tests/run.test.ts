@@ -7,13 +7,13 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "../src/engine/tools/claude.js";
-import { ZRO_MODELS } from "./fixtures.js";
+import { TIER_MODELS } from "./fixtures.js";
 import type { SpawnOptions, SpawnProcess } from "../src/engine/types.js";
 import { run } from "../src/run.js";
 
 async function lineupCatalogFetch(input: string | URL | Request): Promise<Response> {
   return String(input).endsWith("/api/cli/models")
-    ? Response.json({ version: 1, default: "deepseek-v4.1-flash", models: ZRO_MODELS })
+    ? Response.json({ version: 1, default: "deepseek-v4.1-flash", models: TIER_MODELS })
     : Response.json({ data: [] });
 }
 
@@ -314,7 +314,7 @@ describe("zro experience", () => {
     // every seated tier alias are allowlisted. The selection is a catalog model
     // here, so it is covered by the catalog ids.
     expect(managed.availableModels).toEqual([
-      ...ZRO_MODELS.map((model) => model.id),
+      ...TIER_MODELS.map((model) => model.id),
       ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
     ]);
     // The picker gate strips [1m] before matching, so the bare id of every
@@ -338,7 +338,7 @@ describe("zro experience", () => {
 
   it("does not allowlist a slot whose model is outside the launch catalog", async () => {
     const stderr = new PassThrough();
-    const models = ZRO_MODELS.filter((model) => model.id !== "glm-5.3");
+    const models = TIER_MODELS.filter((model) => model.id !== "glm-5.3");
     const plan = await claudeTool.launch({
       apiKey: "sk-boundary-secret",
       apiKeySource: "env",
@@ -374,7 +374,7 @@ describe("zro experience", () => {
 
   it("never injects a caller-supplied selection into managed settings", async () => {
     const stderr = new PassThrough();
-    const models = ZRO_MODELS.filter((model) => model.id !== "kimi-k3");
+    const models = TIER_MODELS.filter((model) => model.id !== "kimi-k3");
     const plan = await claudeTool.launch({
       apiKey: "sk-boundary-secret",
       apiKeySource: "env",

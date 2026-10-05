@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { ZRO_MODELS } from "./fixtures.js";
+import { TIER_MODELS } from "./fixtures.js";
 import { yamlSerializer } from "../src/engine/serializers.js";
 import { hermesTool } from "../src/engine/tools/hermes.js";
 import type { LaunchContext } from "../src/engine/types.js";
@@ -53,7 +53,7 @@ function context(homeDir: string, model: string): LaunchContext {
     apiKeySource: "env",
     env: {},
     model,
-    models: ZRO_MODELS,
+    models: TIER_MODELS,
     extraArgs: [],
     homeDir,
     cwd: homeDir,

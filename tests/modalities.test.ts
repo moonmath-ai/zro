@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseModelCatalog } from "../src/model-catalog.js";
 import { buildCodexConfig, buildCodexModelCatalog } from "../src/engine/tools/codex.js";
 import { buildOpenCodeConfig } from "../src/engine/tools/opencode.js";
-import { TEST_MODELS, ZRO_MODELS, testModel as model } from "./fixtures.js";
+import { TEST_MODELS, TIER_MODELS, testModel as model } from "./fixtures.js";
 
 function catalogModel(id: string, codexEffort: string) {
   return {
@@ -138,7 +138,7 @@ describe("codex config writes a documented reasoning effort for every bundled de
   const supportedEfforts = new Set(["minimal", "low", "medium", "high", "xhigh", "disabled"]);
 
   it("never emits a bare level id like 'auto' into model_reasoning_effort", () => {
-    for (const model of ZRO_MODELS) {
+    for (const model of TIER_MODELS) {
       const config = buildCodexConfig(model.id, { modelSpec: model });
       const match = config.match(/model_reasoning_effort = "(.*)"/);
       expect(match, model.id).toBeDefined();
@@ -147,13 +147,13 @@ describe("codex config writes a documented reasoning effort for every bundled de
   });
 
   it("maps the auto router to a pinned medium effort", () => {
-    const auto = ZRO_MODELS.find((model) => model.id === "auto");
+    const auto = TIER_MODELS.find((model) => model.id === "auto");
     const config = buildCodexConfig("auto", { modelSpec: auto });
     expect(config).toContain('model_reasoning_effort = "medium"');
   });
 
   it("clamps levels without codexEffort — the remote-catalog shape — via piLevel", () => {
-    const remote = ZRO_MODELS.map((model) => ({
+    const remote = TIER_MODELS.map((model) => ({
       ...model,
       reasoning: {
         ...model.reasoning,
