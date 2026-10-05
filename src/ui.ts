@@ -31,7 +31,9 @@ export function helpText(colors: Theme): string {
 
 ${colors.strong("Open an agent")}
   zro claude                 Open Claude Code on the default model
-  zro codex -m glm-5.2       Pick a model for this session
+  zro codex -m glm-5.3       Pick a model for this session
+  zro claude --alias haiku=glm-5.3-flash
+                             Remap a Claude model alias (opus/sonnet/fable/haiku)
   zro oc -- --help           Use an alias and pass native arguments
   zro again                  Reopen the last tool and model
 

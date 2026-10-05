@@ -13,6 +13,7 @@ export interface LaunchContext {
   model: string;
   models: readonly ZroModel[];
   extraArgs: string[];
+  modelAliases?: Record<string, string>;
   homeDir: string;
   cwd: string;
   tempDir: string;

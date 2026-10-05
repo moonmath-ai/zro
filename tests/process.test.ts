@@ -50,7 +50,8 @@ describe("command resolution on Windows", () => {
       .toBe("C:\\tools\\claude.exe");
   });
 
-  it("finds an npm shim through PATHEXT instead of relying on bare spawn", async () => {
+  // These touch the real filesystem and resolve with win32 path rules, so they only hold on Windows.
+  it.runIf(process.platform === "win32")("finds an npm shim through PATHEXT instead of relying on bare spawn", async () => {
     const bin = await fs.mkdtemp(path.join(os.tmpdir(), "zro-path-"));
     await fs.writeFile(path.join(bin, "claude.cmd"), "@echo off\r\n");
 
@@ -64,7 +65,7 @@ describe("command resolution on Windows", () => {
       .toBe(env.ComSpec);
   });
 
-  it("prefers .exe over .cmd in PATHEXT order", async () => {
+  it.runIf(process.platform === "win32")("prefers .exe over .cmd in PATHEXT order", async () => {
     const bin = await fs.mkdtemp(path.join(os.tmpdir(), "zro-path-"));
     await fs.writeFile(path.join(bin, "claude.cmd"), "@echo off\r\n");
     await fs.writeFile(path.join(bin, "claude.exe"), "");

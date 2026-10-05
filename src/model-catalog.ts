@@ -15,6 +15,12 @@ export interface ModelCatalog {
   models: readonly ZroModel[];
 }
 
+export type CatalogSource = "remote" | "cache" | "bundled";
+
+export interface LoadedModelCatalog extends ModelCatalog {
+  source: CatalogSource;
+}
+
 type CatalogOptions = {
   apiKey?: string;
   cacheRemote?: boolean;
@@ -36,14 +42,14 @@ export const BUNDLED_MODEL_CATALOG: ModelCatalog = {
   models: ZRO_MODELS,
 };
 
-export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCatalog> {
+export async function loadModelCatalog(options: CatalogOptions): Promise<LoadedModelCatalog> {
   if (options.apiKey) {
     try {
       const catalog = await fetchModelCatalog(options);
       if (options.cacheRemote !== false) {
         await writeCachedCatalog(options, catalog).catch(() => {});
       }
-      return catalog;
+      return { ...catalog, source: "remote" };
     } catch (error) {
       if (error instanceof CatalogAuthenticationError) {
         await invalidateModelCatalog(options).catch(() => {});
@@ -52,7 +58,9 @@ export async function loadModelCatalog(options: CatalogOptions): Promise<ModelCa
     }
   }
 
-  return await readCachedCatalog(options) ?? BUNDLED_MODEL_CATALOG;
+  const cached = await readCachedCatalog(options);
+  if (cached) return { ...cached, source: "cache" };
+  return { ...BUNDLED_MODEL_CATALOG, source: "bundled" };
 }
 
 export async function invalidateModelCatalog(

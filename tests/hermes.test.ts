@@ -3,14 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { hermesTool } from "../src/engine/tools/hermes.js";
 import { ZRO_MODELS } from "../src/engine/constants.js";
-import type { LaunchContext } from "../src/engine/types.js";
 import { yamlSerializer } from "../src/engine/serializers.js";
+import { hermesTool } from "../src/engine/tools/hermes.js";
+import type { LaunchContext } from "../src/engine/types.js";
 
-describe("hermes adapter", () => {
+describe("Hermes adapter", () => {
   it("points HERMES_HOME at the generated config directory", async () => {
-    const { plan, home } = await buildPlan("win32");
+    const { plan, home } = await buildPlan({ platform: "win32" });
     const expectedHome = path.join(home, "sessions", "session", "home", ".hermes");
 
     expect(plan.env?.HERMES_HOME).toBe(expectedHome);
@@ -19,7 +19,7 @@ describe("hermes adapter", () => {
   });
 
   it("keeps the provider entry resolvable: name + base_url", async () => {
-    const { plan } = await buildPlan("linux");
+    const { plan } = await buildPlan({ platform: "linux" });
     const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as {
       custom_providers?: Array<Record<string, unknown>>;
       model?: Record<string, unknown>;
@@ -38,7 +38,7 @@ describe("hermes adapter", () => {
   });
 
   it("stores the api key in the config when it came from a stored credential", async () => {
-    const { plan } = await buildPlan("win32", "stored");
+    const { plan } = await buildPlan({ platform: "win32", apiKeySource: "stored" });
     const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as {
       custom_providers?: Array<Record<string, unknown>>;
     };
@@ -47,32 +47,61 @@ describe("hermes adapter", () => {
     expect(provider?.api_key).toBe("sk-hermes-secret");
     expect(provider?.key_env).toBeUndefined();
   });
+
+  it("caps launch output at the selected model's catalog max output tokens", async () => {
+    const { plan } = await buildPlan({ model: "glm-5.3" });
+    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as Record<string, unknown>;
+    const modelSection = config.model as Record<string, unknown>;
+    expect(modelSection.max_tokens).toBe(131000);
+    expect(modelSection.default_headers).toMatchObject({ "User-Agent": "hermes" });
+  });
+
+  it("overwrites a user's existing model.max_tokens for known selections", async () => {
+    const { plan } = await buildPlan({ model: "glm-5.3", existingConfig: { model: { max_tokens: 777 } } });
+    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as Record<string, unknown>;
+    expect((config.model as Record<string, unknown>).max_tokens).toBe(131000);
+  });
+
+  it("preserves a user's own model.max_tokens for unknown selections", async () => {
+    const { plan } = await buildPlan({ model: "not-in-catalog", existingConfig: { model: { max_tokens: 777 } } });
+    const config = yamlSerializer.parse(findContents(plan.files, "config.yaml")) as Record<string, unknown>;
+    expect((config.model as Record<string, unknown>).max_tokens).toBe(777);
+  });
 });
 
-async function buildPlan(platform: NodeJS.Platform, apiKeySource: "env" | "stored" = "env") {
+async function buildPlan(options: {
+  platform?: NodeJS.Platform;
+  apiKeySource?: "env" | "stored";
+  model?: string;
+  existingConfig?: Record<string, unknown>;
+} = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-hermes-"));
+  if (options.existingConfig) {
+    const hermesDir = path.join(home, ".hermes");
+    await fs.mkdir(hermesDir, { recursive: true });
+    await fs.writeFile(path.join(hermesDir, "config.yaml"), yamlSerializer.stringify(options.existingConfig));
+  }
   const tempDir = path.join(home, "sessions", "session");
-  const plan = await hermesTool.launch(context(home, tempDir, platform, apiKeySource));
+  const plan = await hermesTool.launch(context(home, tempDir, options));
   return { plan, home };
 }
 
 function context(
   homeDir: string,
   tempDir: string,
-  platform: NodeJS.Platform,
-  apiKeySource: "env" | "stored",
+  options: { platform?: NodeJS.Platform; apiKeySource?: "env" | "stored"; model?: string },
 ): LaunchContext {
   return {
     apiKey: "sk-hermes-secret",
-    apiKeySource,
+    apiKeySource: options.apiKeySource ?? "env",
     env: {},
-    model: "glm-5.2",
+    model: options.model ?? "glm-5.2",
     models: ZRO_MODELS,
     extraArgs: [],
     homeDir,
     cwd: homeDir,
     tempDir,
-    platform,
+    platform: options.platform ?? "linux",
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),
