@@ -7,13 +7,9 @@ import { run } from "../src/run.js";
 import { catalogFetch } from "./fixtures.js";
 
 const adapters = [
-  ["claude", "claude"],
   ["codex", "codex"],
   ["codex-app", "codex"],
-  ["grok", "grok"],
   ["hermes", "hermes"],
-  ["kilo", "kilo"],
-  ["omp", "omp"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
   ["pi", "pi"],

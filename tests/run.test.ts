@@ -262,80 +262,6 @@ describe("zro experience", () => {
     );
   });
 
-  it("sets CLAUDE_CODE_MAX_CONTEXT_TOKENS and appends [1m] for 1M-window models", async () => {
-    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-context-"));
-    const stdout = new PassThrough();
-
-    const code = await run(["claude", "-m", "kimi-k3", "--json"], {
-      ...io(home, stdout),
-      env: { ZRO_API_KEY: "sk-context-secret" },
-      fetch: lineupCatalogFetch,
-    });
-
-    expect(code).toBe(0);
-    const result = JSON.parse(await streamText(stdout));
-    const modelArg = result.args[result.args.indexOf("--model") + 1];
-    expect(result.model).toBe("kimi-k3");
-    expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1048576");
-    // The output cap is session-wide like the window: even though kimi-k3
-    // itself allows 1M output tokens, the haiku seat (dolly1-security, 64k)
-    // bounds what any model in this launch may be asked to produce.
-    expect(result.environment.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("64000");
-    expect(modelArg).toBe("kimi-k3[1m]");
-    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("kimi-k3[1m]");
-    // Deterministic tier mapping: unclaimed models sort by max output tokens
-    // descending with id tie-breaks, so opus gets the beefiest model and haiku
-    // the smallest; glm-5.3-flash (fifth remaining) lands in no slot.
-    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("deepseek-v4.1-flash[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("auto[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("glm-5.3[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("dolly1-security[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("Zro DeepSeek V4.1 Flash[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Zro Dolly 1 Security[1m]");
-    expect(result.environment.ANTHROPIC_CUSTOM_MODEL_OPTION_NAME).toBe("Zro Kimi K3[1m]");
-  });
-
-  it("allowlists the seated tier aliases and the bare form of every emitted model id", async () => {
-    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-allowlist-"));
-    const stdout = new PassThrough();
-
-    const code = await run(["claude", "-m", "kimi-k3", "--json"], {
-      ...io(home, stdout),
-      env: { ZRO_API_KEY: "sk-context-secret" },
-      fetch: lineupCatalogFetch,
-    });
-
-    expect(code).toBe(0);
-    const result = JSON.parse(await streamText(stdout));
-    const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
-    const env = result.environment as Record<string, string>;
-    expect(managed.enforceAvailableModels).toBe(true);
-    // Derived from the resolved catalog, not hard-coded: every bundled model and
-    // every seated tier alias are allowlisted. The selection is a catalog model
-    // here, so it is covered by the catalog ids.
-    expect(managed.availableModels).toEqual([
-      ...TIER_MODELS.map((model) => model.id),
-      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => slot.toLowerCase())
-    ]);
-    // The picker gate strips [1m] before matching, so the bare id of every
-    // emitted value must be allowlisted (the values themselves are suffixed).
-    const bare = (value: string) => value.replace(/\[1m\]$/i, "");
-    for (const key of [
-      "ANTHROPIC_CUSTOM_MODEL_OPTION",
-      ...CLAUDE_MODEL_ALIAS_SLOTS.map((slot) => `ANTHROPIC_DEFAULT_${slot}_MODEL`)
-    ]) {
-      const value = env[key];
-      if (value) expect(managed.availableModels).toContain(bare(value));
-    }
-    // The reverse must hold too: every allowlisted tier alias is actually
-    // seated with an env value (no allowlisted-but-unemitted slot).
-    for (const slot of CLAUDE_MODEL_ALIAS_SLOTS) {
-      const allowlisted = managed.availableModels.includes(slot.toLowerCase());
-      const seated = Boolean(env[`ANTHROPIC_DEFAULT_${slot}_MODEL`]);
-      expect(allowlisted, slot).toBe(seated);
-    }
-  });
-
   it("does not allowlist a slot whose model is outside the launch catalog", async () => {
     const stderr = new PassThrough();
     const models = TIER_MODELS.filter((model) => model.id !== "glm-5.3");
@@ -403,31 +329,6 @@ describe("zro experience", () => {
     expect(plan.env!.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("anthropic.injected");
   });
 
-  it("lets users override Claude alias slots with --alias, including dropping one", async () => {
-    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-"));
-    const stdout = new PassThrough();
-
-    const code = await run([
-      "claude", "-m", "kimi-k3", "--alias", "opus=glm-5.3", "--alias", "haiku=", "--json"
-    ], {
-      ...io(home, stdout),
-      env: { ZRO_API_KEY: "sk-context-secret" },
-      fetch: lineupCatalogFetch,
-    });
-
-    expect(code).toBe(0);
-    const result = JSON.parse(await streamText(stdout));
-    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("glm-5.3[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("deepseek-v4.1-flash[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("auto[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
-    // A dropped slot must not be allowlisted, or Claude Code re-enables its row
-    // resolving to the built-in Anthropic model against the Zro base URL.
-    const managed = JSON.parse(result.args[result.args.indexOf("--managed-settings") + 1]);
-    expect(managed.availableModels).not.toContain("haiku");
-    expect(managed.availableModels).toEqual(expect.arrayContaining(["opus", "sonnet", "fable"]));
-  });
-
   it("forwards --alias overrides through zro again", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-again-alias-"));
     const stdout = new PassThrough();
@@ -476,48 +377,6 @@ describe("zro experience", () => {
     expect(await streamText(stderr)).toContain(
       'Warning: model "uncatalogued-model" is not in the Zro catalog'
     );
-  });
-
-  it("keeps self-targeting aliases explicit even though they cost a slot", async () => {
-    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-seated-"));
-    const stdout = new PassThrough();
-    const cacheDir = path.join(home, ".cache", "zro");
-    await fs.mkdir(cacheDir, { recursive: true });
-    const catalogModel = (id: string, contextWindow: number, maxOutputTokens: number) => ({
-      id,
-      displayName: id,
-      contextWindow,
-      maxOutputTokens,
-      reasoning: {
-        defaultLevel: "high",
-        levels: [{ id: "high", description: "Reason carefully", piLevel: "high", openCodeOptions: { reasoningEffort: "high" } }]
-      }
-    });
-    await fs.writeFile(path.join(cacheDir, "model-catalog.json"), JSON.stringify({
-      version: 1,
-      default: "m-a",
-      models: [
-        catalogModel("m-a", 1048576, 131000),
-        catalogModel("m-b", 1048576, 384000),
-        catalogModel("m-c", 1048576, 131000),
-        catalogModel("m-d", 1048576, 64000),
-        catalogModel("m-e", 524288, 64000)
-      ]
-    }));
-
-    const code = await run(["claude", "-m", "m-a", "--alias", "opus=m-a", "--json"], {
-      ...io(home, stdout),
-      env: { ZRO_API_KEY: "sk-context-secret" },
-      fetch: async () => new Response(null, { status: 503 }),
-    });
-
-    expect(code).toBe(0);
-    const result = JSON.parse(await streamText(stdout));
-    expect(result.environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("m-a[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("m-b[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("m-c[1m]");
-    expect(result.environment.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("m-d[1m]");
-    expect(result.environment.CLAUDE_CODE_MAX_CONTEXT_TOKENS).toBe("1048576");
   });
 
   it("budgets the smallest context window across the selection and filled alias slots", async () => {

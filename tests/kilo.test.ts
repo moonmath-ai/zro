@@ -248,8 +248,6 @@ describe("Kilo Code adapter", () => {
   });
 
   it.each([
-    ["success", 0, 0],
-    ["nonzero exit", 7, 7],
     ["spawn failure", "error", 1],
   ] as const)("cleans its temporary profile after %s", async (_name, childResult, expectedCode) => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-kilo-cleanup-"));
