@@ -34,7 +34,15 @@ export class CatalogAuthenticationError extends Error {
   }
 }
 
+export class CatalogUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`Could not reach the Zro model catalog (${reason}). Check your connection and try again.`);
+    this.name = "CatalogUnavailableError";
+  }
+}
+
 export async function loadModelCatalog(options: CatalogOptions): Promise<LoadedModelCatalog> {
+  let fetchFailure: unknown;
   if (options.apiKey) {
     try {
       const catalog = await fetchAuthenticatedCatalog(options, options.apiKey);
@@ -47,12 +55,16 @@ export async function loadModelCatalog(options: CatalogOptions): Promise<LoadedM
         await invalidateModelCatalog(options).catch(() => {});
         throw error;
       }
+      fetchFailure = error;
     }
   }
 
   const cached = await readCachedCatalog(options);
   if (cached) return { ...cached, source: "cache" };
 
+  if (fetchFailure) {
+    throw new CatalogUnavailableError(fetchFailure instanceof Error ? fetchFailure.message : String(fetchFailure));
+  }
   throw new Error("No model catalog is available. Run zro login to load models.");
 }
 

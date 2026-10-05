@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CatalogAuthenticationError,
+  CatalogUnavailableError,
   loadModelCatalog,
   modelCatalogCachePath,
 } from "../src/model-catalog.js";
@@ -104,6 +105,18 @@ describe("dynamic model catalog", () => {
       env: {},
       homeDir,
       fetch: async () => Response.json({ version: 1, default: "missing", models: [] }),
-    })).rejects.toThrow("Run zro login");
+    })).rejects.toThrow(/Could not reach the Zro model catalog \(The model catalog is empty\.\)/);
+  });
+
+  it("does not tell a signed-in user to log in when the catalog is unreachable", async () => {
+    const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-unreachable-"));
+    const attempt = loadModelCatalog({
+      apiKey: "sk-secret",
+      env: {},
+      homeDir,
+      fetch: async () => new Response(null, { status: 500 }),
+    });
+    await expect(attempt).rejects.toBeInstanceOf(CatalogUnavailableError);
+    await expect(attempt).rejects.not.toThrow("zro login");
   });
 });

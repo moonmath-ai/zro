@@ -179,29 +179,8 @@ async function launch(
       );
       return 1;
     }
-    if (isTty(io.stdin) && isTty(io.stdout)) {
-      io.stdout.write(
-        `${colors.strong("Could not load the model catalog.")} ${colors.muted(messageOf(error))}\n\n`,
-      );
-      const connected = await connectInteractively(io, env, colors);
-      if (typeof connected === "number") return connected;
-      try {
-        catalog = await loadModelCatalog({
-          apiKey: connected.apiKey,
-          env,
-          homeDir: io.homeDir,
-          fetch: io.fetch,
-          cacheRemote: !request.dryRun,
-        });
-        key = connected;
-      } catch (retryError) {
-        io.stderr.write(`Could not load the Zro model catalog: ${messageOf(retryError)}\n`);
-        return 1;
-      }
-    } else {
-      io.stderr.write(`Could not load the Zro model catalog: ${messageOf(error)}\n`);
-      return 1;
-    }
+    io.stderr.write(`${messageOf(error)} Agent was not started.\n`);
+    return 1;
   }
 
   const model = request.model ?? catalog.default;

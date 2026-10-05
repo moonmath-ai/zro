@@ -454,6 +454,28 @@ describe("zro experience", () => {
     expect(result.environment.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe("64000");
   });
 
+  it("does not start an agent or ask a signed-in user to log in when the catalog is unreachable", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-down-"));
+    const stderr = new PassThrough();
+    let spawned = false;
+
+    const code = await run(["claude"], {
+      ...io(home, new PassThrough()),
+      stderr,
+      env: { ZRO_API_KEY: "sk-signed-in-secret" },
+      fetch: async () => new Response(null, { status: 503 }),
+      spawn: fakeExitSpawn(() => { spawned = true; }),
+    });
+
+    const message = await streamText(stderr);
+    expect(code).toBe(1);
+    expect(spawned).toBe(false);
+    expect(message).toContain("Could not reach the Zro model catalog");
+    expect(message).toContain("Agent was not started.");
+    expect(message).not.toContain("zro login");
+    expect(message).not.toContain("sk-signed-in-secret");
+  });
+
   it("rejects alias overrides with unknown slots, unknown models, or other tools", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-claude-alias-bad-"));
     const stdout = new PassThrough();
