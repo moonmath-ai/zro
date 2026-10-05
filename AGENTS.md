@@ -16,6 +16,9 @@ Guidance for coding agents (Claude Code, Codex, OpenCode, etc.) working in this 
 ## Conventions
 
 - TypeScript, Node 18+, ESM. Source in `src/`, tests in `tests/` (vitest).
+- The single source of truth for the version is `package.json` (npm 3-part semver, tags `vX.Y.Z`).
+  There is deliberately no VERSION file; tooling that expects one (e.g. gstack's 4-digit scheme)
+  reports false drift here — ignore it.
 - Use the `RunIo` abstraction for testable I/O; fetch, spawn, and streams flow through it so unit
   tests can inject fakes (see `tests/run.test.ts`).
 - Do not add code comments unless they explain non-obvious decisions.

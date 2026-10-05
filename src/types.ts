@@ -20,7 +20,7 @@ export type CliRequest =
   | { command: "status"; output: OutputMode }
   | { command: "models"; output: OutputMode }
   | { command: "install"; tool?: string; upgrade: boolean; version?: string }
-  | { command: "again"; dryRun: boolean; output: OutputMode }
+  | { command: "again"; dryRun: boolean; output: OutputMode; aliases?: Record<string, string> }
   | { command: "feedback"; message?: string; output: OutputMode }
   | {
       command: "launch";
@@ -31,6 +31,7 @@ export type CliRequest =
       install?: boolean;
       output: OutputMode;
       extraArgs: string[];
+      aliases?: Record<string, string>;
     };
 
 export interface Preferences {

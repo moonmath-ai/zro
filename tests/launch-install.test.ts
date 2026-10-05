@@ -41,10 +41,10 @@ function launchIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv): Ru
     fetch: async (input) => String(input).endsWith("/api/cli/models")
       ? Response.json({
         version: 1,
-        default: "glm-5.2",
+        default: "glm-5.3",
         models: [
           {
-            id: "glm-5.2",
+            id: "glm-5.3",
             displayName: "GLM-5.2",
             contextWindow: 524_288,
             maxOutputTokens: 64_000,

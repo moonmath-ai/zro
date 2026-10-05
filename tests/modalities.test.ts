@@ -1,8 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { parseModelCatalog } from "../src/model-catalog.js";
-import { buildCodexModelCatalog } from "../src/engine/tools/codex.js";
+import { buildCodexConfig, buildCodexModelCatalog } from "../src/engine/tools/codex.js";
 import { buildOpenCodeConfig } from "../src/engine/tools/opencode.js";
-import { TEST_MODELS, testModel as model } from "./fixtures.js";
+import { TEST_MODELS, ZRO_MODELS, testModel as model } from "./fixtures.js";
+
+function catalogModel(id: string, codexEffort: string) {
+  return {
+    id,
+    displayName: id,
+    contextWindow: 1048576,
+    maxOutputTokens: 64000,
+    modalities: { input: ["text"], output: ["text"] },
+    reasoning: {
+      defaultLevel: "max",
+      levels: [
+        {
+          id: "max",
+          description: "Maximum reasoning",
+          codexEffort,
+          piLevel: "xhigh",
+          openCodeOptions: { reasoningEffort: "max" }
+        }
+      ]
+    }
+  };
+}
 
 describe("model modalities parsing", () => {
   it("carries image modalities through the catalog parser", () => {
@@ -107,8 +129,55 @@ describe("codex emitter derives input_modalities from the model", () => {
     expect(flash).toBeDefined();
     expect(flash?.input_modalities).toEqual(["text", "image"]);
 
-    const deepseek = models.find((entry) => entry.slug === "deepseek-v4-flash-0731");
-    expect(deepseek?.input_modalities).toEqual(["text"]);
+    const glm = models.find((entry) => entry.slug === "glm-5.3");
+    expect(glm?.input_modalities).toEqual(["text"]);
+  });
+});
+
+describe("codex config writes a documented reasoning effort for every bundled default", () => {
+  const supportedEfforts = new Set(["minimal", "low", "medium", "high", "xhigh", "disabled"]);
+
+  it("never emits a bare level id like 'auto' into model_reasoning_effort", () => {
+    for (const model of ZRO_MODELS) {
+      const config = buildCodexConfig(model.id, { modelSpec: model });
+      const match = config.match(/model_reasoning_effort = "(.*)"/);
+      expect(match, model.id).toBeDefined();
+      expect(supportedEfforts.has(match![1]), `${model.id}: ${match![1]}`).toBe(true);
+    }
+  });
+
+  it("maps the auto router to a pinned medium effort", () => {
+    const auto = ZRO_MODELS.find((model) => model.id === "auto");
+    const config = buildCodexConfig("auto", { modelSpec: auto });
+    expect(config).toContain('model_reasoning_effort = "medium"');
+  });
+
+  it("clamps levels without codexEffort — the remote-catalog shape — via piLevel", () => {
+    const remote = ZRO_MODELS.map((model) => ({
+      ...model,
+      reasoning: {
+        ...model.reasoning,
+        levels: model.reasoning.levels.map(({ codexEffort: _codexEffort, ...level }) => level)
+      }
+    }));
+    for (const model of remote) {
+      const config = buildCodexConfig(model.id, { modelSpec: model });
+      const match = config.match(/model_reasoning_effort = "(.*)"/);
+      expect(match, model.id).toBeDefined();
+      expect(supportedEfforts.has(match![1]), `${model.id}: ${match![1]}`).toBe(true);
+    }
+    const glm = remote.find((model) => model.id === "glm-5.3");
+    expect(buildCodexConfig("glm-5.3", { modelSpec: glm })).toContain('model_reasoning_effort = "xhigh"');
+  });
+
+  it("rejects an undocumented codexEffort from a remote catalog and clamps via piLevel", () => {
+    const catalog = parseModelCatalog({
+      version: 1,
+      default: "server-model",
+      models: [catalogModel("server-model", "max")]
+    });
+    const config = buildCodexConfig("server-model", { modelSpec: catalog.models[0] });
+    expect(config).toContain('model_reasoning_effort = "xhigh"');
   });
 });
 
@@ -127,13 +196,15 @@ describe("opencode emitter enables attachments for image-capable models", () => 
   const models: Record<string, Record<string, unknown>> = providerModels;
 
   it("sets attachment + modalities on vision models", () => {
-    expect(models["glm-5.3-flash"]?.attachment).toBe(true);
-    expect(models["glm-5.3-flash"]?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    for (const id of ["glm-5.3-flash", "kimi-k3"]) {
+      expect(models[id]?.attachment).toBe(true);
+      expect(models[id]?.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    }
   });
 
   it("does not advertise attachment for text-only models", () => {
-    expect(models["deepseek-v4-flash-0731"]?.attachment).toBe(false);
-    expect(models["deepseek-v4-flash-0731"]?.modalities).toEqual({ input: ["text"], output: ["text"] });
+    expect(models["glm-5.3"]?.attachment).toBe(false);
+    expect(models["glm-5.3"]?.modalities).toEqual({ input: ["text"], output: ["text"] });
   });
 
   it("honors the kimi-k3 vision flag", () => {

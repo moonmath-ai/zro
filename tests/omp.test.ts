@@ -70,7 +70,7 @@ auth:
       tool: "omp",
       label: "Oh My Pi",
       command: "omp",
-      model: "glm-5.2",
+      model: "glm-5.3",
       args: ["--print", "hello"],
     });
     for (const key of [
@@ -127,10 +127,10 @@ auth:
     expect(overlay).toMatchObject({
       enabledModels: [`${PROVIDER_ID}/*`],
       modelRoles: {
-        default: `${PROVIDER_ID}/glm-5.2:max`,
-        smol: `${PROVIDER_ID}/glm-5.2:max`,
-        slow: `${PROVIDER_ID}/glm-5.2:max`,
-        plan: `${PROVIDER_ID}/glm-5.2:max`,
+        default: `${PROVIDER_ID}/glm-5.3:max`,
+        smol: `${PROVIDER_ID}/glm-5.3:max`,
+        slow: `${PROVIDER_ID}/glm-5.3:max`,
+        plan: `${PROVIDER_ID}/glm-5.3:max`,
       },
       startup: {
         quiet: true,
@@ -176,7 +176,7 @@ auth:
       });
     }
 
-    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.2");
+    const glm = provider.models.find((candidate: any) => candidate.id === "glm-5.3");
     expect(glm.thinking).toEqual({
       mode: "effort",
       efforts: ["minimal", "high", "max"],
@@ -267,7 +267,7 @@ auth:
     const output = await streamText(stdout);
     expect(output).not.toContain("sk-preview-secret");
     const preview = JSON.parse(output) as Record<string, any>;
-    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.2" });
+    expect(preview).toMatchObject({ tool: "omp", command: "omp", model: "glm-5.3" });
     expect(preview.environment.ZRO_API_KEY).not.toContain("preview-secret");
     expect(preview.environment.ZRO_MCP_AUTHORIZATION).not.toContain("preview-secret");
     await expect(fs.access(path.join(cache, "zro", "sessions"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -320,7 +320,7 @@ function context(
     apiKey: "sk-omp-secret",
     apiKeySource: "env",
     env,
-    model: "glm-5.2",
+    model: "glm-5.3",
     models: TEST_MODELS,
     extraArgs: ["--print", "hello"],
     homeDir,
@@ -362,10 +362,10 @@ async function catalogFetch(input: string | URL | Request): Promise<Response> {
   if (String(input).endsWith("/api/cli/models")) {
     return Response.json({
       version: 1,
-      default: "glm-5.2",
+      default: "glm-5.3",
       models: [
         {
-          id: "glm-5.2",
+          id: "glm-5.3",
           displayName: "GLM-5.2",
           contextWindow: 524_288,
           maxOutputTokens: 64_000,

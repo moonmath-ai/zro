@@ -44,7 +44,7 @@ describe("tool adapters", () => {
       model: string;
       environment: Record<string, string>;
     };
-    expect(plan).toMatchObject({ tool, command: executable, model: "glm-5.2" });
+    expect(plan).toMatchObject({ tool, command: executable, model: "glm-5.3" });
     expect(text).not.toContain("sk-adapter-secret");
   });
 });
@@ -59,10 +59,10 @@ async function streamText(stream: PassThrough): Promise<string> {
 function defaultCatalogResponse() {
   return {
     version: 1,
-    default: "glm-5.2",
+    default: "glm-5.3",
     models: [
       {
-        id: "glm-5.2",
+        id: "glm-5.3",
         displayName: "GLM-5.2",
         contextWindow: 524_288,
         maxOutputTokens: 64_000,

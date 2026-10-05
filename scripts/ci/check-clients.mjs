@@ -292,6 +292,27 @@ try {
   throw error;
 }
 
+// The live catalog is authoritative, so only assert that every model the CLI
+// itself resolves (live, cached, or bundled) is surfaced by the harness as a
+// provider-prefixed row with intact capacity columns — never pin the capacity
+// values, which the server can change at any time.
+async function assertCatalogModelsPresent(output, label) {
+  const catalogProcess = spawnSync(zroBin, ["models", "--json"], {
+    cwd: process.cwd(), env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 60_000
+  });
+  if (catalogProcess.status !== 0) {
+    throw new Error(`${label}: could not read the Zro catalog via zro models --json`);
+  }
+  const models = JSON.parse(catalogProcess.stdout).models ?? [];
+  const broken = [];
+  for (const model of models) {
+    const escaped = model.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const row = new RegExp(`zro\\s+${escaped}\\s+\\d[\\d.]*[KM]\\s+\\d[\\d.]*[KM]\\s+(yes|no)`);
+    if (!row.test(output)) broken.push(model.id);
+  }
+  assert.deepEqual(broken, [], `${label} is missing or has malformed rows for catalog models: ${broken.join(", ")}`);
+}
+
 function readCodexAppServerConfig(model) {
   return new Promise((resolve, reject) => {
     const child = spawn(
