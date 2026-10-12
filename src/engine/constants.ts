@@ -39,4 +39,4 @@ export function supportsAttachments(model: Pick<ZroModel, "modalities">): boolea
   return model.modalities.input.some((modality) => modality !== "text");
 }
 
-export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "hermes", "openclaw", "pi", "prime"] as const;
+export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "hermes", "openclaw", "pi", "prime", "asimi"] as const;

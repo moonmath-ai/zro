@@ -13,7 +13,8 @@ const adapters = [
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
   ["pi", "pi"],
-  ["prime", "prime-agent"]
+  ["prime", "prime-agent"],
+  ["asimi", "asimi"]
 ] as const;
 
 describe("tool adapters", () => {
