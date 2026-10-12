@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-10-12T11:03:26.188Z",
+  "runId": "1791803006188",
+  "endpoint": "https://zro.moonmath.ai/v1",
+  "mode": "live-api",
+  "harnesses": [
+    "claude",
+    "codex",
+    "grok",
+    "kilo",
+    "omp",
+    "opencode",
+    "pi",
+    "hermes",
+    "openclaw",
+    "prime",
+    "asimi"
+  ],
+  "clients": {
+    "claude": "2.1.220 (Claude Code)",
+    "codex": "codex-cli 0.144.6"
+  },
+  "checks": [],
+  "ok": false,
+  "error": "grok version failed to start: spawn grok ENOENT"
+}

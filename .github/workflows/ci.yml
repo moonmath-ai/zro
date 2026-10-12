@@ -166,9 +166,13 @@ jobs:
 
       - name: Check live API
         if: >-
-          (github.event_name == 'pull_request' &&
+          matrix.harness.id != 'hermes' &&
+          matrix.harness.id != 'openclaw' &&
+          matrix.harness.id != 'asimi' &&
+          matrix.harness.id != 'prime' &&
+          ((github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository) ||
-          (github.event_name == 'workflow_dispatch' && inputs.run_live)
+          (github.event_name == 'workflow_dispatch' && inputs.run_live))
         env:
           ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
           ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-live.json

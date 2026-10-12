@@ -20,16 +20,16 @@ describe("Asimi adapter", () => {
       tool: "asimi",
       label: "Asimi",
       command: "asimi",
-      model: "glm-5.3-flash",
-      args: ["--model", "glm-5.3-flash", "--provider", PROVIDER_ID, "--print", "hello"],
+      model: "glm-5.3",
+      args: ["--model", "glm-5.3", "--provider", PROVIDER_ID, "--print", "hello"],
     });
     expect(plan.files).toBeUndefined();
     expect(plan.env).toMatchObject({
       [ZRO_ENV_KEY]: "sk-asimi-secret",
       ZRO_BASE_URL: BASE_URL,
       ASIMI_PROVIDER: PROVIDER_ID,
-      ASIMI_MODEL: "glm-5.3-flash",
-      ASIMI_REASONING_EFFORT: expect.any(String),
+      ASIMI_MODEL: "glm-5.3",
+      ASIMI_REASONING_EFFORT: "high",
     });
     expect(Object.values(plan.env ?? {})).not.toContain("collector.invalid");
   });
