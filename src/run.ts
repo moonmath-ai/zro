@@ -126,6 +126,7 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       command: "launch",
       tool: preferences.lastTool,
       model: preferences.lastModel,
+      queue: request.queue ?? preferences.lastQueue,
       dryRun: request.dryRun,
       output: request.output,
       extraArgs: [],
@@ -180,6 +181,7 @@ async function launch(
   }
 
   const model = request.model ?? catalog.default;
+  const queue = request.queue ?? "normal";
   if (!catalog.models.some((candidate) => candidate.id === model)) {
     io.stderr.write(unknownModelMessage(model, catalog.source));
     return 1;
@@ -233,6 +235,7 @@ async function launch(
       apiKeySource: key.source,
       env,
       model,
+      queue,
       models: catalog.models,
       extraArgs: request.extraArgs,
       modelAliases,
@@ -251,7 +254,7 @@ async function launch(
   }
 
   if (request.dryRun) {
-    printPreview(plan, request.output, io, key.apiKey, colors, catalog.models);
+    printPreview(plan, request.output, io, key.apiKey, colors, catalog.models, queue);
     await fs.rm(tempDir, { recursive: true, force: true });
     return 0;
   }
@@ -264,7 +267,7 @@ async function launch(
   try {
     await writePreferences(
       { homeDir: io.homeDir, env },
-      { lastTool: request.tool, lastModel: model, updatedAt: new Date().toISOString() }
+      { lastTool: request.tool, lastModel: model, lastQueue: queue, updatedAt: new Date().toISOString() }
     );
   } catch (error) {
     if (request.output === "human") {
@@ -274,7 +277,7 @@ async function launch(
   if (request.output === "human" && isTty(io.stdout)) {
     io.stdout.write(
       `${colors.accent("◆")} ${colors.strong(describeTool(request.tool).name)}  ` +
-      `${colors.muted(`${modelName(model, catalog.models)} · ${model}`)}\n` +
+      `${colors.muted(`${modelName(model, catalog.models)} · ${model} · ${queue} queue`)}\n` +
       `${colors.muted(`  ${compactPath(io.cwd, io.homeDir)}`)}\n\n`
     );
   }
@@ -621,7 +624,11 @@ async function status(
       accountStatus: accountResult.state,
       account: accountResult.state === "available" ? accountResult.account : null,
       lastSession: preferences.lastTool && preferences.lastModel
-        ? { tool: preferences.lastTool, model: preferences.lastModel }
+        ? {
+            tool: preferences.lastTool,
+            model: preferences.lastModel,
+            queue: preferences.lastQueue ?? "normal",
+          }
         : null,
     }, null, 2)}\n`);
     return 0;
@@ -651,7 +658,7 @@ async function status(
   if (preferences.lastTool && preferences.lastModel) {
     io.stdout.write(
       `  ${colors.accent("◆")} ${colors.strong(describeTool(preferences.lastTool).name)} ` +
-      `${colors.muted(preferences.lastModel)}\n`,
+      `${colors.muted(`${preferences.lastModel} · ${preferences.lastQueue ?? "normal"} queue`)}\n`,
     );
     io.stdout.write(`    ${colors.muted("Reopen with")} zro again\n`);
   } else {
@@ -940,7 +947,8 @@ function printPreview(
   io: RunIo,
   secret: string,
   colors: ReturnType<typeof theme>,
-  models: readonly ZroModel[]
+  models: readonly ZroModel[],
+  queue: string,
 ): void {
   const safeEnv = Object.fromEntries(
     Object.entries(plan.env ?? {}).map(([key, value]) => [key, redact(key, value, secret)])
@@ -948,6 +956,7 @@ function printPreview(
   const result = {
     tool: plan.tool,
     model: plan.model,
+    queue,
     command: plan.command,
     args: plan.args,
     environment: safeEnv,
@@ -960,6 +969,7 @@ function printPreview(
   io.stdout.write(`${banner(colors)}\n\n${colors.strong("Session preview")}\n`);
   io.stdout.write(`  Tool     ${describeTool(plan.tool).name}\n`);
   io.stdout.write(`  Model    ${modelName(plan.model, models)} ${colors.muted(`· ${plan.model}`)}\n`);
+  io.stdout.write(`  Queue    ${queue}\n`);
   io.stdout.write(`  Command  ${shellPreview([plan.command, ...plan.args])}\n`);
   const entries = Object.entries(safeEnv);
   if (entries.length) {

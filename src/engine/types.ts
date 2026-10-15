@@ -11,6 +11,7 @@ export interface LaunchContext {
   apiKeySource: ApiKeySource;
   env: NodeJS.ProcessEnv;
   model: string;
+  queue: string;
   models: readonly ZroModel[];
   extraArgs: string[];
   modelAliases?: Record<string, string>;

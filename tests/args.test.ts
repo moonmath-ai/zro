@@ -34,6 +34,23 @@ describe("the direct command language", () => {
     });
   });
 
+  it("selects a queue independently from the model", () => {
+    expect(parseArgs(["launch", "claude", "--model", "glm-5.3", "--queue", "FAST"])).toMatchObject({
+      command: "launch",
+      tool: "claude",
+      model: "glm-5.3",
+      queue: "fast",
+    });
+    expect(parseArgs(["codex", "-q", "team_1"])).toMatchObject({ queue: "team_1" });
+    expect(parseArgs(["again", "--queue=slow"])).toMatchObject({ queue: "slow" });
+  });
+
+  it("rejects unsafe queue names", () => {
+    expect(() => parseArgs(["claude", "--queue", ""])).toThrow("needs a value");
+    expect(() => parseArgs(["claude", "--queue", "fast queue"])).toThrow("--queue expects");
+    expect(() => parseArgs(["claude", "--queue", "fast\r\nx-admin: yes"])).toThrow("--queue expects");
+  });
+
   it("supports memorable tool aliases and dry runs", () => {
     expect(parseArgs(["oc", "--dry-run"])).toMatchObject({
       command: "launch",
