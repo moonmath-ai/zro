@@ -6,6 +6,7 @@ import {
   PROVIDER_ID,
   PROVIDER_NAME,
   ZRO_ENV_KEY,
+  ZRO_QUEUE_HEADER,
   type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
@@ -101,7 +102,7 @@ export const kiloTool: ToolModule = {
     const userKiloRoot = path.join(userConfigHome, "kilo");
     const existing = await readKiloConfig(userKiloRoot);
     const safeConfig = sanitizeKiloConfig(existing);
-    const overlay = buildKiloConfigOverlay(ctx.model, ctx.models);
+    const overlay = buildKiloConfigOverlay(ctx.model, ctx.models, ctx.queue);
     const userFiles = await collectSafeUserAssets(userKiloRoot, kiloConfigRoot);
 
     return {
@@ -149,6 +150,7 @@ export const kiloTool: ToolModule = {
 export function buildKiloConfigOverlay(
   model: string,
   modelSpecs: readonly ZroModel[],
+  queue = "normal",
 ): Record<string, unknown> {
   const models = Object.fromEntries(modelSpecs.map((spec) => [
     spec.id,
@@ -177,6 +179,7 @@ export function buildKiloConfigOverlay(
         options: {
           baseURL: BASE_URL,
           apiKey: `{env:${ZRO_ENV_KEY}}`,
+          headers: { [ZRO_QUEUE_HEADER]: queue },
         },
         models,
       },

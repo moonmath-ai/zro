@@ -132,14 +132,34 @@ export function parseModelCatalog(value: unknown): ModelCatalog {
     throw new Error("The model catalog is empty.");
   }
 
-  const models = root.models.map(parseModel);
-  const ids = new Set(models.map((model) => model.id));
-  if (ids.size !== models.length) throw new Error("The model catalog contains duplicate IDs.");
-  if (typeof root.default !== "string" || !ids.has(root.default)) {
+  const parsedModels = root.models.map(parseModel);
+  const parsedById = new Map(parsedModels.map((model) => [model.id, model]));
+  if (parsedById.size !== parsedModels.length) throw new Error("The model catalog contains duplicate IDs.");
+  if (typeof root.default !== "string" || !parsedById.has(root.default)) {
     throw new Error("The model catalog default is invalid.");
   }
 
-  return { version: 1, default: root.default, models };
+  const aliases = new Map<string, string>();
+  const models = parsedModels.filter((model) => {
+    const separator = model.id.lastIndexOf("@");
+    if (separator <= 0) return true;
+    const baseId = model.id.slice(0, separator);
+    const base = parsedById.get(baseId);
+    if (!base || !isQueueAlias(model, base)) return true;
+    aliases.set(model.id, baseId);
+    return false;
+  });
+
+  return { version: 1, default: aliases.get(root.default) ?? root.default, models };
+}
+
+function isQueueAlias(model: ZroModel, base: ZroModel): boolean {
+  return model.displayName.startsWith(`${base.displayName} (`)
+    && model.displayName.endsWith(")")
+    && model.contextWindow === base.contextWindow
+    && model.maxOutputTokens === base.maxOutputTokens
+    && JSON.stringify(model.modalities) === JSON.stringify(base.modalities)
+    && JSON.stringify(model.reasoning) === JSON.stringify(base.reasoning);
 }
 
 function parseModel(value: unknown): ZroModel {

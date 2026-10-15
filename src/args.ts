@@ -52,7 +52,13 @@ export function parseArgs(argv: string[]): CliRequest {
   if (command === "again") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "again", dryRun: parsed.dryRun, output: parsed.output, aliases: parsed.aliases };
+    return {
+      command: "again",
+      dryRun: parsed.dryRun,
+      output: parsed.output,
+      queue: parsed.queue,
+      aliases: parsed.aliases,
+    };
   }
   if (command === "feedback") {
     const parsed = parseOptions(argv.slice(1), false);
@@ -77,6 +83,7 @@ export function parseArgs(argv: string[]): CliRequest {
 
 interface ParsedOptions {
   model?: string;
+  queue?: string;
   apiKey?: string;
   dryRun: boolean;
   install?: boolean;
@@ -109,6 +116,14 @@ function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions 
     }
     if (value.startsWith("--model=")) {
       result.model = value.slice("--model=".length);
+      continue;
+    }
+    if (value === "--queue" || value === "-q") {
+      result.queue = queueName(requiredValue(argv, ++index, value));
+      continue;
+    }
+    if (value.startsWith("--queue=")) {
+      result.queue = queueName(value.slice("--queue=".length));
       continue;
     }
     if (value === "--alias") {
@@ -209,6 +224,14 @@ function requiredValue(argv: string[], index: number, option: string): string {
   const value = argv[index];
   if (!value || value === "--") throw new Error(`${option} needs a value.`);
   return value;
+}
+
+function queueName(value: string): string {
+  const normalized = value.toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(normalized)) {
+    throw new Error("--queue expects 1-64 letters, numbers, underscores, or hyphens.");
+  }
+  return normalized;
 }
 
 function outputMode(argv: string[]): OutputMode {

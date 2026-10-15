@@ -97,7 +97,7 @@ zro logout                   # remove the stored login
 Each adapter launches the installed tool as a child process with isolated, Zro-owned
 configuration. Session files are temporary; Codex App uses a persistent Zro-owned home.
 Pass native tool arguments after `--` (for example `zro oc -- --help`). The last
-tool/model pair is remembered and reopened with `zro again`.
+tool/model/queue selection is remembered and reopened with `zro again`.
 
 ---
 
@@ -109,8 +109,9 @@ zro claude                  # open directly on the default model
 zro codex -m <model>        # choose a model for this session
 zro omp -m <model>          # launch Oh My Pi through Zro
 zro kilo -m <model>         # launch Kilo Code through Zro
+zro claude --queue fast     # select a queue without changing the model
 zro oc -- --help            # short aliases + native tool arguments
-zro again                   # reopen the last tool/model pair
+zro again                   # reopen the last tool/model/queue selection
 zro models                  # readable model catalog
 zro install claude@2.1.105  # pin an agent version
 zro feedback                # send feedback to the Zro team

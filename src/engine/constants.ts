@@ -2,6 +2,7 @@ export const ENDPOINT_ROOT = process.env.ZRO_ENDPOINT_ROOT ?? "https://zro.moonm
 export const BASE_URL = `${ENDPOINT_ROOT}/v1`;
 export const MCP_URL = process.env.ZRO_MCP_URL ?? `${ENDPOINT_ROOT}/mcp/zro`;
 export const ZRO_ENV_KEY = "ZRO_API_KEY";
+export const ZRO_QUEUE_HEADER = "x-zro-queue";
 export const PROVIDER_ID = "zro";
 export const PROVIDER_NAME = "Zro";
 
