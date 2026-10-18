@@ -209,7 +209,11 @@ describe("zro experience", () => {
     const preferences = JSON.parse(
       await fs.readFile(path.join(home, ".config", "zro", "preferences.json"), "utf8")
     );
-    expect(preferences).toMatchObject({ lastTool: "codex", lastModel: "glm-5.3" });
+    expect(preferences).toMatchObject({
+      lastTool: "codex",
+      lastModel: "glm-5.3",
+      lastQueue: "normal",
+    });
     await expect(fs.stat(sessionHome)).rejects.toMatchObject({ code: "ENOENT" });
   });
 

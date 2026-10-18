@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, withZroQueueHeader, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -19,7 +19,7 @@ export const piTool: ToolModule = {
     const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
     const existingAgentDir = process.env[PI_AGENT_DIR_ENV_KEY] ?? path.join(ctx.homeDir, ".pi", "agent");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
-    const nextConfig = buildPiModelsConfig(existing, ctx.models);
+    const nextConfig = buildPiModelsConfig(existing, ctx.models, ctx.queue);
     return {
       tool: "pi",
       label: "Pi",
@@ -62,7 +62,8 @@ export const piTool: ToolModule = {
 
 function buildPiModelsConfig(
   existing: Record<string, unknown>,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  queue: string,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = objectAt(next, "providers");
@@ -77,10 +78,10 @@ function buildPiModelsConfig(
     baseUrl: BASE_URL,
     api: "openai-completions",
     apiKey: `$${ZRO_ENV_KEY}`,
-    headers: {
+    headers: withZroQueueHeader({
       ...(asPlainObject(existingProvider.headers) ?? {}),
-      "User-Agent": "pi-coding-agent"
-    },
+      "User-Agent": "pi-coding-agent",
+    }, queue),
     compat: {
       ...(asPlainObject(existingProvider.compat) ?? {}),
       supportsDeveloperRole: false,

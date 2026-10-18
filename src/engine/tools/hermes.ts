@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, withZroQueueHeader, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { yamlSerializer } from "../serializers.js";
 import type { ApiKeySource, ToolModule } from "../types.js";
@@ -12,7 +12,7 @@ export const hermesTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".hermes", "config.yaml");
     const existing = await readConfig(path.join(ctx.homeDir, ".hermes", "config.yaml"), yamlSerializer);
-    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models, ctx.model);
+    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models, ctx.model, ctx.queue);
     return {
       tool: "hermes",
       label: "Hermes",
@@ -41,7 +41,8 @@ function buildHermesConfig(
   apiKey: string,
   apiKeySource: ApiKeySource,
   modelSpecs: readonly ZroModel[],
-  selectedModel: string
+  selectedModel: string,
+  queue: string,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = Array.isArray(next.custom_providers) ? [...next.custom_providers] : [];
@@ -102,10 +103,10 @@ function buildHermesConfig(
   const selectedSpec = modelSpecs.find((model) => model.id === selectedModel);
   next.model = {
     ...existingModelConfig,
-    default_headers: {
+    default_headers: withZroQueueHeader({
       ...(asPlainObject(existingModelConfig.default_headers) ?? {}),
-      "User-Agent": "hermes"
-    },
+      "User-Agent": "hermes",
+    }, queue),
     ...(selectedSpec ? { max_tokens: selectedSpec.maxOutputTokens } : {})
   };
   next.custom_providers = providers;

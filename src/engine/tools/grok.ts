@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_QUEUE_HEADER, type ZroModel } from "../constants.js";
 import type { ToolModule } from "../types.js";
 
 const GROK_HOME_ENV_KEY = "GROK_HOME";
@@ -22,7 +22,7 @@ export const grokTool: ToolModule = {
       },
       files: [{
         path: configPath,
-        contents: buildGrokConfig(ctx.model, ctx.apiKey, ctx.models)
+        contents: buildGrokConfig(ctx.model, ctx.apiKey, ctx.models, ctx.queue)
       }],
       message: "Launch Grok Build with Zro"
     };
@@ -33,11 +33,15 @@ function buildGrokConfig(
   selectedModel: string,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
+  queue: string,
 ): string {
   const lines: string[] = [];
 
   lines.push("[models]");
   lines.push(`default = ${tomlString(selectedModel)}`);
+  if (queue !== "normal") {
+    lines.push(`extra_headers = { ${tomlString(ZRO_QUEUE_HEADER)} = ${tomlString(queue)} }`);
+  }
   lines.push("");
 
   lines.push("[cli]");

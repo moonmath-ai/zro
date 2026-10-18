@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, withZroQueueHeader, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -31,7 +31,7 @@ export const primeTool: ToolModule = {
     const filePath = path.join(tempAgentDir, "models.json");
     const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
-    const nextConfig = buildPrimeModelsConfig(existing, ctx.models);
+    const nextConfig = buildPrimeModelsConfig(existing, ctx.models, ctx.queue);
     return {
       tool: "prime",
       label: "Prime Agent",
@@ -69,7 +69,8 @@ export const primeTool: ToolModule = {
 
 function buildPrimeModelsConfig(
   existing: Record<string, unknown>,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  queue: string,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = objectAt(next, "providers");
@@ -84,10 +85,10 @@ function buildPrimeModelsConfig(
     baseUrl: BASE_URL,
     api: "openai-completions",
     apiKey: ZRO_ENV_KEY,
-    headers: {
+    headers: withZroQueueHeader({
       ...(asPlainObject(existingProvider.headers) ?? {}),
-      "User-Agent": "prime-agent"
-    },
+      "User-Agent": "prime-agent",
+    }, queue),
     compat: {
       ...(asPlainObject(existingProvider.compat) ?? {}),
       supportsDeveloperRole: false,

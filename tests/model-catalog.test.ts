@@ -7,6 +7,7 @@ import {
   CatalogUnavailableError,
   loadModelCatalog,
   modelCatalogCachePath,
+  parseModelCatalog,
 } from "../src/model-catalog.js";
 
 const dynamicCatalog = {
@@ -35,6 +36,22 @@ const dynamicCatalog = {
 };
 
 describe("dynamic model catalog", () => {
+  it("collapses queue aliases while preserving real model IDs containing @", () => {
+    const base = dynamicCatalog.models[0];
+    const catalog = parseModelCatalog({
+      version: 1,
+      default: "future-model@fast",
+      models: [
+        base,
+        { ...base, id: "future-model@fast", displayName: "Future Model (Fast)" },
+        { ...base, id: "vendor@model", displayName: "Vendor Model" },
+      ],
+    });
+
+    expect(catalog.default).toBe("future-model");
+    expect(catalog.models.map((model) => model.id)).toEqual(["future-model", "vendor@model"]);
+  });
+
   it("fetches an authenticated catalog and caches it", async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-catalog-"));
     const env = { ZRO_AUTH_URL: "https://auth.zro.example" };

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, type ZroModel } from "../constants.js";
+import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, ZRO_QUEUE_HEADER, type ZroModel } from "../constants.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 
@@ -33,6 +33,9 @@ export const claudeTool: ToolModule = {
       env: {
         ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
         ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
+        ...(ctx.queue === "normal"
+          ? {}
+          : { ANTHROPIC_CUSTOM_HEADERS: `${ZRO_QUEUE_HEADER}: ${ctx.queue}` }),
         ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget, sessionOutputBudget),
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "0",
         CLAUDE_CODE_ATTRIBUTION_HEADER: "0",

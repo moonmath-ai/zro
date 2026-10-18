@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Highlights
+
+- **Queues are independent from models.** `zro <tool> --queue <name>` sends `x-zro-queue` through
+  each supported agent's native request-header configuration, remembers the selection for
+  `zro again`, and hides obsolete `@queue` catalog aliases when the base model is present.
+
 ## [0.3.0] - 2026-10-05
 
 ### Highlights

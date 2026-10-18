@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, withZroQueueHeader, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { json5Serializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -14,7 +14,7 @@ export const openClawTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".openclaw", "openclaw.json");
     const existing = await readConfig(path.join(ctx.homeDir, ".openclaw", "openclaw.json"), json5Serializer);
-    const nextConfig = buildOpenClawConfig(existing, ctx.apiKey, ctx.models);
+    const nextConfig = buildOpenClawConfig(existing, ctx.apiKey, ctx.models, ctx.queue);
     objectAt(objectAt(objectAt(nextConfig, "agents"), "defaults"), "model").primary = `${PROVIDER_ID}/${ctx.model}`;
     return {
       tool: "openclaw",
@@ -51,7 +51,8 @@ function buildOpenClawArgs(extraArgs: string[]): string[] {
 function buildOpenClawConfig(
   existing: Record<string, unknown>,
   apiKey: string,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  queue: string,
 ): Record<string, unknown> {
   const next = { ...existing };
 
@@ -78,7 +79,7 @@ function buildOpenClawConfig(
 
   const providerModels = Array.isArray(provider.models) ? [...provider.models] : [];
   for (const zroModel of modelSpecs) {
-    upsertOpenClawModel(providerModels, zroModel);
+    upsertOpenClawModel(providerModels, zroModel, queue);
   }
 
   providers[PROVIDER_ID] = {
@@ -109,7 +110,7 @@ function buildOpenClawConfig(
   return next;
 }
 
-function upsertOpenClawModel(models: unknown[], model: ZroModel): void {
+function upsertOpenClawModel(models: unknown[], model: ZroModel, queue: string): void {
   const index = models.findIndex((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
     return (entry as Record<string, unknown>).id === model.id;
@@ -128,10 +129,10 @@ function upsertOpenClawModel(models: unknown[], model: ZroModel): void {
     api: OPENCLAW_API,
     reasoning: true,
     thinkingLevelMap,
-    headers: {
+    headers: withZroQueueHeader({
       ...existingHeaders,
-      "User-Agent": "openclaw"
-    },
+      "User-Agent": "openclaw",
+    }, queue),
     input: ["text"],
     compat: {
       ...existingCompat,

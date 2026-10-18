@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, supportsAttachments, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, withZroQueueHeader, supportsAttachments, type ZroModel } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
 import type { LaunchFile, ToolModule } from "../types.js";
 import { asPlainObject, objectAt } from "./helpers.js";
@@ -19,7 +19,7 @@ export const opencodeTool: ToolModule = {
     const userConfigRoot = ctx.env.XDG_CONFIG_HOME ?? path.join(ctx.homeDir, ".config");
     const userOpencodeRoot = path.join(userConfigRoot, "opencode");
     const existing = await readOpenCodeConfig(userOpencodeRoot);
-    const nextConfig = buildOpenCodeConfig(existing, ctx.apiKey, ctx.models, true);
+    const nextConfig = buildOpenCodeConfig(existing, ctx.apiKey, ctx.models, true, ctx.queue);
     nextConfig.model = `${PROVIDER_ID}/${ctx.model}`;
     const userFiles = await collectUserConfigFiles(userOpencodeRoot, opencodeRoot);
 
@@ -153,7 +153,8 @@ export function buildOpenCodeConfig(
   existing: Record<string, unknown>,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
-  useEnvReference = false
+  useEnvReference = false,
+  queue = "normal",
 ): Record<string, unknown> {
   const next = { ...existing };
   if (typeof next.$schema !== "string") {
@@ -165,7 +166,8 @@ export function buildOpenCodeConfig(
     provider[PROVIDER_ID],
     apiKey,
     modelSpecs,
-    useEnvReference
+    useEnvReference,
+    queue,
   );
   const mcp = objectAt(next, "mcp");
   mcp[PROVIDER_ID] = {
@@ -184,7 +186,8 @@ function openAiCompatibleProvider(
   existing: unknown,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
-  useEnvReference = false
+  useEnvReference = false,
+  queue = "normal",
 ): Record<string, unknown> {
   const existingProvider = asPlainObject(existing) ?? {};
   const existingOptions = asPlainObject(existingProvider.options) ?? {};
@@ -219,7 +222,10 @@ function openAiCompatibleProvider(
     options: {
       ...existingOptions,
       baseURL: BASE_URL,
-      apiKey: useEnvReference ? `{env:${ZRO_ENV_KEY}}` : apiKey
+      apiKey: useEnvReference ? `{env:${ZRO_ENV_KEY}}` : apiKey,
+      headers: withZroQueueHeader({
+        ...(asPlainObject(existingOptions.headers) ?? {}),
+      }, queue),
     },
     models
   };

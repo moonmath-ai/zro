@@ -6,6 +6,7 @@ import {
   MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
+  withZroQueueHeader,
   type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer, yamlSerializer } from "../serializers.js";
@@ -140,7 +141,7 @@ export const ompTool: ToolModule = {
         },
         {
           path: path.join(agentDir, "models.yml"),
-          contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models)),
+          contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models, ctx.queue)),
         },
         {
           path: path.join(agentDir, "mcp.json"),
@@ -184,6 +185,7 @@ export function buildOmpConfigOverlay(
 
 export function buildOmpModelsConfig(
   modelSpecs: readonly ZroModel[],
+  queue = "normal",
 ): Record<string, unknown> {
   return {
     providers: {
@@ -191,6 +193,7 @@ export function buildOmpModelsConfig(
         baseUrl: BASE_URL,
         apiKey: ZRO_ENV_KEY,
         api: "openai-completions",
+        headers: withZroQueueHeader({}, queue),
         compat: {
           supportsDeveloperRole: false,
           supportsReasoningEffort: true,

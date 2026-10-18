@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_QUEUE_HEADER, type ZroModel } from "../constants.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 
@@ -25,7 +25,8 @@ export const codexTool: ToolModule = {
           path: path.join(codexHome, "config.toml"),
           contents: buildCodexConfig(ctx.model, {
             catalogPath,
-            modelSpec: selectedModel
+            modelSpec: selectedModel,
+            queue: ctx.queue,
           })
         },
         {
@@ -92,7 +93,7 @@ export const codexAppTool: ToolModule = {
       files: [
         {
           path: path.join(codexHome, "config.toml"),
-          contents: buildCodexConfig(ctx.model, { catalogPath }),
+          contents: buildCodexConfig(ctx.model, { catalogPath, queue: ctx.queue }),
           persistent: true
         },
         {
@@ -196,8 +197,9 @@ function codexReasoningEffort(
 
 export function buildCodexConfig(
   model: string,
-  options: { catalogPath?: string; modelSpec?: ZroModel } = {}
+  options: { catalogPath?: string; modelSpec?: ZroModel; queue?: string } = {}
 ): string {
+  const queue = options.queue ?? "normal";
   const config = [
     `model = ${tomlString(model)}`,
     `model_provider = ${tomlString(PROVIDER_ID)}`,
@@ -227,6 +229,9 @@ export function buildCodexConfig(
     `base_url = ${tomlString(BASE_URL)}`,
     `wire_api = "responses"`,
     `env_key = ${tomlString(ZRO_ENV_KEY)}`,
+    ...(queue === "normal"
+      ? []
+      : [`http_headers = { ${tomlString(ZRO_QUEUE_HEADER)} = ${tomlString(queue)} }`]),
     `supports_websockets = false`,
     "",
     `[mcp_servers.${PROVIDER_ID}]`,
