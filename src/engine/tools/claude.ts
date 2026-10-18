@@ -33,7 +33,9 @@ export const claudeTool: ToolModule = {
       env: {
         ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
         ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
-        ANTHROPIC_CUSTOM_HEADERS: `${ZRO_QUEUE_HEADER}: ${ctx.queue}`,
+        ...(ctx.queue === "normal"
+          ? {}
+          : { ANTHROPIC_CUSTOM_HEADERS: `${ZRO_QUEUE_HEADER}: ${ctx.queue}` }),
         ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget, sessionOutputBudget),
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "0",
         CLAUDE_CODE_ATTRIBUTION_HEADER: "0",

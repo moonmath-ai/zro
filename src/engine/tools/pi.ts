@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_QUEUE_HEADER, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, withZroQueueHeader, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -78,11 +78,10 @@ function buildPiModelsConfig(
     baseUrl: BASE_URL,
     api: "openai-completions",
     apiKey: `$${ZRO_ENV_KEY}`,
-    headers: {
+    headers: withZroQueueHeader({
       ...(asPlainObject(existingProvider.headers) ?? {}),
       "User-Agent": "pi-coding-agent",
-      [ZRO_QUEUE_HEADER]: queue,
-    },
+    }, queue),
     compat: {
       ...(asPlainObject(existingProvider.compat) ?? {}),
       supportsDeveloperRole: false,

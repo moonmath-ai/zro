@@ -39,7 +39,9 @@ function buildGrokConfig(
 
   lines.push("[models]");
   lines.push(`default = ${tomlString(selectedModel)}`);
-  lines.push(`extra_headers = { ${tomlString(ZRO_QUEUE_HEADER)} = ${tomlString(queue)} }`);
+  if (queue !== "normal") {
+    lines.push(`extra_headers = { ${tomlString(ZRO_QUEUE_HEADER)} = ${tomlString(queue)} }`);
+  }
   lines.push("");
 
   lines.push("[cli]");

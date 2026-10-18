@@ -199,6 +199,7 @@ export function buildCodexConfig(
   model: string,
   options: { catalogPath?: string; modelSpec?: ZroModel; queue?: string } = {}
 ): string {
+  const queue = options.queue ?? "normal";
   const config = [
     `model = ${tomlString(model)}`,
     `model_provider = ${tomlString(PROVIDER_ID)}`,
@@ -228,7 +229,9 @@ export function buildCodexConfig(
     `base_url = ${tomlString(BASE_URL)}`,
     `wire_api = "responses"`,
     `env_key = ${tomlString(ZRO_ENV_KEY)}`,
-    `http_headers = { ${tomlString(ZRO_QUEUE_HEADER)} = ${tomlString(options.queue ?? "normal")} }`,
+    ...(queue === "normal"
+      ? []
+      : [`http_headers = { ${tomlString(ZRO_QUEUE_HEADER)} = ${tomlString(queue)} }`]),
     `supports_websockets = false`,
     "",
     `[mcp_servers.${PROVIDER_ID}]`,

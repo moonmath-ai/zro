@@ -6,7 +6,7 @@ import {
   MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
-  ZRO_QUEUE_HEADER,
+  withZroQueueHeader,
   type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer, yamlSerializer } from "../serializers.js";
@@ -193,7 +193,7 @@ export function buildOmpModelsConfig(
         baseUrl: BASE_URL,
         apiKey: ZRO_ENV_KEY,
         api: "openai-completions",
-        headers: { [ZRO_QUEUE_HEADER]: queue },
+        headers: withZroQueueHeader({}, queue),
         compat: {
           supportsDeveloperRole: false,
           supportsReasoningEffort: true,

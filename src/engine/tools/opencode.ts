@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, ZRO_QUEUE_HEADER, supportsAttachments, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, withZroQueueHeader, supportsAttachments, type ZroModel } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
 import type { LaunchFile, ToolModule } from "../types.js";
 import { asPlainObject, objectAt } from "./helpers.js";
@@ -223,10 +223,9 @@ function openAiCompatibleProvider(
       ...existingOptions,
       baseURL: BASE_URL,
       apiKey: useEnvReference ? `{env:${ZRO_ENV_KEY}}` : apiKey,
-      headers: {
+      headers: withZroQueueHeader({
         ...(asPlainObject(existingOptions.headers) ?? {}),
-        [ZRO_QUEUE_HEADER]: queue,
-      },
+      }, queue),
     },
     models
   };

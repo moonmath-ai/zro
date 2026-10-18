@@ -6,7 +6,7 @@ import {
   PROVIDER_ID,
   PROVIDER_NAME,
   ZRO_ENV_KEY,
-  ZRO_QUEUE_HEADER,
+  withZroQueueHeader,
   type ZroModel,
 } from "../constants.js";
 import { json5Serializer, jsonSerializer } from "../serializers.js";
@@ -179,7 +179,7 @@ export function buildKiloConfigOverlay(
         options: {
           baseURL: BASE_URL,
           apiKey: `{env:${ZRO_ENV_KEY}}`,
-          headers: { [ZRO_QUEUE_HEADER]: queue },
+          headers: withZroQueueHeader({}, queue),
         },
         models,
       },

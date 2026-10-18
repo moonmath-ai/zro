@@ -6,6 +6,16 @@ export const ZRO_QUEUE_HEADER = "x-zro-queue";
 export const PROVIDER_ID = "zro";
 export const PROVIDER_NAME = "Zro";
 
+export function withZroQueueHeader(
+  headers: Record<string, unknown>,
+  queue: string,
+): Record<string, unknown> {
+  const next = { ...headers };
+  delete next[ZRO_QUEUE_HEADER];
+  if (queue !== "normal") next[ZRO_QUEUE_HEADER] = queue;
+  return next;
+}
+
 export interface ZroReasoningLevel {
   id: string;
   description: string;

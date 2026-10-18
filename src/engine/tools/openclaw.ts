@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, ZRO_QUEUE_HEADER, type ZroModel } from "../constants.js";
+import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, withZroQueueHeader, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { json5Serializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -129,11 +129,10 @@ function upsertOpenClawModel(models: unknown[], model: ZroModel, queue: string):
     api: OPENCLAW_API,
     reasoning: true,
     thinkingLevelMap,
-    headers: {
+    headers: withZroQueueHeader({
       ...existingHeaders,
       "User-Agent": "openclaw",
-      [ZRO_QUEUE_HEADER]: queue,
-    },
+    }, queue),
     input: ["text"],
     compat: {
       ...existingCompat,
