@@ -93,6 +93,7 @@ zro logout                   # remove the stored login
 | [OpenClaw](https://github.com/openclaw/openclaw) | `zro install openclaw` | Personal AI assistant |
 | [Pi](https://github.com/earendil-works/pi) | `zro install pi` | Minimal coding agent |
 | [Prime Agent](https://primeintellect.ai) | `zro install prime` | Prime Intellect's self-improving RLM agent |
+| [Nanocodex](https://github.com/gakonst/nanocodex) | `zro install nanocodex` | Embedded Codex-derived agent harness |
 
 Each adapter launches the installed tool as a child process with isolated, Zro-owned
 configuration. Session files are temporary; Codex App uses a persistent Zro-owned home.

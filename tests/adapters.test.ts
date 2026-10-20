@@ -10,6 +10,7 @@ const adapters = [
   ["codex", "codex"],
   ["codex-app", "codex"],
   ["hermes", "hermes"],
+  ["nanocodex", "nanocodex"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
   ["pi", "pi"],

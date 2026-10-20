@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Nanocodex support.** [Nanocodex](https://github.com/gakonst/nanocodex), the embedded
+  Codex-derived agent harness, is now a supported harness (`zro nanocodex`). Zro points its Codex
+  harness at the Zro Responses endpoint over HTTPS (`OPENAI_API_KEY`/`OPENAI_API_BASE_URL` plus a
+  Zro MCP server in an isolated `CODEX_HOME`), so the API key stays in the environment and never
+  touches disk. Nanocodex has a closed model catalog with no provider abstraction, so a Zro model it
+  does not natively know (for example `deepseek-v4.1-flash`) is routed by setting
+  `NANOCODEX_MODEL_ID_PREFIX` to the Zro model id and seating the request in a compatible base slot;
+  native ids (`glm-5.3`, `kimi-k3`) pass through unchanged. Install with `zro install nanocodex`.
+
 ## [0.3.0] - 2026-10-05
 
 ### Highlights

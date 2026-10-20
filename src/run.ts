@@ -27,6 +27,7 @@ import {
 import { grokTool } from "./engine/tools/grok.js";
 import { hermesTool } from "./engine/tools/hermes.js";
 import { kiloTool } from "./engine/tools/kilo.js";
+import { nanocodexTool } from "./engine/tools/nanocodex.js";
 import { ompTool } from "./engine/tools/omp.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
 import { opencodeTool } from "./engine/tools/opencode.js";
@@ -55,6 +56,7 @@ const tools: Record<ToolId, ToolModule> = {
   grok: grokTool,
   hermes: hermesTool,
   kilo: kiloTool,
+  nanocodex: nanocodexTool,
   omp: ompTool,
   openclaw: openClawTool,
   opencode: opencodeTool,

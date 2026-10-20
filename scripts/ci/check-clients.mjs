@@ -14,7 +14,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 }
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-models-report.json");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "nanocodex", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -66,6 +66,7 @@ try {
     codex: ["codex", "--version"],
     grok: ["grok", "--version"],
     kilo: ["kilo", "--version"],
+    nanocodex: ["nanocodex", "--version"],
     omp: ["omp", "--version"],
     opencode: ["opencode", "--version"],
     pi: ["pi", "--version"],
