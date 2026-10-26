@@ -171,11 +171,22 @@ export function buildCodexModelCatalog(
       max_context_window: model.contextWindow,
       effective_context_window_percent: 95,
       experimental_supported_tools: [],
-      input_modalities: model.modalities.input,
+      input_modalities: codexInputModalities(model.modalities.input),
       supports_search_tool: false,
       use_responses_lite: false
     }))
   };
+}
+
+const CODEX_INPUT_MODALITIES = new Set(["text", "image", "audio"]);
+
+// Codex only accepts text/image/audio input modalities. The Zro catalog also
+// lists video and pdf, so drop those before writing model_catalog_json.
+function codexInputModalities(
+  input: ZroModel["modalities"]["input"]
+): string[] {
+  const supported = input.filter((modality) => CODEX_INPUT_MODALITIES.has(modality));
+  return supported.length > 0 ? supported : ["text"];
 }
 
 // The remote catalog does not carry codexEffort, and parseModelCatalog
