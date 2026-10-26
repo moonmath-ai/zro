@@ -25,12 +25,15 @@ export const codexTool: ToolModule = {
           path: path.join(codexHome, "config.toml"),
           contents: buildCodexConfig(ctx.model, {
             catalogPath,
-            modelSpec: selectedModel
+            modelSpec: selectedModel,
+            baseUrl: ctx.inferenceBaseUrl,
+            mcpUrl: ctx.mcpUrl,
+            noAuth: ctx.noAuth
           })
         },
         {
           path: catalogPath,
-          contents: jsonSerializer.stringify(buildCodexModelCatalog(ctx.models))
+          contents: jsonSerializer.stringify(buildCodexModelCatalog(ctx.models, ctx.inferenceBaseUrl))
         }
       ],
       message: "Launch Codex CLI with Zro"
@@ -92,7 +95,12 @@ export const codexAppTool: ToolModule = {
       files: [
         {
           path: path.join(codexHome, "config.toml"),
-          contents: buildCodexConfig(ctx.model, { catalogPath }),
+          contents: buildCodexConfig(ctx.model, {
+            catalogPath,
+            baseUrl: ctx.inferenceBaseUrl,
+            mcpUrl: ctx.mcpUrl,
+            noAuth: ctx.noAuth
+          }),
           persistent: true
         },
         {
@@ -102,7 +110,7 @@ export const codexAppTool: ToolModule = {
         },
         {
           path: catalogPath,
-          contents: jsonSerializer.stringify(buildCodexModelCatalog(ctx.models)),
+          contents: jsonSerializer.stringify(buildCodexModelCatalog(ctx.models, ctx.inferenceBaseUrl)),
           persistent: true
         }
       ],
@@ -119,12 +127,15 @@ export function codexAppCredentialFilePath(homeDir: string): string {
   return path.join(codexAppHome(homeDir), ".env");
 }
 
-export function buildCodexModelCatalog(modelSpecs: readonly ZroModel[]): Record<string, unknown> {
+export function buildCodexModelCatalog(
+  modelSpecs: readonly ZroModel[],
+  baseUrl = BASE_URL,
+): Record<string, unknown> {
   return {
     models: modelSpecs.map((model, index) => ({
       slug: model.id,
       display_name: model.displayName,
-      description: `${PROVIDER_NAME} model via ${BASE_URL}`,
+      description: `${PROVIDER_NAME} model via ${baseUrl}`,
       default_reasoning_level: codexReasoningEffort(
         model.reasoning.levels.find(
           (level) => level.id === model.reasoning.defaultLevel
@@ -196,7 +207,13 @@ function codexReasoningEffort(
 
 export function buildCodexConfig(
   model: string,
-  options: { catalogPath?: string; modelSpec?: ZroModel } = {}
+  options: {
+    catalogPath?: string;
+    modelSpec?: ZroModel;
+    baseUrl?: string;
+    mcpUrl?: string;
+    noAuth?: boolean;
+  } = {}
 ): string {
   const config = [
     `model = ${tomlString(model)}`,
@@ -224,14 +241,16 @@ export function buildCodexConfig(
     "",
     `[model_providers.${PROVIDER_ID}]`,
     `name = ${tomlString(PROVIDER_NAME)}`,
-    `base_url = ${tomlString(BASE_URL)}`,
+    `base_url = ${tomlString(options.baseUrl ?? BASE_URL)}`,
     `wire_api = "responses"`,
     `env_key = ${tomlString(ZRO_ENV_KEY)}`,
     `supports_websockets = false`,
-    "",
-    `[mcp_servers.${PROVIDER_ID}]`,
-    `url = ${tomlString(MCP_URL)}`,
-    `bearer_token_env_var = ${tomlString(ZRO_ENV_KEY)}`,
+    ...(options.noAuth ? [] : [
+      "",
+      `[mcp_servers.${PROVIDER_ID}]`,
+      `url = ${tomlString(options.mcpUrl ?? MCP_URL)}`,
+      `bearer_token_env_var = ${tomlString(ZRO_ENV_KEY)}`,
+    ]),
     "",
     "[otel]",
     `exporter = "none"`,

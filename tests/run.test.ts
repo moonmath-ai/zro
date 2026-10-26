@@ -268,6 +268,10 @@ describe("zro experience", () => {
     const plan = await claudeTool.launch({
       apiKey: "sk-boundary-secret",
       apiKeySource: "env",
+      inferenceRoot: "https://zro.moonmath.ai",
+      inferenceBaseUrl: "https://zro.moonmath.ai/v1",
+      mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+      noAuth: false,
       env: {},
       model: "kimi-k3",
       models,
@@ -304,6 +308,10 @@ describe("zro experience", () => {
     const plan = await claudeTool.launch({
       apiKey: "sk-boundary-secret",
       apiKeySource: "env",
+      inferenceRoot: "https://zro.moonmath.ai",
+      inferenceBaseUrl: "https://zro.moonmath.ai/v1",
+      mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+      noAuth: false,
       env: {},
       model: "anthropic.injected",
       models,
@@ -359,6 +367,10 @@ describe("zro experience", () => {
     const plan = await claudeTool.launch({
       apiKey: "sk-warn-secret",
       apiKeySource: "env",
+      inferenceRoot: "https://zro.moonmath.ai",
+      inferenceBaseUrl: "https://zro.moonmath.ai/v1",
+      mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+      noAuth: false,
       env: {},
       model: "uncatalogued-model",
       models: [],

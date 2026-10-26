@@ -76,6 +76,40 @@ zro logout                   # remove the stored login
   Codex App keeps its own copy under `~/.config/zro/codex-app/.env`; `zro logout` removes both.
 - The credential is verified against the inference API before any launch.
 
+### Alternate inference URL and no-auth mode
+
+Point inference at another OpenAI-compatible gateway with `--inference-url` or
+`ZRO_INFERENCE_URL`. A root URL or one ending in `/v1` both work; trailing slashes are
+normalized.
+
+```bash
+zro claude --inference-url https://gateway.example
+ZRO_INFERENCE_URL=https://gateway.example zro codex
+```
+
+Precedence is `--inference-url` > `ZRO_INFERENCE_URL` > `ZRO_ENDPOINT_ROOT` >
+`https://zro.moonmath.ai`. The override only changes inference traffic; login, the
+authenticated catalog, feedback, and MCP stay on `ZRO_AUTH_URL` / `ZRO_ENDPOINT_ROOT`.
+
+For an inference endpoint with no authentication and no Zro account, add `--no-auth` or
+set `ZRO_NO_AUTH=1`. No-auth mode requires an explicit `--inference-url` or
+`ZRO_INFERENCE_URL`.
+
+```bash
+zro claude --no-auth --inference-url https://gateway.example
+zro models --no-auth --inference-url https://gateway.example
+ZRO_NO_AUTH=1 ZRO_INFERENCE_URL=https://gateway.example zro status
+```
+
+In no-auth mode the CLI skips login and API-key checks, sends no `Authorization`
+headers, and uses a fixed non-secret placeholder key only where an agent requires a
+non-empty value. Public model metadata comes from the main webapp
+(`/api/cli/models/public`) and is intersected with the gateway's live `/v1/models`
+list, so `zro models` only shows models the gateway can serve. That metadata is cached
+separately at `~/.cache/zro/model-catalog-public.json`. The Zro MCP server is omitted
+from every agent config because it requires an account, and `zro feedback` is
+unavailable in this mode.
+
 ---
 
 ## Supported coding agents
@@ -116,6 +150,8 @@ zro install claude@2.1.105  # pin an agent version
 zro feedback                # send feedback to the Zro team
 zro claude --dry-run        # secret-safe session preview
 zro codex --json            # machine-readable preview
+zro claude --no-auth --inference-url https://gateway.example
+                            # launch against a no-auth inference endpoint
 ```
 
 ---

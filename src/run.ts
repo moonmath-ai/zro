@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
+import { NO_AUTH_PLACEHOLDER_KEY, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -34,6 +34,7 @@ import { piTool } from "./engine/tools/pi.js";
 import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
+import { isNoAuth, resolveControlPlaneRoot, resolveInference, resolveMcpUrl } from "./endpoints.js";
 import { describeTool } from "./catalog.js";
 import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
@@ -91,8 +92,8 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
   if (request.command === "install") return install(request, io, env);
   if (request.command === "login") return login(request, io, env, colors);
   if (request.command === "logout") return logout(request.output, io, env);
-  if (request.command === "status") return status(request.output, io, env, colors);
-  if (request.command === "models") return models(request.output, io, env, colors);
+  if (request.command === "status") return status(request, io, env, colors);
+  if (request.command === "models") return models(request, io, env, colors);
   if (request.command === "feedback") return feedback(request, io, env, colors);
 
   if (request.command === "home") {
@@ -129,7 +130,9 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       dryRun: request.dryRun,
       output: request.output,
       extraArgs: [],
-      aliases: request.aliases
+      aliases: request.aliases,
+      inferenceUrl: request.inferenceUrl,
+      noAuth: request.noAuth,
     };
   }
 
@@ -142,20 +145,35 @@ async function launch(
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>
 ): Promise<number> {
-  let key;
+  const noAuth = isNoAuth(request.noAuth, env);
+  let inference: ReturnType<typeof resolveInference>;
+  let mcpUrl: string;
   try {
-    key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
-  } catch {
-    if (!isTty(io.stdin) || !isTty(io.stdout)) {
-      io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
-      return 1;
-    }
-    const connected = await connectInteractively(io, env, colors);
-    if (typeof connected === "number") return connected;
-    key = connected;
+    inference = resolveInference(env, request.inferenceUrl, noAuth);
+    mcpUrl = resolveMcpUrl(env);
+  } catch (error) {
+    io.stderr.write(`${messageOf(error)}\n`);
+    return 1;
   }
 
-  if (request.apiKey) {
+  let key;
+  if (noAuth) {
+    key = { apiKey: NO_AUTH_PLACEHOLDER_KEY, source: "none" as const };
+  } else {
+    try {
+      key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
+    } catch {
+      if (!isTty(io.stdin) || !isTty(io.stdout)) {
+        io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
+        return 1;
+      }
+      const connected = await connectInteractively(io, env, colors);
+      if (typeof connected === "number") return connected;
+      key = connected;
+    }
+  }
+
+  if (request.apiKey && !noAuth) {
     io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
@@ -163,6 +181,8 @@ async function launch(
   try {
     catalog = await loadModelCatalog({
       apiKey: key.apiKey,
+      noAuth,
+      inferenceRoot: inference.root,
       env,
       homeDir: io.homeDir,
       fetch: io.fetch,
@@ -231,6 +251,10 @@ async function launch(
     plan = await tools[request.tool].launch({
       apiKey: key.apiKey,
       apiKeySource: key.source,
+      inferenceRoot: inference.root,
+      inferenceBaseUrl: inference.baseUrl,
+      mcpUrl,
+      noAuth,
       env,
       model,
       models: catalog.models,
@@ -256,7 +280,7 @@ async function launch(
     return 0;
   }
 
-  if (!await verifyApiKey(key.apiKey, io, env)) {
+  if (!noAuth && !await verifyApiKey(key.apiKey, io, env, inference.root)) {
     await fs.rm(tempDir, { recursive: true, force: true });
     return 1;
   }
@@ -310,10 +334,10 @@ async function verifyApiKey(
   apiKey: string,
   io: RunIo,
   env: NodeJS.ProcessEnv,
+  inferenceRoot: string,
 ): Promise<boolean> {
   const fetcher = io.fetch ?? globalThis.fetch;
-  const endpointRoot = (env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
-  const validationUrl = `${endpointRoot}/v1/models`;
+  const validationUrl = `${inferenceRoot}/v1/models`;
 
   let response: Response;
   try {
@@ -323,7 +347,7 @@ async function verifyApiKey(
     });
   } catch (error) {
     io.stderr.write(
-      `Could not verify Zro authentication at ${endpointRoot}: ${messageOf(error)}. Agent was not started.\n`,
+      `Could not verify Zro authentication at ${inferenceRoot}: ${messageOf(error)}. Agent was not started.\n`,
     );
     return false;
   }
@@ -596,16 +620,49 @@ async function deleteOptionalFile(filePath: string): Promise<boolean> {
 }
 
 async function status(
-  output: "human" | "json",
+  request: Extract<CliRequest, { command: "status" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>
 ): Promise<number> {
+  const output = request.output;
+  const preferences = await readPreferences({ homeDir: io.homeDir, env });
+  if (isNoAuth(request.noAuth, env)) {
+    let inferenceRoot: string | undefined;
+    try {
+      inferenceRoot = resolveInference(env, request.inferenceUrl).root;
+    } catch {
+      inferenceRoot = undefined;
+    }
+    if (output === "json") {
+      io.stdout.write(`${JSON.stringify({
+        connected: false,
+        mode: "no-auth",
+        noAuth: true,
+        credentialSource: "none",
+        inferenceUrl: inferenceRoot ?? null,
+        lastSession: preferences.lastTool && preferences.lastModel
+          ? { tool: preferences.lastTool, model: preferences.lastModel }
+          : null,
+      }, null, 2)}\n`);
+      return 0;
+    }
+
+    io.stdout.write(`${banner(colors)}\n`);
+    io.stdout.write(`\n${colors.muted("CONNECTION")}\n`);
+    io.stdout.write(`  ${colors.good("◆")} ${colors.strong("No-auth gateway mode")}\n`);
+    if (inferenceRoot) {
+      io.stdout.write(`    ${colors.muted(inferenceRoot)}\n`);
+    }
+    io.stdout.write(`\n${colors.muted("LAST SESSION")}\n`);
+    printLastSession(preferences, io, colors);
+    return 0;
+  }
+
   const stored = await readStoredApiKey({ homeDir: io.homeDir, env });
   const envKey = env[ZRO_ENV_KEY];
   const source = envKey ? "environment" : stored ? "stored" : "none";
   const credential = envKey ?? stored;
-  const preferences = await readPreferences({ homeDir: io.homeDir, env });
   const accountResult = credential
     ? await fetchAccountStatus(credential, io, env)
     : { state: "not_connected" } as const;
@@ -648,6 +705,15 @@ async function status(
   }
 
   io.stdout.write(`\n${colors.muted("LAST SESSION")}\n`);
+  printLastSession(preferences, io, colors);
+  return 0;
+}
+
+function printLastSession(
+  preferences: Awaited<ReturnType<typeof readPreferences>>,
+  io: RunIo,
+  colors: ReturnType<typeof theme>,
+): void {
   if (preferences.lastTool && preferences.lastModel) {
     io.stdout.write(
       `  ${colors.accent("◆")} ${colors.strong(describeTool(preferences.lastTool).name)} ` +
@@ -657,7 +723,6 @@ async function status(
   } else {
     io.stdout.write(`  ${colors.muted("◇")} None yet — start with ${colors.muted("zro claude")}\n`);
   }
-  return 0;
 }
 
 type AccountStatus = {
@@ -720,7 +785,7 @@ async function fetchAccountStatus(
 }
 
 function getAuthRoot(env: NodeJS.ProcessEnv): string {
-  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
+  return resolveControlPlaneRoot(env);
 }
 
 function browserApprovalUrl(serverUrl: string, env: NodeJS.ProcessEnv): string {
@@ -810,24 +875,49 @@ function formatInteger(value: number): string {
 }
 
 async function models(
-  output: "human" | "json",
+  request: Extract<CliRequest, { command: "models" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>,
 ): Promise<number> {
+  const output = request.output;
+  const noAuth = isNoAuth(request.noAuth, env);
+  let inferenceRoot: string | undefined;
+  if (noAuth) {
+    try {
+      inferenceRoot = resolveInference(env, request.inferenceUrl, true).root;
+    } catch (error) {
+      io.stderr.write(`${messageOf(error)}\n`);
+      return 1;
+    }
+  }
+
   let apiKey: string | undefined;
-  try {
-    apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
-  } catch {
-    // A cached catalog remains useful before the user signs in.
+  if (!noAuth) {
+    try {
+      apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
+    } catch {
+      // A cached catalog remains useful before the user signs in.
+    }
   }
 
   let catalog: LoadedModelCatalog;
   try {
-    catalog = await loadModelCatalog({ apiKey, env, homeDir: io.homeDir, fetch: io.fetch });
+    catalog = await loadModelCatalog({
+      apiKey,
+      noAuth,
+      inferenceRoot,
+      env,
+      homeDir: io.homeDir,
+      fetch: io.fetch,
+    });
   } catch (error) {
     if (error instanceof CatalogAuthenticationError) {
       io.stderr.write(`Authentication failed: ${error.message} Run zro login --manual with a valid API key.\n`);
+      return 1;
+    }
+    if (noAuth) {
+      io.stderr.write(`Could not load the public model catalog: ${messageOf(error)}\n`);
       return 1;
     }
     if (output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
@@ -870,6 +960,11 @@ async function feedback(
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>,
 ): Promise<number> {
+  if (isNoAuth(request.noAuth, env)) {
+    io.stderr.write("Feedback needs a Zro account and is unavailable in no-auth mode.\n");
+    return 1;
+  }
+
   let message = request.message;
   if (!message) {
     if (isTty(io.stdin) && isTty(io.stdout)) {
@@ -1007,7 +1102,7 @@ export function unknownModelMessage(model: string, source: CatalogSource): strin
 }
 
 export function redact(key: string, value: string, secret: string): string {
-  if (value === "") return value;
+  if (value === "" || value === NO_AUTH_PLACEHOLDER_KEY) return value;
   const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
   if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
     return maskKey(value);

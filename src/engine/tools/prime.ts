@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -14,11 +14,16 @@ const PRIME_SUBCOMMANDS = new Set([
   "rename", "schedule", "send", "session", "shutdown", "status", "stop", "update"
 ]);
 
-function primeArgs(model: string, extraArgs: string[]): string[] {
+function primeArgs(model: string, extraArgs: string[], noAuth: boolean): string[] {
   if (extraArgs[0] && PRIME_SUBCOMMANDS.has(extraArgs[0])) {
     return extraArgs;
   }
-  return ["--provider", PROVIDER_ID, "--model", model, "--extension", PRIME_MCP_EXTENSION, ...extraArgs];
+  return [
+    "--provider", PROVIDER_ID,
+    "--model", model,
+    ...(noAuth ? [] : ["--extension", PRIME_MCP_EXTENSION]),
+    ...extraArgs,
+  ];
 }
 
 export const primeTool: ToolModule = {
@@ -31,13 +36,13 @@ export const primeTool: ToolModule = {
     const filePath = path.join(tempAgentDir, "models.json");
     const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
-    const nextConfig = buildPrimeModelsConfig(existing, ctx.models);
+    const nextConfig = buildPrimeModelsConfig(existing, ctx.models, ctx.inferenceBaseUrl);
     return {
       tool: "prime",
       label: "Prime Agent",
       model: ctx.model,
       command: "prime-agent",
-      args: primeArgs(ctx.model, ctx.extraArgs),
+      args: primeArgs(ctx.model, ctx.extraArgs, ctx.noAuth),
       env: {
         HOME: tempHome,
         [PRIME_AGENT_DIR_ENV_KEY]: tempAgentDir,
@@ -48,19 +53,19 @@ export const primeTool: ToolModule = {
           path: filePath,
           contents: jsonSerializer.stringify(nextConfig)
         },
-        {
+        ...(ctx.noAuth ? [] : [{
           path: mcpConfigPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
                 transport: "streamable-http",
-                url: MCP_URL,
+                url: ctx.mcpUrl,
                 lifecycle: "eager",
                 headers: { Authorization: `Bearer ${ctx.apiKey}` }
               }
             }
           })
-        }
+        }])
       ],
       message: "Launch Prime Agent with Zro"
     };
@@ -69,7 +74,8 @@ export const primeTool: ToolModule = {
 
 function buildPrimeModelsConfig(
   existing: Record<string, unknown>,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  baseUrl = BASE_URL,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = objectAt(next, "providers");
@@ -81,7 +87,7 @@ function buildPrimeModelsConfig(
 
   providers[PROVIDER_ID] = {
     ...existingProvider,
-    baseUrl: BASE_URL,
+    baseUrl: baseUrl,
     api: "openai-completions",
     apiKey: ZRO_ENV_KEY,
     headers: {

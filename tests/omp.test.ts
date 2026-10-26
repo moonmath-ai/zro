@@ -311,6 +311,10 @@ function context(
   return {
     apiKey: "sk-omp-secret",
     apiKeySource: "env",
+    inferenceRoot: "https://zro.moonmath.ai",
+    inferenceBaseUrl: BASE_URL,
+    mcpUrl: MCP_URL,
+    noAuth: false,
     env,
     model: "glm-5.3",
     models: TEST_MODELS,
