@@ -19,7 +19,11 @@ export const opencodeTool: ToolModule = {
     const userConfigRoot = ctx.env.XDG_CONFIG_HOME ?? path.join(ctx.homeDir, ".config");
     const userOpencodeRoot = path.join(userConfigRoot, "opencode");
     const existing = await readOpenCodeConfig(userOpencodeRoot);
-    const nextConfig = buildOpenCodeConfig(existing, ctx.apiKey, ctx.models, true);
+    const nextConfig = buildOpenCodeConfig(existing, ctx.apiKey, ctx.models, true, {
+      baseUrl: ctx.inferenceBaseUrl,
+      mcpUrl: ctx.mcpUrl,
+      noAuth: ctx.noAuth,
+    });
     nextConfig.model = `${PROVIDER_ID}/${ctx.model}`;
     const userFiles = await collectUserConfigFiles(userOpencodeRoot, opencodeRoot);
 
@@ -153,7 +157,8 @@ export function buildOpenCodeConfig(
   existing: Record<string, unknown>,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
-  useEnvReference = false
+  useEnvReference = false,
+  endpoints: { baseUrl?: string; mcpUrl?: string; noAuth?: boolean } = {},
 ): Record<string, unknown> {
   const next = { ...existing };
   if (typeof next.$schema !== "string") {
@@ -165,18 +170,24 @@ export function buildOpenCodeConfig(
     provider[PROVIDER_ID],
     apiKey,
     modelSpecs,
-    useEnvReference
+    useEnvReference,
+    endpoints.baseUrl
   );
-  const mcp = objectAt(next, "mcp");
-  mcp[PROVIDER_ID] = {
-    type: "remote",
-    url: MCP_URL,
-    enabled: true,
-    oauth: false,
-    headers: {
-      Authorization: `Bearer {env:${ZRO_ENV_KEY}}`
-    }
-  };
+  if (endpoints.noAuth) {
+    const mcp = asPlainObject(next.mcp);
+    if (mcp) delete mcp[PROVIDER_ID];
+  } else {
+    const mcp = objectAt(next, "mcp");
+    mcp[PROVIDER_ID] = {
+      type: "remote",
+      url: endpoints.mcpUrl ?? MCP_URL,
+      enabled: true,
+      oauth: false,
+      headers: {
+        Authorization: `Bearer {env:${ZRO_ENV_KEY}}`
+      }
+    };
+  }
   return next;
 }
 
@@ -184,7 +195,8 @@ function openAiCompatibleProvider(
   existing: unknown,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
-  useEnvReference = false
+  useEnvReference = false,
+  baseUrl = BASE_URL,
 ): Record<string, unknown> {
   const existingProvider = asPlainObject(existing) ?? {};
   const existingOptions = asPlainObject(existingProvider.options) ?? {};
@@ -218,7 +230,7 @@ function openAiCompatibleProvider(
     name: PROVIDER_NAME,
     options: {
       ...existingOptions,
-      baseURL: BASE_URL,
+      baseURL: baseUrl,
       apiKey: useEnvReference ? `{env:${ZRO_ENV_KEY}}` : apiKey
     },
     models

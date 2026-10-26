@@ -32,6 +32,10 @@ function context(homeDir: string): LaunchContext {
   return {
     apiKey: "sk-prime-secret",
     apiKeySource: "env",
+    inferenceRoot: "https://zro.moonmath.ai",
+    inferenceBaseUrl: "https://zro.moonmath.ai/v1",
+    mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+    noAuth: false,
     env: {},
     model: "glm-5.3",
     models: TEST_MODELS,

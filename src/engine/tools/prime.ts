@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -30,7 +30,7 @@ export const primeTool: ToolModule = {
     const filePath = path.join(tempAgentDir, "models.json");
     const settingsPath = path.join(tempAgentDir, "settings.json");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
-    const nextConfig = buildPrimeModelsConfig(existing, ctx.models);
+    const nextConfig = buildPrimeModelsConfig(existing, ctx.models, ctx.inferenceBaseUrl);
     return {
       tool: "prime",
       label: "Prime Agent",
@@ -47,18 +47,18 @@ export const primeTool: ToolModule = {
           path: filePath,
           contents: jsonSerializer.stringify(nextConfig)
         },
-        {
+        ...(ctx.noAuth ? [] : [{
           path: settingsPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
                 type: "http",
-                url: MCP_URL,
+                url: ctx.mcpUrl,
                 bearer_token_env_var: ZRO_ENV_KEY
               }
             }
           })
-        }
+        }])
       ],
       message: "Launch Prime Agent with Zro"
     };
@@ -67,7 +67,8 @@ export const primeTool: ToolModule = {
 
 function buildPrimeModelsConfig(
   existing: Record<string, unknown>,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  baseUrl = BASE_URL,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = objectAt(next, "providers");
@@ -79,7 +80,7 @@ function buildPrimeModelsConfig(
 
   providers[PROVIDER_ID] = {
     ...existingProvider,
-    baseUrl: BASE_URL,
+    baseUrl: baseUrl,
     api: "openai-completions",
     apiKey: ZRO_ENV_KEY,
     headers: {

@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `--inference-url <url>` and `ZRO_INFERENCE_URL` point inference at another
+  OpenAI-compatible gateway. A root or `/v1` URL works, and the override wins over
+  `ZRO_ENDPOINT_ROOT` and the default endpoint. Login, the authenticated catalog,
+  feedback, and MCP stay on the control-plane URL.
+- `--no-auth` and `ZRO_NO_AUTH=1` launch agents against an inference endpoint with no Zro
+  account. No-auth mode requires an explicit inference override, skips key resolution
+  and Authorization headers, loads public model metadata from
+  `/api/cli/models/public`, intersects it with the gateway's live `/v1/models` list,
+  caches it separately as `model-catalog-public.json`, and omits the Zro MCP server.
+  `zro models` and `zro status` work in this mode; `zro feedback` does not.
+
 ### Fixed
 
 - Prime Agent 0.10.1 launches now use its `settings.json` MCP format and no longer pass the

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ENDPOINT_ROOT, MCP_URL, PROVIDER_NAME, type ZroModel } from "../constants.js";
+import { PROVIDER_NAME, type ZroModel } from "../constants.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 
@@ -36,16 +36,15 @@ export const claudeTool: ToolModule = {
         claudeModelId(ctx.model, claudeSpecFor(ctx.model, ctx.models), sessionBudget),
         "--managed-settings",
         buildClaudeManagedSettingsArg(ctx.models, aliasPlan),
-        "--mcp-config",
-        mcpConfigPath,
+        ...(ctx.noAuth ? [] : ["--mcp-config", mcpConfigPath]),
         "--settings",
         settingsPath,
         ...ctx.extraArgs
       ],
       env: {
-        ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
+        ANTHROPIC_BASE_URL: ctx.inferenceRoot,
         ANTHROPIC_AUTH_TOKEN: ctx.apiKey,
-        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget, sessionOutputBudget),
+        ...buildClaudeModelEnv(ctx.model, ctx.models, aliasPlan, sessionBudget, sessionOutputBudget, ctx.inferenceRoot),
         CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "0",
         CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
         CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
@@ -58,24 +57,24 @@ export const claudeTool: ToolModule = {
         DO_NOT_TRACK: "1"
       },
       files: [
-        {
+        ...(ctx.noAuth ? [] : [{
           path: mcpConfigPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
                 type: "http",
-                url: MCP_URL,
+                url: ctx.mcpUrl,
                 headers: { Authorization: `Bearer ${ctx.apiKey}` }
               }
             }
           }),
           persistent: true
-        },
+        }]),
         {
           path: settingsPath,
           contents: jsonSerializer.stringify({
             env: {
-              ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
+              ANTHROPIC_BASE_URL: ctx.inferenceRoot,
               ANTHROPIC_AUTH_TOKEN: ctx.apiKey
             }
           }),
@@ -222,14 +221,15 @@ function buildClaudeModelEnv(
   modelSpecs: readonly ZroModel[],
   aliasPlan: ClaudeAliasPlan,
   sessionBudget: number | undefined,
-  sessionOutputBudget: number | undefined
+  sessionOutputBudget: number | undefined,
+  inferenceRoot: string
 ): Record<string, string> {
   const aliasMapping = aliasPlan.mapping;
 
   const env: Record<string, string> = {
     ANTHROPIC_CUSTOM_MODEL_OPTION: claudeModelId(selectedModel, claudeSpecFor(selectedModel, modelSpecs), sessionBudget),
     ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: claudeModelName(selectedModel, modelSpecs, sessionBudget),
-    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`
+    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `${PROVIDER_NAME} model via ${inferenceRoot}`
   };
 
   // aliasPlan.mapping is already filtered to models this catalog carries, so
@@ -241,7 +241,7 @@ function buildClaudeModelEnv(
       sessionBudget
     );
     env[`ANTHROPIC_DEFAULT_${slot}_MODEL_NAME`] = claudeModelName(modelId, modelSpecs, sessionBudget);
-    env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${ENDPOINT_ROOT}`;
+    env[`ANTHROPIC_DEFAULT_${slot}_MODEL_DESCRIPTION`] = `${PROVIDER_NAME} model via ${inferenceRoot}`;
   }
 
   if (sessionBudget !== undefined) {

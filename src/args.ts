@@ -1,4 +1,5 @@
 import { resolveTool, TOOLS } from "./catalog.js";
+import { normalizeInferenceRoot } from "./endpoints.js";
 import type { CliRequest, OutputMode } from "./types.js";
 
 const HELP = new Set(["help", "-h", "--help"]);
@@ -41,23 +42,29 @@ export function parseArgs(argv: string[]): CliRequest {
     const rest = command === "auth" && argv[1] === "status" ? argv.slice(2) : argv.slice(1);
     const parsed = parseOptions(rest, false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "status", output: parsed.output };
+    return { command: "status", output: parsed.output, ...endpointOptions(parsed) };
   }
   if (command === "models") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "models", output: parsed.output };
+    return { command: "models", output: parsed.output, ...endpointOptions(parsed) };
   }
   if (command === "install") return parseInstallArgs(argv.slice(1));
   if (command === "again") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);
-    return { command: "again", dryRun: parsed.dryRun, output: parsed.output, aliases: parsed.aliases };
+    return {
+      command: "again",
+      dryRun: parsed.dryRun,
+      output: parsed.output,
+      aliases: parsed.aliases,
+      ...endpointOptions(parsed),
+    };
   }
   if (command === "feedback") {
     const parsed = parseOptions(argv.slice(1), false);
     const message = parsed.extraArgs.join(" ").trim() || undefined;
-    return { command: "feedback", message, output: parsed.output };
+    return { command: "feedback", message, output: parsed.output, ...endpointOptions(parsed) };
   }
 
   if (command === "launch" || command === "run") {
@@ -78,6 +85,8 @@ export function parseArgs(argv: string[]): CliRequest {
 interface ParsedOptions {
   model?: string;
   apiKey?: string;
+  inferenceUrl?: string;
+  noAuth?: boolean;
   dryRun: boolean;
   install?: boolean;
   output: OutputMode;
@@ -125,6 +134,21 @@ function parseOptions(argv: string[], allowPassthrough: boolean): ParsedOptions 
     }
     if (value.startsWith("--api-key=")) {
       result.apiKey = value.slice("--api-key=".length);
+      continue;
+    }
+    if (value === "--inference-url") {
+      result.inferenceUrl = normalizeInferenceRoot(requiredValue(argv, ++index, value), "--inference-url");
+      continue;
+    }
+    if (value.startsWith("--inference-url=")) {
+      result.inferenceUrl = normalizeInferenceRoot(
+        value.slice("--inference-url=".length),
+        "--inference-url",
+      );
+      continue;
+    }
+    if (value === "--no-auth") {
+      result.noAuth = true;
       continue;
     }
     if (value === "--dry-run" || value === "-n") {
@@ -209,6 +233,13 @@ function requiredValue(argv: string[], index: number, option: string): string {
   const value = argv[index];
   if (!value || value === "--") throw new Error(`${option} needs a value.`);
   return value;
+}
+
+function endpointOptions(options: ParsedOptions): Pick<ParsedOptions, "inferenceUrl" | "noAuth"> {
+  return {
+    ...(options.inferenceUrl ? { inferenceUrl: options.inferenceUrl } : {}),
+    ...(options.noAuth ? { noAuth: true } : {}),
+  };
 }
 
 function outputMode(argv: string[]): OutputMode {

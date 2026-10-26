@@ -3,7 +3,6 @@ import type { Dirent, Stats } from "node:fs";
 import path from "node:path";
 import {
   BASE_URL,
-  MCP_URL,
   PROVIDER_ID,
   ZRO_ENV_KEY,
   type ZroModel,
@@ -126,7 +125,7 @@ export const ompTool: ToolModule = {
         OTEL_EXPORTER_OTLP_HEADERS: "",
         DO_NOT_TRACK: "1",
         NO_UPDATE_NOTIFIER: "1",
-        [OMP_MCP_AUTH_ENV_KEY]: `Bearer ${ctx.apiKey}`,
+        ...(ctx.noAuth ? {} : { [OMP_MCP_AUTH_ENV_KEY]: `Bearer ${ctx.apiKey}` }),
         [ZRO_ENV_KEY]: ctx.apiKey,
       },
       files: [
@@ -140,12 +139,12 @@ export const ompTool: ToolModule = {
         },
         {
           path: path.join(agentDir, "models.yml"),
-          contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models)),
+          contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models, ctx.inferenceBaseUrl)),
         },
-        {
+        ...(ctx.noAuth ? [] : [{
           path: path.join(agentDir, "mcp.json"),
-          contents: jsonSerializer.stringify(buildOmpMcpConfig()),
-        },
+          contents: jsonSerializer.stringify(buildOmpMcpConfig(ctx.mcpUrl)),
+        }]),
         ...userFiles,
       ],
       message: "Launch Oh My Pi with Zro",
@@ -184,11 +183,12 @@ export function buildOmpConfigOverlay(
 
 export function buildOmpModelsConfig(
   modelSpecs: readonly ZroModel[],
+  baseUrl = BASE_URL,
 ): Record<string, unknown> {
   return {
     providers: {
       [PROVIDER_ID]: {
-        baseUrl: BASE_URL,
+        baseUrl: baseUrl,
         apiKey: ZRO_ENV_KEY,
         api: "openai-completions",
         compat: {
@@ -268,13 +268,13 @@ function ompThinkingLevel(level: ZroModel["reasoning"]["levels"][number]): strin
   return OMP_THINKING_LEVELS.has(level.id) ? level.id : level.piLevel;
 }
 
-function buildOmpMcpConfig(): Record<string, unknown> {
+function buildOmpMcpConfig(mcpUrl: string): Record<string, unknown> {
   return {
     $schema: OMP_MCP_SCHEMA,
     mcpServers: {
       [PROVIDER_ID]: {
         type: "http",
-        url: MCP_URL,
+        url: mcpUrl,
         headers: { Authorization: OMP_MCP_AUTH_ENV_KEY },
         enabled: true,
       },

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import type { ToolModule } from "../types.js";
 
 const GROK_HOME_ENV_KEY = "GROK_HOME";
@@ -22,7 +22,7 @@ export const grokTool: ToolModule = {
       },
       files: [{
         path: configPath,
-        contents: buildGrokConfig(ctx.model, ctx.apiKey, ctx.models)
+        contents: buildGrokConfig(ctx.model, ctx.apiKey, ctx.models, ctx.inferenceBaseUrl, ctx.mcpUrl, ctx.noAuth)
       }],
       message: "Launch Grok Build with Zro"
     };
@@ -33,6 +33,9 @@ function buildGrokConfig(
   selectedModel: string,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
+  baseUrl: string,
+  mcpUrl: string,
+  noAuth: boolean,
 ): string {
   const lines: string[] = [];
 
@@ -51,9 +54,9 @@ function buildGrokConfig(
   for (const model of modelSpecs) {
     lines.push(`[model.${tomlKey(model.id)}]`);
     lines.push(`model = ${tomlString(model.id)}`);
-    lines.push(`base_url = ${tomlString(BASE_URL)}`);
+    lines.push(`base_url = ${tomlString(baseUrl)}`);
     lines.push(`name = ${tomlString(`${PROVIDER_NAME} ${model.displayName}`)}`);
-    lines.push(`description = ${tomlString(`${PROVIDER_NAME} model via ${BASE_URL}`)}`);
+    lines.push(`description = ${tomlString(`${PROVIDER_NAME} model via ${baseUrl}`)}`);
     lines.push(`api_backend = "chat_completions"`);
     lines.push(`env_key = ${tomlString(ZRO_ENV_KEY)}`);
     lines.push(`context_window = ${model.contextWindow}`);
@@ -62,10 +65,12 @@ function buildGrokConfig(
     lines.push("");
   }
 
-  lines.push(`[mcp_servers.${PROVIDER_ID}]`);
-  lines.push(`url = ${tomlString(MCP_URL)}`);
-  lines.push(`headers = { "Authorization" = ${tomlString(`Bearer ${apiKey}`)} }`);
-  lines.push("");
+  if (!noAuth) {
+    lines.push(`[mcp_servers.${PROVIDER_ID}]`);
+    lines.push(`url = ${tomlString(mcpUrl)}`);
+    lines.push(`headers = { "Authorization" = ${tomlString(`Bearer ${apiKey}`)} }`);
+    lines.push("");
+  }
 
   return lines.join("\n");
 }
