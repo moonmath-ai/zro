@@ -162,7 +162,7 @@ async function collectVersions() {
   };
   for (const name of harnesses) {
     const command = clientCommands[name];
-    const result = await run(command[0], command.slice(1), `${name} version`, 30_000);
+    const result = await run(command[0], command.slice(1), `${name} version`, 30_000, process.env);
     report.clients[name] = result.stdout.split(/\r?\n/).find((line) => line.trim())?.trim() || "installed";
   }
 }

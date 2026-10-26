@@ -155,3 +155,35 @@ describe("the direct command language", () => {
     });
   });
 });
+
+describe("alternate inference endpoint arguments", () => {
+  it("parses inference URL overrides and no-auth mode", () => {
+    expect(parseArgs([
+      "claude",
+      "--inference-url",
+      "https://gateway.example/v1/",
+      "--no-auth",
+    ])).toMatchObject({
+      command: "launch",
+      tool: "claude",
+      inferenceUrl: "https://gateway.example",
+      noAuth: true,
+    });
+    expect(parseArgs([
+      "models",
+      "--no-auth",
+      "--inference-url=https://gateway.example/v1",
+    ])).toMatchObject({
+      command: "models",
+      noAuth: true,
+      inferenceUrl: "https://gateway.example",
+    });
+  });
+
+  it("rejects an invalid inference URL while parsing", () => {
+    expect(() => parseArgs(["claude", "--inference-url", "ftp://gateway.example"]))
+      .toThrow("Use an http(s) URL");
+    expect(() => parseArgs(["claude", "--inference-url"]))
+      .toThrow("--inference-url needs a value");
+  });
+});

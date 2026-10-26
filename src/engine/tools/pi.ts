@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { BASE_URL, PROVIDER_ID, PROVIDER_NAME, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -19,7 +19,7 @@ export const piTool: ToolModule = {
     const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
     const existingAgentDir = process.env[PI_AGENT_DIR_ENV_KEY] ?? path.join(ctx.homeDir, ".pi", "agent");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
-    const nextConfig = buildPiModelsConfig(existing, ctx.models);
+    const nextConfig = buildPiModelsConfig(existing, ctx.models, ctx.inferenceBaseUrl);
     return {
       tool: "pi",
       label: "Pi",
@@ -28,7 +28,7 @@ export const piTool: ToolModule = {
       args: [
         "--provider", PROVIDER_ID,
         "--model", ctx.model,
-        "--extension", PI_MCP_EXTENSION,
+        ...(ctx.noAuth ? [] : ["--extension", PI_MCP_EXTENSION]),
         ...ctx.extraArgs
       ],
       env: {
@@ -41,19 +41,19 @@ export const piTool: ToolModule = {
           path: filePath,
           contents: jsonSerializer.stringify(nextConfig)
         },
-        {
+        ...(ctx.noAuth ? [] : [{
           path: mcpConfigPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
                 transport: "streamable-http",
-                url: MCP_URL,
+                url: ctx.mcpUrl,
                 lifecycle: "eager",
                 headers: { Authorization: `Bearer ${ctx.apiKey}` }
               }
             }
           })
-        }
+        }])
       ],
       message: "Launch Pi with Zro"
     };
@@ -62,7 +62,8 @@ export const piTool: ToolModule = {
 
 function buildPiModelsConfig(
   existing: Record<string, unknown>,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  baseUrl = BASE_URL,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = objectAt(next, "providers");
@@ -74,7 +75,7 @@ function buildPiModelsConfig(
 
   providers[PROVIDER_ID] = {
     ...existingProvider,
-    baseUrl: BASE_URL,
+    baseUrl: baseUrl,
     api: "openai-completions",
     apiKey: `$${ZRO_ENV_KEY}`,
     headers: {
