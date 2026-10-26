@@ -18,7 +18,7 @@ import {
   resolveApiKey,
   writeStoredApiKey
 } from "./engine/key.js";
-import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "./engine/tools/claude.js";
+import { CLAUDE_MODEL_ALIAS_SLOTS, claudeConfigDir, claudeTool } from "./engine/tools/claude.js";
 import {
   codexAppCredentialFilePath,
   codexAppTool,
@@ -598,6 +598,8 @@ async function logout(
     deleteStoredApiKey({ homeDir: io.homeDir, env }),
     deleteOptionalFile(codexAppCredentialFilePath(io.homeDir)),
     invalidateModelCatalog({ homeDir: io.homeDir, env }),
+    fs.rm(claudeConfigDir(io.homeDir, env), { recursive: true, force: true })
+      .catch(() => undefined),
   ]);
   const removed = storedKeyRemoved || codexAppKeyRemoved;
   io.stdout.write(output === "json"

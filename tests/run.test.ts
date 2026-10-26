@@ -7,6 +7,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "../src/engine/tools/claude.js";
+import { ENDPOINT_ROOT } from "../src/engine/constants.js";
 import { TEST_CATALOG_RESPONSE, TIER_MODELS } from "./fixtures.js";
 import type { SpawnOptions, SpawnProcess } from "../src/engine/types.js";
 import { run } from "../src/run.js";
@@ -335,6 +336,50 @@ describe("zro experience", () => {
     // It still backs the custom option in the env, but is not allowlisted, so
     // Claude Code drops that row rather than trusting an unvalidated value.
     expect(plan.env!.ANTHROPIC_CUSTOM_MODEL_OPTION).toBe("anthropic.injected");
+  });
+
+  it("launches claude with persistent config files for background sessions", async () => {
+    const stderr = new PassThrough();
+    const plan = await claudeTool.launch({
+      apiKey: "sk-stable-secret",
+      apiKeySource: "env",
+      inferenceRoot: "https://zro.moonmath.ai",
+      inferenceBaseUrl: "https://zro.moonmath.ai/v1",
+      mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+      noAuth: false,
+      env: {},
+      model: "kimi-k3",
+      models: TIER_MODELS,
+      extraArgs: [],
+      homeDir: "/tmp/zro-stable-home",
+      cwd: "/tmp",
+      tempDir: "/tmp/zro-stable-session",
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr
+    });
+
+    const settingsPath = plan.args![plan.args!.indexOf("--settings") + 1];
+    expect(settingsPath).toBe(
+      path.join("/tmp/zro-stable-home", ".cache", "zro", "claude", "settings.json")
+    );
+    expect(plan.args![plan.args!.indexOf("--mcp-config") + 1]).toBe(
+      path.join("/tmp/zro-stable-home", ".cache", "zro", "claude", "mcp.json")
+    );
+
+    const settings = plan.files!.find((file) => file.path === settingsPath)!;
+    expect(settings.persistent).toBe(true);
+    expect(JSON.parse(settings.contents)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: ENDPOINT_ROOT,
+        ANTHROPIC_AUTH_TOKEN: "sk-stable-secret"
+      }
+    });
+
+    const mcp = plan.files!.find((file) => file.path.endsWith("mcp.json"))!;
+    expect(mcp.persistent).toBe(true);
+    expect(JSON.parse(mcp.contents).mcpServers.zro.headers.Authorization)
+      .toBe("Bearer sk-stable-secret");
   });
 
   it("forwards --alias overrides through zro again", async () => {
@@ -670,6 +715,11 @@ describe("zro experience", () => {
     const catalogPath = path.join(home, ".cache", "zro", "model-catalog.json");
     await fs.mkdir(path.dirname(catalogPath), { recursive: true });
     await fs.writeFile(catalogPath, JSON.stringify(dynamicCatalogResponse()));
+    const claudeConfigDir = path.join(home, ".cache", "zro", "claude");
+    await fs.mkdir(claudeConfigDir, { recursive: true });
+    await fs.writeFile(path.join(claudeConfigDir, "settings.json"),
+      JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "sk-stored" } }));
+    await fs.writeFile(path.join(claudeConfigDir, "mcp.json"), "{}");
     const stdout = new PassThrough();
 
     const code = await run(["logout", "--json"], io(home, stdout));
@@ -687,6 +737,10 @@ describe("zro experience", () => {
     await expect(fs.stat(catalogPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(fs.readFile(path.join(codexAppDir, "config.toml"), "utf8"))
       .resolves.toBe("model = \"glm-5.3\"\n");
+    await expect(fs.stat(path.join(claudeConfigDir, "settings.json")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(path.join(claudeConfigDir, "mcp.json")))
+      .rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("removes the Codex App key when it is the only stored credential", async () => {
