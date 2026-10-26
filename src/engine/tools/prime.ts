@@ -6,6 +6,7 @@ import type { ToolModule } from "../types.js";
 import { asPlainObject, objectAt } from "./helpers.js";
 
 const PRIME_AGENT_DIR_ENV_KEY = "PRIME_AGENT_CODING_AGENT_DIR";
+const PRIME_MCP_EXTENSION = "npm:pi-mcp-extension@1.5.0";
 const PRIME_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 
 const PRIME_SUBCOMMANDS = new Set([
@@ -13,13 +14,14 @@ const PRIME_SUBCOMMANDS = new Set([
   "rename", "schedule", "send", "session", "shutdown", "status", "stop", "update"
 ]);
 
-function primeArgs(model: string, extraArgs: string[]): string[] {
+function primeArgs(model: string, extraArgs: string[], noAuth: boolean): string[] {
   if (extraArgs[0] && PRIME_SUBCOMMANDS.has(extraArgs[0])) {
     return extraArgs;
   }
   return [
     "--provider", PROVIDER_ID,
     "--model", model,
+    ...(noAuth ? [] : ["--extension", PRIME_MCP_EXTENSION]),
     ...extraArgs,
   ];
 }
@@ -32,7 +34,7 @@ export const primeTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "prime", "home");
     const tempAgentDir = path.join(tempHome, ".prime", "agent");
     const filePath = path.join(tempAgentDir, "models.json");
-    const settingsPath = path.join(tempAgentDir, "settings.json");
+    const mcpConfigPath = path.join(tempAgentDir, "mcp.json");
     const existing = await readConfig(path.join(existingAgentDir, "models.json"), jsonSerializer);
     const nextConfig = buildPrimeModelsConfig(existing, ctx.models, ctx.inferenceBaseUrl);
     return {
@@ -40,7 +42,7 @@ export const primeTool: ToolModule = {
       label: "Prime Agent",
       model: ctx.model,
       command: "prime-agent",
-      args: primeArgs(ctx.model, ctx.extraArgs),
+      args: primeArgs(ctx.model, ctx.extraArgs, ctx.noAuth),
       env: {
         HOME: tempHome,
         [PRIME_AGENT_DIR_ENV_KEY]: tempAgentDir,
@@ -52,13 +54,14 @@ export const primeTool: ToolModule = {
           contents: jsonSerializer.stringify(nextConfig)
         },
         ...(ctx.noAuth ? [] : [{
-          path: settingsPath,
+          path: mcpConfigPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
-                type: "http",
+                transport: "streamable-http",
                 url: ctx.mcpUrl,
-                bearer_token_env_var: ZRO_ENV_KEY
+                lifecycle: "eager",
+                headers: { Authorization: `Bearer ${ctx.apiKey}` }
               }
             }
           })

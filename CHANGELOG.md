@@ -7,11 +7,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- Prime Agent 0.10.1 launches now use its `settings.json` MCP format and no longer pass the
-  removed `--extension` or `--no-tools` flags.
-
 ### Added
 
 - `--inference-url <url>` and `ZRO_INFERENCE_URL` point inference at another
