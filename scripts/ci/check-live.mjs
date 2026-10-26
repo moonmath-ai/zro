@@ -423,7 +423,7 @@ async function checkPrime() {
   const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
   const cacheArgs = [
     "launch", "prime", "--model", liveModel, "--", "--print", "--mode", "json",
-    "--no-tools", "--no-session", "--thinking", liveLevels.offPi, prompt
+    "--no-session", "--thinking", liveLevels.offPi, prompt
   ];
 
   await cleanupPrime();
@@ -447,7 +447,7 @@ async function checkPrime() {
     await cleanupPrime();
     const turn = primeTurn(await runZro([
       "launch", "prime", "--model", liveModel, "--", "--print", "--mode", "json",
-      "--no-tools", "--no-session", "--thinking", liveLevels.maxPi,
+      "--no-session", "--thinking", liveLevels.maxPi,
       `Think briefly, then include ${reasoningMarker} in the answer.`
     ], "Prime Agent max reasoning", REASONING_TIMEOUT_MS), reasoningMarker, { expectThinking: true });
     assert.ok(turn.hasThinking, "Prime Agent max effort returned no thinking content");
