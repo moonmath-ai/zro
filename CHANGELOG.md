@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   caches it separately as `model-catalog-public.json`, and omits the Zro MCP server.
   `zro models` and `zro status` work in this mode; `zro feedback` does not.
 
+### Fixed
+
+- Prime Agent 0.10.1 launches now use its `settings.json` MCP format and no longer pass the
+  removed `--extension` or `--no-tools` flags.
+
 ## [0.3.0] - 2026-10-05
 
 ### Highlights
