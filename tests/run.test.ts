@@ -348,9 +348,12 @@ describe("zro experience", () => {
     });
 
     const settingsPath = plan.args![plan.args!.indexOf("--settings") + 1];
-    expect(settingsPath).toBe("/tmp/zro-stable-home/.cache/zro/claude/settings.json");
-    expect(plan.args![plan.args!.indexOf("--mcp-config") + 1])
-      .toBe("/tmp/zro-stable-home/.cache/zro/claude/mcp.json");
+    expect(settingsPath).toBe(
+      path.join("/tmp/zro-stable-home", ".cache", "zro", "claude", "settings.json")
+    );
+    expect(plan.args![plan.args!.indexOf("--mcp-config") + 1]).toBe(
+      path.join("/tmp/zro-stable-home", ".cache", "zro", "claude", "mcp.json")
+    );
 
     const settings = plan.files!.find((file) => file.path === settingsPath)!;
     expect(settings.persistent).toBe(true);
