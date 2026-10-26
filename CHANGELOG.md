@@ -25,6 +25,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Prime Agent 0.10.1 launches now use its `settings.json` MCP format and no longer pass the
   removed `--extension` or `--no-tools` flags.
 
+### Added
+
+- **Asimi support.** [Asimi](https://asimi.dev/), the open-source vi-inspired coding agent, is now a
+  supported harness (`zro asimi`). Asimi is launched entirely through its provider env conventions
+  (`ZRO_API_KEY`/`ZRO_BASE_URL` with `ASIMI_PROVIDER=zro`), so no config files are written and the
+  API key never touches disk. Install with `zro install asimi`.
+
 ## [0.3.0] - 2026-10-05
 
 ### Highlights

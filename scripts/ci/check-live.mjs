@@ -15,7 +15,7 @@ const REASONING_TIMEOUT_MS = 300_000;
 // discovered by the matrix (so version + compatibility checks run), but they
 // have no cache/reasoning probes. They are recorded as explicitly skipped so
 // the report never shows a green `ok: true` with an empty `checks` array.
-const SKIPPED_LIVE_HARNESSES = new Set(["hermes", "openclaw"]);
+const SKIPPED_LIVE_HARNESSES = new Set(["hermes", "openclaw", "asimi"]);
 if (!apiKey || apiKey === "ci-fake-key") {
   throw new Error("ZRO_API_KEY must contain a live API test key");
 }
@@ -23,7 +23,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-live-report.json");
 const runId = (process.env.ZRO_CI_RUN_ID || `${Date.now()}`).replace(/[^A-Za-z0-9_.-]/g, "-");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime", "asimi"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
