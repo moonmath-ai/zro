@@ -5,6 +5,13 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-10-28
+
+### Added
+
+- `zro status` shows a Free plan account as Free, with the share of today's usage left and
+  when it resets. Servers that do not send this keep the previous output.
+
 ## [0.4.0] - 2026-10-26
 
 ### Added
