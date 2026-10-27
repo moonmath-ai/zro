@@ -679,6 +679,31 @@ describe("zro experience", () => {
     expect(output).toContain("Activity       15 requests · 1.3K tokens (30d)");
   });
 
+  it("shows a Free account its share of today's usage and when it resets, with no plan dollars", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-free-status-"));
+    const stdout = new PassThrough();
+    const free = accountStatusResponse();
+    free.billing = {
+      ...free.billing,
+      status: "setup_required",
+      plan: null,
+      usagePacks: { total: 0, used: 0, remaining: 0 },
+      totalRemaining: 0,
+      free: { remainingPercent: 64, resetsAt: new Date(Date.now() + (5 * 60 + 12) * 60_000 - 30_000).toISOString() },
+    } as typeof free.billing;
+    const code = await run(["status"], {
+      ...io(home, stdout),
+      env: { ZRO_API_KEY: "sk-status-secret" },
+      fetch: async () => Response.json(free),
+    });
+
+    expect(code).toBe(0);
+    const output = await streamText(stdout);
+    expect(output).toContain("Plan           Free");
+    expect(output).toContain("64% left today · resets in 5h 12m");
+    expect(output).not.toContain("none");
+  });
+
   it("reports a rejected stored key as disconnected", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-rejected-status-"));
     const credentialDir = path.join(home, ".config", "zro");

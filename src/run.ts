@@ -741,6 +741,7 @@ type AccountStatus = {
     } | null;
     usagePacks: { total: number; used: number; remaining: number };
     totalRemaining: number;
+    free?: { remainingPercent: number | null; resetsAt: string };
   };
   activity30d: {
     requests: number;
@@ -806,6 +807,7 @@ function parseAccountStatus(value: unknown): AccountStatus | null {
   const activity = asRecord(root.activity30d);
   const planValue = billing.plan;
   const plan = planValue === null ? null : asRecord(planValue);
+  const free = billing.free === undefined ? null : asRecord(billing.free);
   if (
     typeof key.id !== "string" || typeof key.alias !== "string" ||
     typeof billing.status !== "string" || typeof billing.currency !== "string" ||
@@ -818,6 +820,10 @@ function parseAccountStatus(value: unknown): AccountStatus | null {
     (plan !== null && (
       typeof plan.id !== "string" || typeof plan.name !== "string" ||
       !hasNumbers(plan, ["allowance", "used", "remaining"])
+    )) ||
+    (free !== null && (
+      (free.remainingPercent !== null && !hasNumbers(free, ["remainingPercent"])) ||
+      typeof free.resetsAt !== "string" || Number.isNaN(Date.parse(free.resetsAt))
     ))
   ) return null;
 
@@ -838,19 +844,34 @@ function printAccountStatus(
   const packs = account.billing.usagePacks;
   const activity = account.activity30d;
 
-  io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
-  io.stdout.write(
-    `  ${plan ? colors.good("◆") : colors.muted("◇")} Plan           ` +
-    `${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
-    `${colors.muted(account.billing.status)}\n`,
-  );
-  if (plan) {
-    const ratio = plan.allowance > 0 ? Math.min(Math.max(plan.used / plan.allowance, 0), 1) : 0;
+  const free = account.billing.free;
+  const bar = (ratio: number) => {
     const width = 24;
     const filled = Math.round(ratio * width);
-    const bar = colors.good("█".repeat(filled)) + colors.muted("░".repeat(width - filled));
+    return colors.good("█".repeat(filled)) + colors.muted("░".repeat(width - filled));
+  };
+
+  io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
+  if (free) {
+    io.stdout.write(`  ${colors.good("◆")} Plan           ${colors.strong("Free")}\n`);
+    const resets = colors.muted(`resets in ${formatTimeUntil(free.resetsAt)}`);
     io.stdout.write(
-      `    ${bar}  ${colors.strong(`${Math.round(ratio * 100)}%`)} ${colors.muted("used")}\n`,
+      free.remainingPercent === null
+        ? `    ${resets}\n`
+        : `    ${bar(free.remainingPercent / 100)}  ${colors.strong(`${free.remainingPercent}%`)} ` +
+          `${colors.muted("left today ·")} ${resets}\n`,
+    );
+  } else {
+    io.stdout.write(
+      `  ${plan ? colors.good("◆") : colors.muted("◇")} Plan           ` +
+      `${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
+      `${colors.muted(account.billing.status)}\n`,
+    );
+  }
+  if (plan) {
+    const ratio = plan.allowance > 0 ? Math.min(Math.max(plan.used / plan.allowance, 0), 1) : 0;
+    io.stdout.write(
+      `    ${bar(ratio)}  ${colors.strong(`${Math.round(ratio * 100)}%`)} ${colors.muted("used")}\n`,
     );
   }
   io.stdout.write(
@@ -861,6 +882,12 @@ function printAccountStatus(
     `  ${colors.muted("◇")} Activity       ${formatInteger(activity.requests)} ${colors.muted("requests ·")} ` +
     `${formatTokens(activity.totalTokens)} ${colors.muted("tokens")} ${colors.muted("(30d)")}\n`,
   );
+}
+
+function formatTimeUntil(iso: string): string {
+  const minutes = Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
 function money(value: number, currency: string): string {
