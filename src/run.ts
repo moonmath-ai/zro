@@ -8,7 +8,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ENDPOINT_ROOT, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
+import { NO_AUTH_PLACEHOLDER_KEY, ZRO_ENV_KEY, type ZroModel } from "./engine/constants.js";
 import {
   credentialFilePath,
   deleteStoredApiKey,
@@ -18,7 +18,7 @@ import {
   resolveApiKey,
   writeStoredApiKey
 } from "./engine/key.js";
-import { CLAUDE_MODEL_ALIAS_SLOTS, claudeTool } from "./engine/tools/claude.js";
+import { CLAUDE_MODEL_ALIAS_SLOTS, claudeConfigDir, claudeTool } from "./engine/tools/claude.js";
 import {
   codexAppCredentialFilePath,
   codexAppTool,
@@ -35,6 +35,7 @@ import { piTool } from "./engine/tools/pi.js";
 import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
 import { parseArgs } from "./args.js";
+import { isNoAuth, resolveControlPlaneRoot, resolveInference, resolveMcpUrl } from "./endpoints.js";
 import { describeTool } from "./catalog.js";
 import { commandExists, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
@@ -93,8 +94,8 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
   if (request.command === "install") return install(request, io, env);
   if (request.command === "login") return login(request, io, env, colors);
   if (request.command === "logout") return logout(request.output, io, env);
-  if (request.command === "status") return status(request.output, io, env, colors);
-  if (request.command === "models") return models(request.output, io, env, colors);
+  if (request.command === "status") return status(request, io, env, colors);
+  if (request.command === "models") return models(request, io, env, colors);
   if (request.command === "feedback") return feedback(request, io, env, colors);
 
   if (request.command === "home") {
@@ -131,7 +132,9 @@ export async function run(argv: string[], io: RunIo = defaultIo()): Promise<numb
       dryRun: request.dryRun,
       output: request.output,
       extraArgs: [],
-      aliases: request.aliases
+      aliases: request.aliases,
+      inferenceUrl: request.inferenceUrl,
+      noAuth: request.noAuth,
     };
   }
 
@@ -144,20 +147,35 @@ async function launch(
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>
 ): Promise<number> {
-  let key;
+  const noAuth = isNoAuth(request.noAuth, env);
+  let inference: ReturnType<typeof resolveInference>;
+  let mcpUrl: string;
   try {
-    key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
-  } catch {
-    if (!isTty(io.stdin) || !isTty(io.stdout)) {
-      io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
-      return 1;
-    }
-    const connected = await connectInteractively(io, env, colors);
-    if (typeof connected === "number") return connected;
-    key = connected;
+    inference = resolveInference(env, request.inferenceUrl, noAuth);
+    mcpUrl = resolveMcpUrl(env);
+  } catch (error) {
+    io.stderr.write(`${messageOf(error)}\n`);
+    return 1;
   }
 
-  if (request.apiKey) {
+  let key;
+  if (noAuth) {
+    key = { apiKey: NO_AUTH_PLACEHOLDER_KEY, source: "none" as const };
+  } else {
+    try {
+      key = await resolveApiKey({ flagValue: request.apiKey, env, homeDir: io.homeDir });
+    } catch {
+      if (!isTty(io.stdin) || !isTty(io.stdout)) {
+        io.stderr.write("Not logged in. Run zro login or set ZRO_API_KEY.\n");
+        return 1;
+      }
+      const connected = await connectInteractively(io, env, colors);
+      if (typeof connected === "number") return connected;
+      key = connected;
+    }
+  }
+
+  if (request.apiKey && !noAuth) {
     io.stderr.write(`Note: --api-key can land in shell history. Prefer zro login or ${ZRO_ENV_KEY}.\n`);
   }
 
@@ -165,6 +183,8 @@ async function launch(
   try {
     catalog = await loadModelCatalog({
       apiKey: key.apiKey,
+      noAuth,
+      inferenceRoot: inference.root,
       env,
       homeDir: io.homeDir,
       fetch: io.fetch,
@@ -233,6 +253,10 @@ async function launch(
     plan = await tools[request.tool].launch({
       apiKey: key.apiKey,
       apiKeySource: key.source,
+      inferenceRoot: inference.root,
+      inferenceBaseUrl: inference.baseUrl,
+      mcpUrl,
+      noAuth,
       env,
       model,
       models: catalog.models,
@@ -258,7 +282,7 @@ async function launch(
     return 0;
   }
 
-  if (!await verifyApiKey(key.apiKey, io, env)) {
+  if (!noAuth && !await verifyApiKey(key.apiKey, io, env, inference.root)) {
     await fs.rm(tempDir, { recursive: true, force: true });
     return 1;
   }
@@ -312,10 +336,10 @@ async function verifyApiKey(
   apiKey: string,
   io: RunIo,
   env: NodeJS.ProcessEnv,
+  inferenceRoot: string,
 ): Promise<boolean> {
   const fetcher = io.fetch ?? globalThis.fetch;
-  const endpointRoot = (env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
-  const validationUrl = `${endpointRoot}/v1/models`;
+  const validationUrl = `${inferenceRoot}/v1/models`;
 
   let response: Response;
   try {
@@ -325,7 +349,7 @@ async function verifyApiKey(
     });
   } catch (error) {
     io.stderr.write(
-      `Could not verify Zro authentication at ${endpointRoot}: ${messageOf(error)}. Agent was not started.\n`,
+      `Could not verify Zro authentication at ${inferenceRoot}: ${messageOf(error)}. Agent was not started.\n`,
     );
     return false;
   }
@@ -576,6 +600,8 @@ async function logout(
     deleteStoredApiKey({ homeDir: io.homeDir, env }),
     deleteOptionalFile(codexAppCredentialFilePath(io.homeDir)),
     invalidateModelCatalog({ homeDir: io.homeDir, env }),
+    fs.rm(claudeConfigDir(io.homeDir, env), { recursive: true, force: true })
+      .catch(() => undefined),
   ]);
   const removed = storedKeyRemoved || codexAppKeyRemoved;
   io.stdout.write(output === "json"
@@ -598,16 +624,49 @@ async function deleteOptionalFile(filePath: string): Promise<boolean> {
 }
 
 async function status(
-  output: "human" | "json",
+  request: Extract<CliRequest, { command: "status" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>
 ): Promise<number> {
+  const output = request.output;
+  const preferences = await readPreferences({ homeDir: io.homeDir, env });
+  if (isNoAuth(request.noAuth, env)) {
+    let inferenceRoot: string | undefined;
+    try {
+      inferenceRoot = resolveInference(env, request.inferenceUrl).root;
+    } catch {
+      inferenceRoot = undefined;
+    }
+    if (output === "json") {
+      io.stdout.write(`${JSON.stringify({
+        connected: false,
+        mode: "no-auth",
+        noAuth: true,
+        credentialSource: "none",
+        inferenceUrl: inferenceRoot ?? null,
+        lastSession: preferences.lastTool && preferences.lastModel
+          ? { tool: preferences.lastTool, model: preferences.lastModel }
+          : null,
+      }, null, 2)}\n`);
+      return 0;
+    }
+
+    io.stdout.write(`${banner(colors)}\n`);
+    io.stdout.write(`\n${colors.muted("CONNECTION")}\n`);
+    io.stdout.write(`  ${colors.good("◆")} ${colors.strong("No-auth gateway mode")}\n`);
+    if (inferenceRoot) {
+      io.stdout.write(`    ${colors.muted(inferenceRoot)}\n`);
+    }
+    io.stdout.write(`\n${colors.muted("LAST SESSION")}\n`);
+    printLastSession(preferences, io, colors);
+    return 0;
+  }
+
   const stored = await readStoredApiKey({ homeDir: io.homeDir, env });
   const envKey = env[ZRO_ENV_KEY];
   const source = envKey ? "environment" : stored ? "stored" : "none";
   const credential = envKey ?? stored;
-  const preferences = await readPreferences({ homeDir: io.homeDir, env });
   const accountResult = credential
     ? await fetchAccountStatus(credential, io, env)
     : { state: "not_connected" } as const;
@@ -650,6 +709,15 @@ async function status(
   }
 
   io.stdout.write(`\n${colors.muted("LAST SESSION")}\n`);
+  printLastSession(preferences, io, colors);
+  return 0;
+}
+
+function printLastSession(
+  preferences: Awaited<ReturnType<typeof readPreferences>>,
+  io: RunIo,
+  colors: ReturnType<typeof theme>,
+): void {
   if (preferences.lastTool && preferences.lastModel) {
     io.stdout.write(
       `  ${colors.accent("◆")} ${colors.strong(describeTool(preferences.lastTool).name)} ` +
@@ -659,7 +727,6 @@ async function status(
   } else {
     io.stdout.write(`  ${colors.muted("◇")} None yet — start with ${colors.muted("zro claude")}\n`);
   }
-  return 0;
 }
 
 type AccountStatus = {
@@ -676,6 +743,7 @@ type AccountStatus = {
     } | null;
     usagePacks: { total: number; used: number; remaining: number };
     totalRemaining: number;
+    free?: { remainingPercent: number | null; resetsAt: string };
   };
   activity30d: {
     requests: number;
@@ -722,7 +790,7 @@ async function fetchAccountStatus(
 }
 
 function getAuthRoot(env: NodeJS.ProcessEnv): string {
-  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
+  return resolveControlPlaneRoot(env);
 }
 
 function browserApprovalUrl(serverUrl: string, env: NodeJS.ProcessEnv): string {
@@ -741,6 +809,7 @@ function parseAccountStatus(value: unknown): AccountStatus | null {
   const activity = asRecord(root.activity30d);
   const planValue = billing.plan;
   const plan = planValue === null ? null : asRecord(planValue);
+  const free = billing.free === undefined ? null : asRecord(billing.free);
   if (
     typeof key.id !== "string" || typeof key.alias !== "string" ||
     typeof billing.status !== "string" || typeof billing.currency !== "string" ||
@@ -753,6 +822,10 @@ function parseAccountStatus(value: unknown): AccountStatus | null {
     (plan !== null && (
       typeof plan.id !== "string" || typeof plan.name !== "string" ||
       !hasNumbers(plan, ["allowance", "used", "remaining"])
+    )) ||
+    (free !== null && (
+      (free.remainingPercent !== null && !hasNumbers(free, ["remainingPercent"])) ||
+      typeof free.resetsAt !== "string" || Number.isNaN(Date.parse(free.resetsAt))
     ))
   ) return null;
 
@@ -773,19 +846,34 @@ function printAccountStatus(
   const packs = account.billing.usagePacks;
   const activity = account.activity30d;
 
-  io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
-  io.stdout.write(
-    `  ${plan ? colors.good("◆") : colors.muted("◇")} Plan           ` +
-    `${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
-    `${colors.muted(account.billing.status)}\n`,
-  );
-  if (plan) {
-    const ratio = plan.allowance > 0 ? Math.min(Math.max(plan.used / plan.allowance, 0), 1) : 0;
+  const free = account.billing.free;
+  const bar = (ratio: number) => {
     const width = 24;
     const filled = Math.round(ratio * width);
-    const bar = colors.good("█".repeat(filled)) + colors.muted("░".repeat(width - filled));
+    return colors.good("█".repeat(filled)) + colors.muted("░".repeat(width - filled));
+  };
+
+  io.stdout.write(`\n${colors.muted("ACCOUNT")}\n`);
+  if (free) {
+    io.stdout.write(`  ${colors.good("◆")} Plan           ${colors.strong("Free")}\n`);
+    const resets = colors.muted(`resets in ${formatTimeUntil(free.resetsAt)}`);
     io.stdout.write(
-      `    ${bar}  ${colors.strong(`${Math.round(ratio * 100)}%`)} ${colors.muted("used")}\n`,
+      free.remainingPercent === null
+        ? `    ${resets}\n`
+        : `    ${bar(free.remainingPercent / 100)}  ${colors.strong(`${free.remainingPercent}%`)} ` +
+          `${colors.muted("left today ·")} ${resets}\n`,
+    );
+  } else {
+    io.stdout.write(
+      `  ${plan ? colors.good("◆") : colors.muted("◇")} Plan           ` +
+      `${plan ? colors.strong(plan.name) : colors.muted("none")} ` +
+      `${colors.muted(account.billing.status)}\n`,
+    );
+  }
+  if (plan) {
+    const ratio = plan.allowance > 0 ? Math.min(Math.max(plan.used / plan.allowance, 0), 1) : 0;
+    io.stdout.write(
+      `    ${bar(ratio)}  ${colors.strong(`${Math.round(ratio * 100)}%`)} ${colors.muted("used")}\n`,
     );
   }
   io.stdout.write(
@@ -796,6 +884,12 @@ function printAccountStatus(
     `  ${colors.muted("◇")} Activity       ${formatInteger(activity.requests)} ${colors.muted("requests ·")} ` +
     `${formatTokens(activity.totalTokens)} ${colors.muted("tokens")} ${colors.muted("(30d)")}\n`,
   );
+}
+
+function formatTimeUntil(iso: string): string {
+  const minutes = Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 60_000));
+  const hours = Math.floor(minutes / 60);
+  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
 function money(value: number, currency: string): string {
@@ -812,24 +906,49 @@ function formatInteger(value: number): string {
 }
 
 async function models(
-  output: "human" | "json",
+  request: Extract<CliRequest, { command: "models" }>,
   io: RunIo,
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>,
 ): Promise<number> {
+  const output = request.output;
+  const noAuth = isNoAuth(request.noAuth, env);
+  let inferenceRoot: string | undefined;
+  if (noAuth) {
+    try {
+      inferenceRoot = resolveInference(env, request.inferenceUrl, true).root;
+    } catch (error) {
+      io.stderr.write(`${messageOf(error)}\n`);
+      return 1;
+    }
+  }
+
   let apiKey: string | undefined;
-  try {
-    apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
-  } catch {
-    // A cached catalog remains useful before the user signs in.
+  if (!noAuth) {
+    try {
+      apiKey = (await resolveApiKey({ env, homeDir: io.homeDir })).apiKey;
+    } catch {
+      // A cached catalog remains useful before the user signs in.
+    }
   }
 
   let catalog: LoadedModelCatalog;
   try {
-    catalog = await loadModelCatalog({ apiKey, env, homeDir: io.homeDir, fetch: io.fetch });
+    catalog = await loadModelCatalog({
+      apiKey,
+      noAuth,
+      inferenceRoot,
+      env,
+      homeDir: io.homeDir,
+      fetch: io.fetch,
+    });
   } catch (error) {
     if (error instanceof CatalogAuthenticationError) {
       io.stderr.write(`Authentication failed: ${error.message} Run zro login --manual with a valid API key.\n`);
+      return 1;
+    }
+    if (noAuth) {
+      io.stderr.write(`Could not load the public model catalog: ${messageOf(error)}\n`);
       return 1;
     }
     if (output === "human" && isTty(io.stdin) && isTty(io.stdout)) {
@@ -872,6 +991,11 @@ async function feedback(
   env: NodeJS.ProcessEnv,
   colors: ReturnType<typeof theme>,
 ): Promise<number> {
+  if (isNoAuth(request.noAuth, env)) {
+    io.stderr.write("Feedback needs a Zro account and is unavailable in no-auth mode.\n");
+    return 1;
+  }
+
   let message = request.message;
   if (!message) {
     if (isTty(io.stdin) && isTty(io.stdout)) {
@@ -1009,7 +1133,7 @@ export function unknownModelMessage(model: string, source: CatalogSource): strin
 }
 
 export function redact(key: string, value: string, secret: string): string {
-  if (value === "") return value;
+  if (value === "" || value === NO_AUTH_PLACEHOLDER_KEY) return value;
   const nameTokens = key.split(/[^A-Za-z0-9]+/).map((token) => token.toUpperCase());
   if (nameTokens.some((token) => SECRET_NAME_TOKENS.has(token)) || value.includes(secret)) {
     return maskKey(value);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseModelCatalog } from "../src/model-catalog.js";
-import { buildCodexConfig } from "../src/engine/tools/codex.js";
+import { buildCodexConfig, buildCodexModelCatalog } from "../src/engine/tools/codex.js";
+import { testModel } from "./fixtures.js";
 
 function catalogModel(id: string, codexEffort: string) {
   return {
@@ -67,5 +68,19 @@ describe("codex config clamps remote reasoning efforts", () => {
     });
     const config = buildCodexConfig("server-model", { modelSpec: catalog.models[0] });
     expect(config).toContain('model_reasoning_effort = "xhigh"');
+  });
+});
+
+describe("codex model catalog modalities", () => {
+  it("keeps only input modalities Codex supports", () => {
+    const catalog = buildCodexModelCatalog([
+      testModel("mixed", { input: ["text", "video", "pdf", "image", "audio"], output: ["text"] }),
+      testModel("non-text", { input: ["video", "pdf"], output: ["text"] })
+    ]);
+    const models = catalog.models as Array<{ input_modalities: string[] }>;
+    expect(models.map((model) => model.input_modalities)).toEqual([
+      ["text", "image", "audio"],
+      ["text"]
+    ]);
   });
 });
