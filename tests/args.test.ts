@@ -40,6 +40,11 @@ describe("the direct command language", () => {
       tool: "opencode",
       dryRun: true
     });
+    expect(parseArgs(["oc2", "--dry-run"])).toMatchObject({
+      command: "launch",
+      tool: "opencode2",
+      dryRun: true
+    });
     expect(parseArgs(["kc", "--dry-run"])).toMatchObject({
       command: "launch",
       tool: "kilo",

@@ -23,7 +23,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-live-report.json");
 const runId = (process.env.ZRO_CI_RUN_ID || `${Date.now()}`).replace(/[^A-Za-z0-9_.-]/g, "-");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "opencode2", "pi", "hermes", "openclaw", "prime"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -119,6 +119,7 @@ try {
     else if (harness === "kilo") await checkKilo();
     else if (harness === "omp") await checkOmp();
     else if (harness === "opencode") await checkOpenCode();
+    else if (harness === "opencode2") await checkOpenCode2();
     else if (harness === "pi") await checkPi();
     else if (harness === "prime") await checkPrime();
     else if (SKIPPED_LIVE_HARNESSES.has(harness)) skipped(harness);
@@ -155,6 +156,7 @@ async function collectVersions() {
     kilo: ["kilo", "--version"],
     omp: ["omp", "--version"],
     opencode: ["opencode", "--version"],
+    opencode2: ["opencode2", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
     openclaw: ["openclaw", "--version"],
@@ -316,6 +318,45 @@ async function checkOpenCode() {
   ], "OpenCode max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
   assert.ok(max.tokens.reasoning > 0, "OpenCode max effort reported no reasoning tokens");
   passed("opencode.reasoning.max", { model: liveModel, reasoningTokens: max.tokens.reasoning });
+}
+
+async function checkOpenCode2() {
+  const marker = "ZRO_OPENCODE2_CACHE_OK";
+  const prompt = `Live cache probe ${runId}. Reply with exactly ${marker}.`;
+  const warmArgs = [
+    "launch", "opencode2", "--model", liveModel, "--", "run",
+    "--format", "json", "--auto",
+    "--model", `zro/${liveModel}#${liveLevels.offId}`, prompt
+  ];
+  const readArgs = [
+    "launch", "opencode2", "--model", liveModel, "--", "run", "--continue",
+    "--format", "json", "--auto",
+    "--model", `zro/${liveModel}#${liveLevels.offId}`, prompt
+  ];
+
+  const { first, second } = await probeCache({
+    warmArgs,
+    readArgs,
+    parse: (turn) => openCode2Turn(turn, marker),
+    readTokens: (turn) => turn.tokens.cache.read,
+    label: "OpenCode 2"
+  });
+  passed("opencode2.cache", {
+    model: liveModel,
+    effort: liveLevels.offId,
+    firstCacheRead: first.tokens.cache.read,
+    secondCacheRead: second.tokens.cache.read
+  });
+
+  const reasoningMarker = "ZRO_OPENCODE2_MAX_OK";
+  const max = await retryProbe("OpenCode 2 max reasoning", 3, async () => openCode2Turn(await runZro([
+    "launch", "opencode2", "--model", liveModel, "--", "run",
+    "--format", "json", "--auto",
+    "--model", `zro/${liveModel}#${liveLevels.maxId}`,
+    `Think briefly, then include ${reasoningMarker} in the answer.`
+  ], "OpenCode 2 max reasoning", REASONING_TIMEOUT_MS), reasoningMarker));
+  assert.ok(max.tokens.reasoning > 0, "OpenCode 2 max effort reported no reasoning tokens");
+  passed("opencode2.reasoning.max", { model: liveModel, reasoningTokens: max.tokens.reasoning });
 }
 
 async function checkKilo() {
@@ -519,6 +560,25 @@ function openCodeTurn(result, marker) {
   return completed.part;
 }
 
+async function openCode2Turn(result, marker) {
+  const events = jsonLines(result.stdout);
+  const text = events
+    .filter((event) => event.type === "text")
+    .map((event) => event.part?.text || "")
+    .join("");
+  assert.match(text, new RegExp(marker));
+  const sessionID = events.find((event) => typeof event.sessionID === "string")?.sessionID;
+  assert.ok(sessionID, "OpenCode 2 emitted no session ID");
+  const output = await runZro([
+    "launch", "opencode2", "--model", liveModel, "--",
+    "api", "GET", `/api/session/${sessionID}/message`
+  ], "OpenCode 2 session messages");
+  const messages = JSON.parse(output.stdout);
+  const assistant = messages.data?.findLast((message) => message.type === "assistant" && message.tokens);
+  assert.ok(assistant?.tokens, "OpenCode 2 session emitted no assistant token usage");
+  return assistant;
+}
+
 function kiloTurn(result, marker) {
   const events = jsonLines(result.stdout);
   const text = events
@@ -614,9 +674,9 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const suffix = attempt > 1 ? ` (attempt ${attempt}/${attempts})` : "";
-      first = parse(await runZro(warmArgs, `${label} cache warm-up${suffix}`));
+      first = await parse(await runZro(warmArgs, `${label} cache warm-up${suffix}`));
       await afterWarm();
-      second = parse(await runZro(readArgs, `${label} cache read${suffix}`));
+      second = await parse(await runZro(readArgs, `${label} cache read${suffix}`));
       if (readTokens(second) > 0) return { first, second };
       console.log(`  ${label}: cache miss (${attempt}/${attempts}), re-warming...`);
     } catch (error) {

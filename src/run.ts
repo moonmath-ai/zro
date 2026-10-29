@@ -30,6 +30,7 @@ import { kiloTool } from "./engine/tools/kilo.js";
 import { ompTool } from "./engine/tools/omp.js";
 import { openClawTool } from "./engine/tools/openclaw.js";
 import { opencodeTool } from "./engine/tools/opencode.js";
+import { opencode2Tool } from "./engine/tools/opencode2.js";
 import { piTool } from "./engine/tools/pi.js";
 import { primeTool } from "./engine/tools/prime.js";
 import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/types.js";
@@ -59,6 +60,7 @@ const tools: Record<ToolId, ToolModule> = {
   omp: ompTool,
   openclaw: openClawTool,
   opencode: opencodeTool,
+  opencode2: opencode2Tool,
   pi: piTool,
   prime: primeTool
 };

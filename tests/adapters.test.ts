@@ -12,6 +12,7 @@ const adapters = [
   ["hermes", "hermes"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
+  ["opencode2", "opencode2"],
   ["pi", "pi"],
   ["prime", "prime-agent"]
 ] as const;
