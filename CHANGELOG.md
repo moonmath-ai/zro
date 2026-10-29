@@ -5,6 +5,15 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Tools
+
+- **OpenCode 2 support.** `zro install opencode2` (aliases `oc2` and `opencode-v2`) launches the
+  OpenCode 2 client/server agent with isolated config, `--standalone`, Zro models, and MCP.
+- OpenCode and OpenCode 2 config copies now skip symlinks and credential files
+  (`service.json`, `auth.json`, `mcp-auth.json`, `.env*`).
+
 ## [0.4.1] - 2026-10-28
 
 ### Added
@@ -31,11 +40,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Prime Agent 0.10.1 launches now use its `settings.json` MCP format and no longer pass the
   removed `--extension` or `--no-tools` flags.
-
-### Tools
-
-- **OpenCode 2 support.** `zro install opencode2` (aliases `oc2` and `opencode-v2`) launches the
-  OpenCode 2 client/server agent with isolated config, `--standalone`, Zro models, and MCP.
 
 ## [0.3.0] - 2026-10-05
 

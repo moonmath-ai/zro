@@ -15,6 +15,7 @@ import { kiloTool } from "../src/engine/tools/kilo.js";
 import { ompTool } from "../src/engine/tools/omp.js";
 import { openClawTool } from "../src/engine/tools/openclaw.js";
 import { opencodeTool } from "../src/engine/tools/opencode.js";
+import { opencode2Tool } from "../src/engine/tools/opencode2.js";
 import { piTool } from "../src/engine/tools/pi.js";
 import { primeTool } from "../src/engine/tools/prime.js";
 import { run } from "../src/run.js";
@@ -33,6 +34,7 @@ const tools: readonly ToolModule[] = [
   ompTool,
   openClawTool,
   opencodeTool,
+  opencode2Tool,
   piTool,
   primeTool,
 ];

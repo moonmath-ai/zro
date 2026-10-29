@@ -15,7 +15,11 @@ export const opencode2Tool: ToolModule = {
     const userConfigRoot = ctx.env.XDG_CONFIG_HOME ?? path.join(ctx.homeDir, ".config");
     const userOpencodeRoot = path.join(userConfigRoot, "opencode");
     const existing = await readOpenCodeConfig(userOpencodeRoot);
-    const nextConfig = buildOpenCode2Config(existing, ctx.apiKey, ctx.models, true);
+    const nextConfig = buildOpenCode2Config(existing, ctx.apiKey, ctx.models, true, {
+      baseUrl: ctx.inferenceBaseUrl,
+      mcpUrl: ctx.mcpUrl,
+      noAuth: ctx.noAuth
+    });
     nextConfig.model = `${PROVIDER_ID}/${ctx.model}`;
     const userFiles = await collectUserConfigFiles(userOpencodeRoot, opencodeRoot);
     const isDebug = ctx.extraArgs[0] === "debug";
@@ -49,7 +53,8 @@ export function buildOpenCode2Config(
   existing: Record<string, unknown>,
   apiKey: string,
   modelSpecs: readonly ZroModel[],
-  useEnvReference = false
+  useEnvReference = false,
+  endpoints: { baseUrl?: string; mcpUrl?: string; noAuth?: boolean } = {}
 ): Record<string, unknown> {
   const next = { ...existing };
   if (typeof next.$schema !== "string") {
@@ -87,7 +92,7 @@ export function buildOpenCode2Config(
     package: "@opencode/ai/providers/openai-compatible",
     settings: {
       ...settings,
-      baseURL: BASE_URL,
+      baseURL: endpoints.baseUrl ?? BASE_URL,
       apiKey: useEnvReference ? `{env:${ZRO_ENV_KEY}}` : apiKey
     },
     ...(Object.keys(headers).length ? { headers } : {}),
@@ -103,14 +108,18 @@ export function buildOpenCode2Config(
   const mcp = objectAt(next, "mcp");
   delete mcp[PROVIDER_ID];
   const servers = objectAt(mcp, "servers");
-  servers[PROVIDER_ID] = {
-    type: "remote",
-    url: MCP_URL,
-    oauth: false,
-    headers: {
-      Authorization: `Bearer {env:${ZRO_ENV_KEY}}`
-    }
-  };
+  if (endpoints.noAuth) {
+    delete servers[PROVIDER_ID];
+  } else {
+    servers[PROVIDER_ID] = {
+      type: "remote",
+      url: endpoints.mcpUrl ?? MCP_URL,
+      oauth: false,
+      headers: {
+        Authorization: `Bearer {env:${ZRO_ENV_KEY}}`
+      }
+    };
+  }
   return next;
 }
 

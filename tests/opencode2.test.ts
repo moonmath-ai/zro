@@ -65,6 +65,37 @@ describe("OpenCode 2 config", () => {
     expect(provider.settings.apiKey).toBe("sk-zro");
   });
 
+  it("honors gateway endpoints and skips the MCP server in no-auth mode", () => {
+    const gateway = "https://gateway.example/v1";
+    const mcp = "https://gateway.example/mcp/zro";
+    const config = buildOpenCode2Config({}, "sk-zro", TEST_MODELS, true, {
+      baseUrl: gateway,
+      mcpUrl: mcp,
+    });
+    const provider = (config.providers as Record<string, any>)[PROVIDER_ID];
+    expect(provider.settings.baseURL).toBe(gateway);
+    expect((config.mcp as Record<string, any>).servers[PROVIDER_ID].url).toBe(mcp);
+
+    const noAuth = buildOpenCode2Config(
+      { mcp: { servers: { [PROVIDER_ID]: { type: "remote", url: "https://old.invalid" } } } },
+      "sk-zro",
+      TEST_MODELS,
+      true,
+      { noAuth: true },
+    );
+    expect((noAuth.mcp as Record<string, any>).servers[PROVIDER_ID]).toBeUndefined();
+  });
+
+  it("preserves existing provider headers", () => {
+    const config = buildOpenCode2Config(
+      { providers: { [PROVIDER_ID]: { headers: { "x-custom": "1" } } } },
+      "sk-zro",
+      TEST_MODELS,
+      true,
+    );
+    expect((config.providers as Record<string, any>)[PROVIDER_ID].headers).toEqual({ "x-custom": "1" });
+  });
+
   it("preserves other providers and MCP servers", () => {
     const existing = {
       providers: { other: { name: "Other", settings: { baseURL: "https://other.invalid" } } },
@@ -162,6 +193,11 @@ describe("OpenCode 2 launch plan", () => {
     await fs.writeFile(path.join(userRoot, "auth.json"), '{"token":"do-not-copy"}\n');
     await fs.writeFile(path.join(userRoot, ".env.local"), "TOKEN=do-not-copy\n");
     await fs.writeFile(path.join(userRoot, "agents", ".env.local"), "TOKEN=do-not-copy\n");
+    const outside = path.join(home, "outside-secret.md");
+    await fs.writeFile(outside, "do-not-copy-outside\n");
+    if (process.platform !== "win32") {
+      await fs.symlink(outside, path.join(userRoot, "agents", "linked.md"));
+    }
     await fs.writeFile(
       path.join(userRoot, "opencode.json"),
       JSON.stringify({ mcp: { servers: { other: { type: "local", command: ["other"] } } } }),
@@ -199,7 +235,7 @@ describe("OpenCode 2 launch plan", () => {
       plan.files?.some((file) => file.path === path.join(tempDir, "xdg", "opencode", "agents", "helper.md")),
     ).toBe(true);
 
-    for (const name of ["service.json", "auth.json", ".env.local"]) {
+    for (const name of ["service.json", "auth.json", ".env.local", "linked.md"]) {
       expect(plan.files?.some((file) => path.basename(file.path) === name)).toBe(false);
     }
     const copied = (plan.files ?? [])
@@ -237,6 +273,10 @@ function context(
   return {
     apiKey: "sk-opencode2-secret",
     apiKeySource: "env",
+    inferenceRoot: "https://zro.moonmath.ai",
+    inferenceBaseUrl: BASE_URL,
+    mcpUrl: MCP_URL,
+    noAuth: false,
     env,
     model: "glm-5.3",
     models: TEST_MODELS,

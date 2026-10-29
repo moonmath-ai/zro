@@ -65,7 +65,7 @@ async function collectPath(
   ancestorDirectories: Set<string>
 ): Promise<void> {
   const stats = await readOptionalStats(srcPath);
-  if (!stats) return;
+  if (!stats || stats.isSymbolicLink()) return;
   if (stats.isFile()) {
     files.push({ path: destPath, contents: await fs.readFile(srcPath) });
     return;
@@ -107,7 +107,7 @@ async function readOptionalFile(filePath: string, encoding: "utf8"): Promise<str
 
 async function readOptionalStats(filePath: string): Promise<Stats | undefined> {
   try {
-    return await fs.stat(filePath);
+    return await fs.lstat(filePath);
   } catch (error) {
     if (isMissingPathError(error)) return undefined;
     throw error;
