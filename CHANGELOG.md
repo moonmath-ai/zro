@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Tools
+
+- **OpenCode 2 support.** `zro install opencode2` (aliases `oc2` and `opencode-v2`) launches the
+  OpenCode 2 client/server agent with isolated config, `--standalone`, Zro models, and MCP.
+
 ## [0.3.0] - 2026-10-05
 
 ### Highlights

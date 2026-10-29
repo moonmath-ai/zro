@@ -14,7 +14,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 }
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-models-report.json");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "pi", "hermes", "openclaw", "prime"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "opencode2", "pi", "hermes", "openclaw", "prime"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -68,6 +68,7 @@ try {
     kilo: ["kilo", "--version"],
     omp: ["omp", "--version"],
     opencode: ["opencode", "--version"],
+    opencode2: ["opencode2", "--version"],
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
     openclaw: ["openclaw", "--version"],
@@ -121,6 +122,32 @@ try {
       expectedModelIds
     );
     passed("OpenCode lists all Zro models");
+  }
+
+  if (harnesses.includes("opencode2")) {
+    const openCode2Output = run(
+      zroBin,
+      ["launch", "opencode2", "--model", selectedId, "--", "models"],
+      "OpenCode 2 model list"
+    );
+    const listed = openCode2Output
+      .trim()
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith(`${PROVIDER_ID}/`))
+      .sort();
+    assert.deepEqual(listed, expectedModelIds);
+    passed("OpenCode 2 lists all Zro models");
+
+    const configPath = run(
+      zroBin,
+      ["launch", "opencode2", "--model", selectedId, "--", "debug", "paths", "config"],
+      "OpenCode 2 config path"
+    ).trim();
+    assert.ok(
+      configPath.includes(`${path.sep}zro${path.sep}sessions${path.sep}session-`),
+      `OpenCode 2 config escaped the zro session: ${configPath}`
+    );
+    passed("OpenCode 2 keeps its config isolated");
   }
 
   if (harnesses.includes("kilo")) {
