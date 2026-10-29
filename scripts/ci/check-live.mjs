@@ -337,7 +337,7 @@ async function checkOpenCode2() {
   const { first, second } = await probeCache({
     warmArgs,
     readArgs,
-    parse: (turn) => openCodeTurn(turn, marker),
+    parse: (turn) => openCode2Turn(turn, marker),
     readTokens: (turn) => turn.tokens.cache.read,
     label: "OpenCode 2"
   });
@@ -349,7 +349,7 @@ async function checkOpenCode2() {
   });
 
   const reasoningMarker = "ZRO_OPENCODE2_MAX_OK";
-  const max = await retryProbe("OpenCode 2 max reasoning", 3, async () => openCodeTurn(await runZro([
+  const max = await retryProbe("OpenCode 2 max reasoning", 3, async () => openCode2Turn(await runZro([
     "launch", "opencode2", "--model", liveModel, "--", "run",
     "--format", "json", "--auto",
     "--model", `zro/${liveModel}#${liveLevels.maxId}`,
@@ -560,6 +560,25 @@ function openCodeTurn(result, marker) {
   return completed.part;
 }
 
+async function openCode2Turn(result, marker) {
+  const events = jsonLines(result.stdout);
+  const text = events
+    .filter((event) => event.type === "text")
+    .map((event) => event.part?.text || "")
+    .join("");
+  assert.match(text, new RegExp(marker));
+  const sessionID = events.find((event) => typeof event.sessionID === "string")?.sessionID;
+  assert.ok(sessionID, "OpenCode 2 emitted no session ID");
+  const output = await runZro([
+    "launch", "opencode2", "--model", liveModel, "--",
+    "api", "GET", `/api/session/${sessionID}/message`
+  ], "OpenCode 2 session messages");
+  const messages = JSON.parse(output.stdout);
+  const assistant = messages.data?.findLast((message) => message.type === "assistant" && message.tokens);
+  assert.ok(assistant?.tokens, "OpenCode 2 session emitted no assistant token usage");
+  return assistant;
+}
+
 function kiloTurn(result, marker) {
   const events = jsonLines(result.stdout);
   const text = events
@@ -655,9 +674,9 @@ async function probeCache({ warmArgs, readArgs, parse, readTokens, label, attemp
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const suffix = attempt > 1 ? ` (attempt ${attempt}/${attempts})` : "";
-      first = parse(await runZro(warmArgs, `${label} cache warm-up${suffix}`));
+      first = await parse(await runZro(warmArgs, `${label} cache warm-up${suffix}`));
       await afterWarm();
-      second = parse(await runZro(readArgs, `${label} cache read${suffix}`));
+      second = await parse(await runZro(readArgs, `${label} cache read${suffix}`));
       if (readTokens(second) > 0) return { first, second };
       console.log(`  ${label}: cache miss (${attempt}/${attempts}), re-warming...`);
     } catch (error) {
