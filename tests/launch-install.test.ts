@@ -173,6 +173,50 @@ describe("zro <tool> --install", () => {
   });
 });
 
+describe("zro opencode version detection", () => {
+  it("uses the OpenCode 2 environment when the installed binary reports version 2", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-opencode-v2-"));
+    const bin = path.join(home, "bin");
+    await fs.mkdir(bin);
+    await fs.writeFile(path.join(bin, "opencode"), "#!/bin/sh\n");
+    await fs.chmod(path.join(bin, "opencode"), 0o755);
+
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const spawn: SpawnProcess = (command, args) => {
+      calls.push({ command, args });
+      const child = new EventEmitter() as ChildProcess & { stdout?: PassThrough };
+      child.stdout = new PassThrough();
+      process.nextTick(() => {
+        if (args[0] === "--version") {
+          child.stdout!.on("end", () => child.emit("exit", 0, null));
+          child.stdout!.end("opencode v2.1.2\n");
+        } else {
+          child.emit("exit", 0, null);
+        }
+      });
+      return child;
+    };
+    const stdout = new PassThrough();
+
+    const code = await run(
+      ["opencode", "--json", "--api-key", "sk-test"],
+      { ...launchIo(home, spawn, { PATH: bin, ZRO_API_KEY: "sk-test" }), stdout },
+    );
+
+    expect(code).toBe(0);
+    const plan = JSON.parse(await streamText(stdout)) as {
+      tool: string;
+      command: string;
+      args: string[];
+      environment: Record<string, string>;
+    };
+    expect(plan).toMatchObject({ tool: "opencode", command: "opencode" });
+    expect(plan.args[0]).toBe("--standalone");
+    expect(plan.environment.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
+    expect(calls).toContainEqual({ command: "opencode", args: ["--version"] });
+  });
+});
+
 describe("zro <tool> with a missing harness", () => {
   function ttyIo(home: string, spawn: SpawnProcess, env: NodeJS.ProcessEnv, stdout: PassThrough) {
     const stdin = new PassThrough() as PassThrough & {

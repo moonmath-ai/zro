@@ -121,8 +121,8 @@ unavailable in this mode.
 | [Codex App](https://developers.openai.com/codex/) | `zro install codex-app` | OpenAI's desktop app |
 | [Kilo Code](https://kilocode.ai/) | `zro install kilo` | Kilo's terminal coding agent |
 | [Oh My Pi](https://ohmy.ai) | `zro install omp` | Power-user terminal agent |
-| [OpenCode](https://opencode.ai) | `zro install opencode` | Open-source coding agent |
-| [OpenCode 2](https://opencode.ai) | `zro install opencode2` | OpenCode 2.0 client/server agent |
+| [OpenCode](https://opencode.ai) | `zro install opencode` | Open-source coding agent; picks the OpenCode 2 setup when v2 is installed |
+| [OpenCode 2](https://opencode.ai) | `zro install opencode2` | OpenCode 2.0 client/server agent (or use `zro opencode`) |
 | [Grok Build](https://x.ai) | `zro install grok` | xAI's coding agent |
 | [Hermes](https://hermes-agent.nousresearch.com) | `zro install hermes` | Nous Research's agent |
 | [OpenClaw](https://github.com/openclaw/openclaw) | `zro install openclaw` | Personal AI assistant |

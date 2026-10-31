@@ -4,11 +4,23 @@ import { jsonSerializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
 import { asPlainObject, objectAt } from "./helpers.js";
 import { collectUserConfigFiles, readOpenCodeConfig } from "./opencode-shared.js";
+import { opencode2Tool } from "./opencode2.js";
 
 export const opencodeTool: ToolModule = {
   id: "opencode",
   label: "opencode",
   async launch(ctx) {
+    if ((ctx.opencodeMajor ?? 1) >= 2) {
+      const plan = await opencode2Tool.launch(ctx);
+      return {
+        ...plan,
+        tool: "opencode",
+        label: "opencode",
+        command: "opencode",
+        message: "Launch opencode with Zro"
+      };
+    }
+
     const configRoot = path.join(ctx.tempDir, "xdg");
     const opencodeRoot = path.join(configRoot, "opencode");
     const filePath = path.join(opencodeRoot, "opencode.json");

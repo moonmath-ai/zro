@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveTool, TOOLS, type ToolDescriptor } from "./catalog.js";
@@ -71,6 +72,35 @@ export async function commandExists(
     }
   }
   return false;
+}
+
+export async function commandVersion(
+  command: string,
+  io: RunIo,
+  env: NodeJS.ProcessEnv,
+): Promise<string | undefined> {
+  const spawn = io.spawn ?? (nodeSpawn as SpawnProcess);
+  let child: ChildProcess;
+  try {
+    child = spawnCommand(spawn, io.platform ?? process.platform, command, ["--version"], {
+      cwd: io.cwd,
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return undefined;
+  }
+
+  let output = "";
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk: string) => {
+    output += chunk;
+  });
+  const exitCode = await new Promise<number | null>((resolve) => {
+    child.once("error", () => resolve(null));
+    child.once("exit", (code) => resolve(code));
+  });
+  return exitCode === 0 && output.trim() ? output.trim() : undefined;
 }
 
 function executableExtensions(command: string, pathExt: string | undefined): string[] {
