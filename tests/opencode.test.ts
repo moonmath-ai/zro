@@ -40,9 +40,35 @@ describe("OpenCode adapter", () => {
       .join("\n");
     expect(copied).not.toContain("do-not-copy");
   });
+
+  it("uses the OpenCode 2 environment when the installed binary is version 2", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-opencode-v2-home-"));
+    const tempDir = path.join(home, "session");
+
+    const plan = await opencodeTool.launch(context(home, tempDir, {}, 2));
+
+    expect(plan).toMatchObject({
+      tool: "opencode",
+      label: "opencode",
+      command: "opencode",
+      message: "Launch opencode with Zro",
+    });
+    expect(plan.args[0]).toBe("--standalone");
+    expect(plan.env).toMatchObject({ OPENCODE_DISABLE_AUTOUPDATE: "1" });
+
+    const configPath = path.join(tempDir, "xdg", "opencode", "opencode.json");
+    const config = JSON.parse(String(plan.files?.find((file) => file.path === configPath)?.contents));
+    expect(config.providers.zro.package).toBe("@opencode/ai/providers/openai-compatible");
+    expect(config.provider).toBeUndefined();
+  });
 });
 
-function context(homeDir: string, tempDir: string, env: NodeJS.ProcessEnv = {}): LaunchContext {
+function context(
+  homeDir: string,
+  tempDir: string,
+  env: NodeJS.ProcessEnv = {},
+  opencodeMajor?: number,
+): LaunchContext {
   return {
     apiKey: "sk-opencode-secret",
     apiKeySource: "env",
@@ -54,6 +80,7 @@ function context(homeDir: string, tempDir: string, env: NodeJS.ProcessEnv = {}):
     model: "glm-5.3",
     models: TEST_MODELS,
     extraArgs: [],
+    opencodeMajor,
     homeDir,
     cwd: homeDir,
     tempDir,

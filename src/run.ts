@@ -37,7 +37,7 @@ import type { LaunchPlan, SpawnProcess, ToolId, ToolModule } from "./engine/type
 import { parseArgs } from "./args.js";
 import { isNoAuth, resolveControlPlaneRoot, resolveInference, resolveMcpUrl } from "./endpoints.js";
 import { describeTool } from "./catalog.js";
-import { commandExists, ensureHarnessInstalled, install } from "./install.js";
+import { commandExists, commandVersion, ensureHarnessInstalled, install } from "./install.js";
 import { readPreferences, writePreferences } from "./preferences.js";
 import {
   CatalogAuthenticationError,
@@ -227,6 +227,13 @@ async function launch(
     if (!ready) return 1;
   }
 
+  let opencodeMajor: number | undefined;
+  if (request.tool === "opencode" && await commandExists(tool.executable, env, io.platform)) {
+    const version = await commandVersion(tool.executable, io, env);
+    const major = version?.match(/(\d+)\./)?.[1];
+    if (major) opencodeMajor = Number(major);
+  }
+
   let modelAliases: Record<string, string> | undefined;
   for (const [slot, modelId] of Object.entries(request.aliases ?? {})) {
     if (request.tool !== "claude") {
@@ -262,6 +269,7 @@ async function launch(
       models: catalog.models,
       extraArgs: request.extraArgs,
       modelAliases,
+      opencodeMajor,
       homeDir: io.homeDir,
       cwd: io.cwd,
       tempDir,

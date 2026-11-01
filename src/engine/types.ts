@@ -1,5 +1,5 @@
 import type { Readable, Writable } from "node:stream";
-import type { ChildProcess } from "node:child_process";
+import type { ChildProcess, StdioOptions } from "node:child_process";
 import type { SUPPORTED_TOOLS } from "./constants.js";
 import type { ZroModel } from "./constants.js";
 
@@ -18,6 +18,7 @@ export interface LaunchContext {
   models: readonly ZroModel[];
   extraArgs: string[];
   modelAliases?: Record<string, string>;
+  opencodeMajor?: number;
   homeDir: string;
   cwd: string;
   tempDir: string;
@@ -53,7 +54,7 @@ export interface ToolModule {
 export interface SpawnOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
-  stdio: "inherit";
+  stdio: StdioOptions;
   windowsVerbatimArguments?: boolean;
 }
 

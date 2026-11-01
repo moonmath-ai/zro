@@ -5,6 +5,13 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Tools
+
+- `zro opencode` now checks the installed OpenCode version and launches OpenCode 2 with its
+  `--standalone` environment when v2 is installed. `zro opencode2` still works.
+
 ## [0.4.2] - 2026-10-29
 
 ### Tools
