@@ -9,6 +9,7 @@ import { TEST_CATALOG_RESPONSE, TEST_MODELS } from "./fixtures.js";
 import type { LaunchContext, SpawnOptions, SpawnProcess, ToolModule } from "../src/engine/types.js";
 import { claudeTool } from "../src/engine/tools/claude.js";
 import { codexAppTool, codexTool } from "../src/engine/tools/codex.js";
+import { dshTool } from "../src/engine/tools/dsh.js";
 import { grokTool } from "../src/engine/tools/grok.js";
 import { hermesTool } from "../src/engine/tools/hermes.js";
 import { kiloTool } from "../src/engine/tools/kilo.js";
@@ -28,6 +29,7 @@ const tools: readonly ToolModule[] = [
   claudeTool,
   codexTool,
   codexAppTool,
+  dshTool,
   grokTool,
   hermesTool,
   kiloTool,

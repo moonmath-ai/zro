@@ -24,6 +24,7 @@ import {
   codexAppTool,
   codexTool,
 } from "./engine/tools/codex.js";
+import { dshTool } from "./engine/tools/dsh.js";
 import { grokTool } from "./engine/tools/grok.js";
 import { hermesTool } from "./engine/tools/hermes.js";
 import { kiloTool } from "./engine/tools/kilo.js";
@@ -54,6 +55,7 @@ const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
   codex: codexTool,
   "codex-app": codexAppTool,
+  dsh: dshTool,
   grok: grokTool,
   hermes: hermesTool,
   kilo: kiloTool,

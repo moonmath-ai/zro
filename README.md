@@ -119,6 +119,7 @@ unavailable in this mode.
 | [Claude Code](https://www.anthropic.com/claude-code) | `zro install claude` | Anthropic's coding agent |
 | [Codex CLI](https://developers.openai.com/codex/) | `zro install codex` | OpenAI's terminal agent |
 | [Codex App](https://developers.openai.com/codex/) | `zro install codex-app` | OpenAI's desktop app |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `zro install dsh` | DeepSeek's plugin-based agent harness (Node 24.9+) |
 | [Kilo Code](https://kilocode.ai/) | `zro install kilo` | Kilo's terminal coding agent |
 | [Oh My Pi](https://ohmy.ai) | `zro install omp` | Power-user terminal agent |
 | [OpenCode](https://opencode.ai) | `zro install opencode` | Open-source coding agent |

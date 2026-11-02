@@ -5,6 +5,14 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Tools
+
+- **DeepSeek Harness support.** `zro install dsh` (aliases `deepseek` and
+  `deepseek-harness`) launches the DeepSeek Harness web profile with isolated config, Zro
+  models, and MCP.
+
 ## [0.4.2] - 2026-10-29
 
 ### Tools
