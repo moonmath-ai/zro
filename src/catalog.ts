@@ -18,6 +18,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   { id: "claude", name: "Claude Code", hint: "Anthropic's coding agent", aliases: ["c", "cc"], executable: "claude", package: "@anthropic-ai/claude-code@latest" },
   { id: "codex", name: "Codex CLI", hint: "OpenAI's terminal agent", aliases: ["cx"], executable: "codex", package: "@openai/codex@latest" },
   { id: "codex-app", name: "Codex App", hint: "OpenAI's desktop app", aliases: ["app"], executable: "codex", package: "@openai/codex@latest" },
+  { id: "dsh", name: "DeepSeek Harness", hint: "DeepSeek's plugin-based agent harness", aliases: ["deepseek", "deepseek-harness"], executable: "dsh", package: "@deepseek-ai/dsh@latest" },
   { id: "kilo", name: "Kilo Code", hint: "Kilo's terminal coding agent", aliases: ["kc", "kilocode"], executable: "kilo", package: "@kilocode/cli@latest" },
   { id: "omp", name: "Oh My Pi", hint: "Power-user terminal coding agent", aliases: ["oh-my-pi", "ohmypi"], executable: "omp", installer: { url: "https://omp.sh/install", args: ["--binary"], binDir: ".local/bin" } },
   { id: "opencode", name: "OpenCode", hint: "Open source coding agent", aliases: ["oc"], executable: "opencode", package: "opencode-ai@latest" },

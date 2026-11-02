@@ -9,6 +9,7 @@ import { catalogFetch } from "./fixtures.js";
 const adapters = [
   ["codex", "codex"],
   ["codex-app", "codex"],
+  ["dsh", "dsh"],
   ["hermes", "hermes"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
