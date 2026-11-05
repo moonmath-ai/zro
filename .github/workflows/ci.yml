@@ -164,11 +164,21 @@ jobs:
           ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-compatibility.json
         run: npm run test:clients -- ${{ matrix.harness.id }}
 
+      - name: Install Asimi sandbox dependencies
+        if: matrix.harness.id == 'asimi' && matrix.os == 'ubuntu-latest'
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y podman
+          fi
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Check live API
         if: >-
-          (github.event_name == 'pull_request' &&
+          (matrix.harness.id != 'asimi' || matrix.os == 'ubuntu-latest') &&
+          ((github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository) ||
-          (github.event_name == 'workflow_dispatch' && inputs.run_live)
+          (github.event_name == 'workflow_dispatch' && inputs.run_live))
         env:
           ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
           ZRO_REPORT: artifacts/zro-${{ matrix.harness.id }}-${{ matrix.os }}-live.json

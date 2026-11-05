@@ -23,7 +23,7 @@ if (!apiKey || apiKey === "ci-fake-key") {
 const zroBin = process.env.ZRO_BIN || "zro";
 const reportPath = process.env.ZRO_REPORT || path.resolve("artifacts/zro-live-report.json");
 const runId = (process.env.ZRO_CI_RUN_ID || `${Date.now()}`).replace(/[^A-Za-z0-9_.-]/g, "-");
-const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "opencode2", "pi", "hermes", "openclaw", "prime"];
+const supportedHarnesses = ["claude", "codex", "grok", "kilo", "omp", "opencode", "opencode2", "pi", "hermes", "openclaw", "prime", "asimi"];
 const requestedHarness = process.argv[2] || "all";
 if (requestedHarness !== "all" && !supportedHarnesses.includes(requestedHarness)) {
   throw new Error(`Unknown harness ${requestedHarness}. Expected one of: ${supportedHarnesses.join(", ")}`);
@@ -122,6 +122,7 @@ try {
     else if (harness === "opencode2") await checkOpenCode2();
     else if (harness === "pi") await checkPi();
     else if (harness === "prime") await checkPrime();
+    else if (harness === "asimi") await checkAsimi();
     else if (SKIPPED_LIVE_HARNESSES.has(harness)) skipped(harness);
     else throw new Error(`No live checks defined for harness "${harness}"`);
   }
@@ -160,7 +161,8 @@ async function collectVersions() {
     pi: ["pi", "--version"],
     hermes: ["hermes", "--version"],
     openclaw: ["openclaw", "--version"],
-    prime: ["prime-agent", "--version"]
+    prime: ["prime-agent", "--version"],
+    asimi: ["asimi", "--version"]
   };
   for (const name of harnesses) {
     const command = clientCommands[name];
@@ -495,6 +497,18 @@ async function checkPrime() {
     return { thinkingContent: true };
   });
   passed("prime.reasoning.max", { model: liveModel, thinkingContent: max.thinkingContent });
+}
+
+// Asimi has no JSON output mode; the probe asserts a plain-text marker. The
+// prompt must not invite shell use, so the podman sandbox is never started.
+async function checkAsimi() {
+  const marker = "ZRO_ASIMI_OK";
+  const result = await runZro([
+    "launch", "asimi", "--model", liveModel, "--",
+    "-p", `Reply with exactly ${marker}.`, "--max-turns", "1", "--handsoff"
+  ], "Asimi reply", 180_000);
+  assert.match(result.stdout, new RegExp(marker));
+  passed("asimi.reply", { model: liveModel });
 }
 
 function primeTurn(result, marker, options = {}) {
