@@ -503,10 +503,11 @@ async function checkPrime() {
 // prompt must not invite shell use, so the podman sandbox is never started.
 async function checkAsimi() {
   const marker = "ZRO_ASIMI_OK";
-  const result = await runZro([
-    "launch", "asimi", "--model", liveModel, "--",
-    "-p", `Reply with exactly ${marker}.`, "--max-turns", "1", "--handsoff"
-  ], "Asimi reply", 180_000);
+  const result = await retryProbe("Asimi reply", 3, () =>
+    runZro([
+      "launch", "asimi", "--model", liveModel, "--",
+      "-p", `Reply with exactly ${marker}.`, "--max-turns", "1", "--handsoff"
+    ], "Asimi reply", 180_000));
   assert.match(result.stdout, new RegExp(marker));
   passed("asimi.reply", { model: liveModel });
 }
