@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  ENDPOINT_ROOT,
   type ZroModel,
   type ZroModality,
   type ZroModalities,
 } from "./engine/constants.js";
+import { resolveControlPlaneRoot } from "./endpoints.js";
 
 export interface ModelCatalog {
   version: 1;
@@ -22,6 +22,8 @@ export interface LoadedModelCatalog extends ModelCatalog {
 type CatalogOptions = {
   apiKey?: string;
   cacheRemote?: boolean;
+  noAuth?: boolean;
+  inferenceRoot?: string;
   env: NodeJS.ProcessEnv;
   homeDir: string;
   fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -42,6 +44,8 @@ export class CatalogUnavailableError extends Error {
 }
 
 export async function loadModelCatalog(options: CatalogOptions): Promise<LoadedModelCatalog> {
+  if (options.noAuth) return loadPublicCatalog(options, options.inferenceRoot);
+
   let fetchFailure: unknown;
   if (options.apiKey) {
     try {
@@ -84,6 +88,11 @@ export function modelCatalogCachePath(options: Pick<CatalogOptions, "env" | "hom
   return path.join(cacheRoot, "zro", "model-catalog.json");
 }
 
+export function publicModelCatalogCachePath(options: Pick<CatalogOptions, "env" | "homeDir">): string {
+  const cacheRoot = options.env.XDG_CACHE_HOME || path.join(options.homeDir, ".cache");
+  return path.join(cacheRoot, "zro", "model-catalog-public.json");
+}
+
 async function fetchAuthenticatedCatalog(options: CatalogOptions, apiKey: string): Promise<ModelCatalog> {
   const fetcher = options.fetch ?? globalThis.fetch;
   const endpointRoot = catalogRoot(options.env);
@@ -105,7 +114,105 @@ async function fetchAuthenticatedCatalog(options: CatalogOptions, apiKey: string
 }
 
 function catalogRoot(env: NodeJS.ProcessEnv): string {
-  return (env.ZRO_AUTH_URL || env.ZRO_ENDPOINT_ROOT || ENDPOINT_ROOT).replace(/\/+$/, "");
+  return resolveControlPlaneRoot(env);
+}
+
+async function loadPublicCatalog(
+  options: CatalogOptions,
+  inferenceRoot: string | undefined,
+): Promise<LoadedModelCatalog> {
+  if (!inferenceRoot) {
+    throw new Error("No-auth mode needs an inference URL. Pass --inference-url or set ZRO_INFERENCE_URL.");
+  }
+
+  let source: CatalogSource = "remote";
+  let catalog: ModelCatalog | null = null;
+  let fetchFailure: unknown;
+  try {
+    catalog = await fetchPublicCatalog(options);
+    if (options.cacheRemote !== false) {
+      await writePublicCachedCatalog(options, catalog).catch(() => {});
+    }
+  } catch (error) {
+    fetchFailure = error;
+  }
+
+  if (!catalog) {
+    catalog = await readPublicCachedCatalog(options);
+    source = "cache";
+  }
+  if (!catalog) {
+    throw new CatalogUnavailableError(
+      fetchFailure instanceof Error ? fetchFailure.message : String(fetchFailure ?? "no cached catalog"),
+    );
+  }
+
+  const activeIds = await fetchActiveModelIds(options, inferenceRoot);
+  return { ...intersectCatalog(catalog, activeIds), source };
+}
+
+async function fetchPublicCatalog(options: CatalogOptions): Promise<ModelCatalog> {
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const response = await fetcher(`${catalogRoot(options.env)}/api/cli/models/public`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Public model catalog request failed with HTTP ${response.status}.`);
+  }
+  return parseModelCatalog(await response.json());
+}
+
+async function fetchActiveModelIds(options: CatalogOptions, inferenceRoot: string): Promise<Set<string>> {
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const root = inferenceRoot.replace(/\/+$/, "");
+  const response = await fetcher(`${root}/v1/models`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Inference gateway model list request failed with HTTP ${response.status}.`);
+  }
+  return parseActiveModelIds(await response.json());
+}
+
+function parseActiveModelIds(value: unknown): Set<string> {
+  const data = asRecord(value, "inference gateway model list").data;
+  if (!Array.isArray(data)) throw new Error("Invalid inference gateway model list.");
+  const ids = new Set<string>();
+  for (const entry of data) {
+    const id = asRecord(entry, "inference gateway model").id;
+    if (typeof id === "string" && id.trim()) ids.add(id.replace(/^zro\//, ""));
+  }
+  return ids;
+}
+
+function intersectCatalog(catalog: ModelCatalog, activeIds: Set<string>): ModelCatalog {
+  const models = catalog.models.filter((model) => activeIds.has(model.id));
+  if (models.length === 0) {
+    throw new Error("The inference gateway does not offer any public models.");
+  }
+  const defaultModel = models.some((model) => model.id === catalog.default)
+    ? catalog.default
+    : models[0].id;
+  return { version: 1, default: defaultModel, models };
+}
+
+async function readPublicCachedCatalog(options: CatalogOptions): Promise<ModelCatalog | null> {
+  try {
+    const contents = await fs.readFile(publicModelCatalogCachePath(options), "utf8");
+    return parseModelCatalog(JSON.parse(contents));
+  } catch {
+    return null;
+  }
+}
+
+async function writePublicCachedCatalog(options: CatalogOptions, catalog: ModelCatalog): Promise<void> {
+  const filePath = publicModelCatalogCachePath(options);
+  await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(temporaryPath, `${JSON.stringify(catalog, null, 2)}\n`, { mode: 0o600 });
+  await fs.rename(temporaryPath, filePath);
 }
 
 async function readCachedCatalog(options: CatalogOptions): Promise<ModelCatalog | null> {

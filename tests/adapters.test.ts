@@ -4,7 +4,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/run.js";
-import { catalogFetch } from "./fixtures.js";
+import { catalogFetch, fakeSandboxBinDir } from "./fixtures.js";
 
 const adapters = [
   ["codex", "codex"],
@@ -12,6 +12,7 @@ const adapters = [
   ["hermes", "hermes"],
   ["openclaw", "openclaw"],
   ["opencode", "opencode"],
+  ["opencode2", "opencode2"],
   ["pi", "pi"],
   ["prime", "prime-agent"],
   ["asimi", "asimi"]
@@ -27,7 +28,7 @@ describe("tool adapters", () => {
       stderr: new PassThrough(),
       homeDir: home,
       cwd: home,
-      env: { ZRO_API_KEY: "sk-adapter-secret", XDG_CONFIG_HOME: path.join(home, ".config") },
+      env: { ZRO_API_KEY: "sk-adapter-secret", XDG_CONFIG_HOME: path.join(home, ".config"), PATH: await fakeSandboxBinDir() },
       platform: "linux",
       fetch: catalogFetch(503),
     });

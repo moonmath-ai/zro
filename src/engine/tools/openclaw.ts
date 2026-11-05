@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { json5Serializer } from "../serializers.js";
 import type { ToolModule } from "../types.js";
@@ -14,7 +14,7 @@ export const openClawTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".openclaw", "openclaw.json");
     const existing = await readConfig(path.join(ctx.homeDir, ".openclaw", "openclaw.json"), json5Serializer);
-    const nextConfig = buildOpenClawConfig(existing, ctx.apiKey, ctx.models);
+    const nextConfig = buildOpenClawConfig(existing, ctx.apiKey, ctx.models, ctx.inferenceBaseUrl, ctx.mcpUrl, ctx.noAuth);
     objectAt(objectAt(objectAt(nextConfig, "agents"), "defaults"), "model").primary = `${PROVIDER_ID}/${ctx.model}`;
     return {
       tool: "openclaw",
@@ -51,7 +51,10 @@ function buildOpenClawArgs(extraArgs: string[]): string[] {
 function buildOpenClawConfig(
   existing: Record<string, unknown>,
   apiKey: string,
-  modelSpecs: readonly ZroModel[]
+  modelSpecs: readonly ZroModel[],
+  baseUrl: string,
+  mcpUrl: string,
+  noAuth: boolean,
 ): Record<string, unknown> {
   const next = { ...existing };
 
@@ -83,28 +86,34 @@ function buildOpenClawConfig(
 
   providers[PROVIDER_ID] = {
     ...provider,
-    baseUrl: BASE_URL,
+    baseUrl: baseUrl,
     apiKey,
     api: OPENCLAW_API,
     timeoutSeconds: typeof provider.timeoutSeconds === "number" ? provider.timeoutSeconds : 300,
     models: providerModels
   };
 
-  const mcpServers = objectAt(objectAt(next, "mcp"), "servers");
-  const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
-  mcpServers[PROVIDER_ID] = {
-    ...existingMcpServer,
-    url: MCP_URL,
-    transport: "streamable-http",
-    enabled: true,
-    headers: {
-      ...(asPlainObject(existingMcpServer.headers) ?? {}),
-      Authorization: `Bearer \${${ZRO_ENV_KEY}}`
-    },
-    toolFilter: {
-      include: ["zro-web_search"]
-    }
-  };
+  if (noAuth) {
+    const mcp = asPlainObject(next.mcp);
+    const mcpServers = asPlainObject(mcp?.servers);
+    if (mcpServers) delete mcpServers[PROVIDER_ID];
+  } else {
+    const mcpServers = objectAt(objectAt(next, "mcp"), "servers");
+    const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
+    mcpServers[PROVIDER_ID] = {
+      ...existingMcpServer,
+      url: mcpUrl,
+      transport: "streamable-http",
+      enabled: true,
+      headers: {
+        ...(asPlainObject(existingMcpServer.headers) ?? {}),
+        Authorization: `Bearer \${${ZRO_ENV_KEY}}`
+      },
+      toolFilter: {
+        include: ["zro-web_search"]
+      }
+    };
+  }
 
   return next;
 }

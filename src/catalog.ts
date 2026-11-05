@@ -21,6 +21,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   { id: "kilo", name: "Kilo Code", hint: "Kilo's terminal coding agent", aliases: ["kc", "kilocode"], executable: "kilo", package: "@kilocode/cli@latest" },
   { id: "omp", name: "Oh My Pi", hint: "Power-user terminal coding agent", aliases: ["oh-my-pi", "ohmypi"], executable: "omp", installer: { url: "https://omp.sh/install", args: ["--binary"], binDir: ".local/bin" } },
   { id: "opencode", name: "OpenCode", hint: "Open source coding agent", aliases: ["oc"], executable: "opencode", package: "opencode-ai@latest" },
+  { id: "opencode2", name: "OpenCode 2", hint: "OpenCode 2.0 client/server agent", aliases: ["oc2", "opencode-v2"], executable: "opencode2", installer: { url: "https://opencode.ai/v2/install", binDir: ".opencode/bin" } },
   { id: "grok", name: "Grok Build", hint: "xAI's coding agent", aliases: ["gr"], executable: "grok", installer: { url: "https://x.ai/cli/install.sh", binDir: ".local/bin" } },
   { id: "hermes", name: "Hermes", hint: "Nous Research's agent", aliases: ["h"], executable: "hermes", installer: { url: "https://hermes-agent.nousresearch.com/install.sh", args: ["--skip-setup"], binDir: ".local/bin" } },
   { id: "openclaw", name: "OpenClaw", hint: "Personal AI assistant", aliases: ["claw"], executable: "openclaw", package: "openclaw@latest" },

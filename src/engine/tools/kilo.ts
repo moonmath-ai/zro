@@ -101,7 +101,7 @@ export const kiloTool: ToolModule = {
     const userKiloRoot = path.join(userConfigHome, "kilo");
     const existing = await readKiloConfig(userKiloRoot);
     const safeConfig = sanitizeKiloConfig(existing);
-    const overlay = buildKiloConfigOverlay(ctx.model, ctx.models);
+    const overlay = buildKiloConfigOverlay(ctx.model, ctx.models, ctx.inferenceBaseUrl, ctx.mcpUrl, ctx.noAuth);
     const userFiles = await collectSafeUserAssets(userKiloRoot, kiloConfigRoot);
 
     return {
@@ -149,6 +149,9 @@ export const kiloTool: ToolModule = {
 export function buildKiloConfigOverlay(
   model: string,
   modelSpecs: readonly ZroModel[],
+  baseUrl = BASE_URL,
+  mcpUrl = MCP_URL,
+  noAuth = false,
 ): Record<string, unknown> {
   const models = Object.fromEntries(modelSpecs.map((spec) => [
     spec.id,
@@ -175,23 +178,25 @@ export function buildKiloConfigOverlay(
         npm: "@ai-sdk/openai-compatible",
         name: PROVIDER_NAME,
         options: {
-          baseURL: BASE_URL,
+          baseURL: baseUrl,
           apiKey: `{env:${ZRO_ENV_KEY}}`,
         },
         models,
       },
     },
-    mcp: {
-      [PROVIDER_ID]: {
-        type: "remote",
-        url: MCP_URL,
-        headers: {
-          Authorization: `Bearer {env:${ZRO_ENV_KEY}}`,
+    ...(noAuth ? {} : {
+      mcp: {
+        [PROVIDER_ID]: {
+          type: "remote",
+          url: mcpUrl,
+          headers: {
+            Authorization: `Bearer {env:${ZRO_ENV_KEY}}`,
+          },
+          enabled: true,
+          oauth: false,
         },
-        enabled: true,
-        oauth: false,
       },
-    },
+    }),
     experimental: {
       openTelemetry: false,
     },

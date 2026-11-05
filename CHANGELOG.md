@@ -5,14 +5,52 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## Unreleased
 
 ### Added
 
 - **Asimi support.** [Asimi](https://asimi.dev/), the open-source vi-inspired coding agent, is now a
   supported harness (`zro asimi`). Asimi is launched entirely through its provider env conventions
-  (`ZRO_API_KEY`/`ZRO_BASE_URL` with `ASIMI_PROVIDER=zro`), so no config files are written and the
-  API key never touches disk. Install with `zro install asimi`.
+  (`OPENAI_API_KEY`/`OPENAI_BASE_URL` with `ASIMI_PROVIDER=openai`), so no config files are written
+  and the API key never touches disk. Asimi runs its shell in a podman sandbox, so `podman` and
+  `just` must be on PATH; the launch explains how to install them when they are missing. Install with
+  `zro install asimi`.
+
+## [0.4.2] - 2026-10-29
+
+### Tools
+
+- **OpenCode 2 support.** `zro install opencode2` (aliases `oc2` and `opencode-v2`) launches the
+  OpenCode 2 client/server agent with isolated config, `--standalone`, Zro models, and MCP.
+- OpenCode and OpenCode 2 config copies now skip symlinks and credential files
+  (`service.json`, `auth.json`, `mcp-auth.json`, `.env*`).
+
+## [0.4.1] - 2026-10-28
+
+### Added
+
+- `zro status` shows a Free plan account as Free, with the share of today's usage left and
+  when it resets. Servers that do not send this keep the previous output.
+
+## [0.4.0] - 2026-10-26
+
+### Added
+
+- `--inference-url <url>` and `ZRO_INFERENCE_URL` point inference at another
+  OpenAI-compatible gateway. A root or `/v1` URL works, and the override wins over
+  `ZRO_ENDPOINT_ROOT` and the default endpoint. Login, the authenticated catalog,
+  feedback, and MCP stay on the control-plane URL.
+- `--no-auth` and `ZRO_NO_AUTH=1` launch agents against an inference endpoint with no Zro
+  account. No-auth mode requires an explicit inference override, skips key resolution
+  and Authorization headers, loads public model metadata from
+  `/api/cli/models/public`, intersects it with the gateway's live `/v1/models` list,
+  caches it separately as `model-catalog-public.json`, and omits the Zro MCP server.
+  `zro models` and `zro status` work in this mode; `zro feedback` does not.
+
+### Fixed
+
+- Prime Agent 0.10.1 launches now use its `settings.json` MCP format and no longer pass the
+  removed `--extension` or `--no-tools` flags.
 
 ## [0.3.0] - 2026-10-05
 

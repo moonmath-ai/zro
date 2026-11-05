@@ -40,6 +40,11 @@ describe("the direct command language", () => {
       tool: "opencode",
       dryRun: true
     });
+    expect(parseArgs(["oc2", "--dry-run"])).toMatchObject({
+      command: "launch",
+      tool: "opencode2",
+      dryRun: true
+    });
     expect(parseArgs(["kc", "--dry-run"])).toMatchObject({
       command: "launch",
       tool: "kilo",
@@ -153,5 +158,37 @@ describe("the direct command language", () => {
       message: undefined,
       output: "json",
     });
+  });
+});
+
+describe("alternate inference endpoint arguments", () => {
+  it("parses inference URL overrides and no-auth mode", () => {
+    expect(parseArgs([
+      "claude",
+      "--inference-url",
+      "https://gateway.example/v1/",
+      "--no-auth",
+    ])).toMatchObject({
+      command: "launch",
+      tool: "claude",
+      inferenceUrl: "https://gateway.example",
+      noAuth: true,
+    });
+    expect(parseArgs([
+      "models",
+      "--no-auth",
+      "--inference-url=https://gateway.example/v1",
+    ])).toMatchObject({
+      command: "models",
+      noAuth: true,
+      inferenceUrl: "https://gateway.example",
+    });
+  });
+
+  it("rejects an invalid inference URL while parsing", () => {
+    expect(() => parseArgs(["claude", "--inference-url", "ftp://gateway.example"]))
+      .toThrow("Use an http(s) URL");
+    expect(() => parseArgs(["claude", "--inference-url"]))
+      .toThrow("--inference-url needs a value");
   });
 });

@@ -1,7 +1,9 @@
-export const ENDPOINT_ROOT = process.env.ZRO_ENDPOINT_ROOT ?? "https://zro.moonmath.ai";
-export const BASE_URL = `${ENDPOINT_ROOT}/v1`;
-export const MCP_URL = process.env.ZRO_MCP_URL ?? `${ENDPOINT_ROOT}/mcp/zro`;
+export const DEFAULT_ENDPOINT_ROOT = "https://zro.moonmath.ai";
+export const ENDPOINT_ROOT = DEFAULT_ENDPOINT_ROOT;
+export const BASE_URL = `${DEFAULT_ENDPOINT_ROOT}/v1`;
+export const MCP_URL = `${DEFAULT_ENDPOINT_ROOT}/mcp/zro`;
 export const ZRO_ENV_KEY = "ZRO_API_KEY";
+export const NO_AUTH_PLACEHOLDER_KEY = "zro-no-auth";
 export const PROVIDER_ID = "zro";
 export const PROVIDER_NAME = "Zro";
 
@@ -39,4 +41,4 @@ export function supportsAttachments(model: Pick<ZroModel, "modalities">): boolea
   return model.modalities.input.some((modality) => modality !== "text");
 }
 
-export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "hermes", "openclaw", "pi", "prime", "asimi"] as const;
+export const SUPPORTED_TOOLS = ["claude", "codex", "codex-app", "grok", "kilo", "omp", "opencode", "opencode2", "hermes", "openclaw", "pi", "prime", "asimi"] as const;

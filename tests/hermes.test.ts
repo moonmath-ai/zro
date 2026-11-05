@@ -60,6 +60,10 @@ function context(homeDir: string, model: string): LaunchContext {
   return {
     apiKey: "sk-hermes-secret",
     apiKeySource: "env",
+    inferenceRoot: "https://zro.moonmath.ai",
+    inferenceBaseUrl: "https://zro.moonmath.ai/v1",
+    mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+    noAuth: false,
     env: {},
     model,
     models: TIER_MODELS,

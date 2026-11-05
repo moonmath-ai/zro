@@ -4,11 +4,15 @@ import type { SUPPORTED_TOOLS } from "./constants.js";
 import type { ZroModel } from "./constants.js";
 
 export type ToolId = (typeof SUPPORTED_TOOLS)[number];
-export type ApiKeySource = "flag" | "env" | "stored";
+export type ApiKeySource = "flag" | "env" | "stored" | "none";
 
 export interface LaunchContext {
   apiKey: string;
   apiKeySource: ApiKeySource;
+  inferenceRoot: string;
+  inferenceBaseUrl: string;
+  mcpUrl: string;
+  noAuth: boolean;
   env: NodeJS.ProcessEnv;
   model: string;
   models: readonly ZroModel[];

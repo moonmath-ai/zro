@@ -1,5 +1,5 @@
 import path from "node:path";
-import { BASE_URL, MCP_URL, PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
+import { PROVIDER_ID, ZRO_ENV_KEY, type ZroModel } from "../constants.js";
 import { readConfig } from "../files.js";
 import { yamlSerializer } from "../serializers.js";
 import type { ApiKeySource, ToolModule } from "../types.js";
@@ -12,7 +12,16 @@ export const hermesTool: ToolModule = {
     const tempHome = path.join(ctx.tempDir, "home");
     const filePath = path.join(tempHome, ".hermes", "config.yaml");
     const existing = await readConfig(path.join(ctx.homeDir, ".hermes", "config.yaml"), yamlSerializer);
-    const nextConfig = buildHermesConfig(existing, ctx.apiKey, ctx.apiKeySource, ctx.models, ctx.model);
+    const nextConfig = buildHermesConfig(
+      existing,
+      ctx.apiKey,
+      ctx.apiKeySource,
+      ctx.models,
+      ctx.model,
+      ctx.inferenceBaseUrl,
+      ctx.mcpUrl,
+      ctx.noAuth,
+    );
     return {
       tool: "hermes",
       label: "Hermes",
@@ -41,7 +50,10 @@ function buildHermesConfig(
   apiKey: string,
   apiKeySource: ApiKeySource,
   modelSpecs: readonly ZroModel[],
-  selectedModel: string
+  selectedModel: string,
+  baseUrl: string,
+  mcpUrl: string,
+  noAuth: boolean,
 ): Record<string, unknown> {
   const next = { ...existing };
   const providers = Array.isArray(next.custom_providers) ? [...next.custom_providers] : [];
@@ -58,7 +70,7 @@ function buildHermesConfig(
   const provider: Record<string, unknown> = {
     ...existingProvider,
     name: PROVIDER_ID,
-    base_url: BASE_URL,
+    base_url: baseUrl,
     api_mode: "chat_completions",
     models
   };
@@ -78,23 +90,29 @@ function buildHermesConfig(
   }
 
   const mcpServers = { ...(asPlainObject(next.mcp_servers) ?? {}) };
-  const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
-  mcpServers[PROVIDER_ID] = {
-    ...existingMcpServer,
-    url: MCP_URL,
-    enabled: true,
-    headers: {
-      ...(asPlainObject(existingMcpServer.headers) ?? {}),
-      Authorization: `Bearer \${${ZRO_ENV_KEY}}`
-    },
-    tools: {
-      ...(asPlainObject(existingMcpServer.tools) ?? {}),
-      include: ["zro-web_search"],
-      resources: false,
-      prompts: false
-    }
-  };
-  next.mcp_servers = mcpServers;
+  if (noAuth) {
+    delete mcpServers[PROVIDER_ID];
+    if (Object.keys(mcpServers).length) next.mcp_servers = mcpServers;
+    else delete next.mcp_servers;
+  } else {
+    const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
+    mcpServers[PROVIDER_ID] = {
+      ...existingMcpServer,
+      url: mcpUrl,
+      enabled: true,
+      headers: {
+        ...(asPlainObject(existingMcpServer.headers) ?? {}),
+        Authorization: `Bearer \${${ZRO_ENV_KEY}}`
+      },
+      tools: {
+        ...(asPlainObject(existingMcpServer.tools) ?? {}),
+        include: ["zro-web_search"],
+        resources: false,
+        prompts: false
+      }
+    };
+    next.mcp_servers = mcpServers;
+  }
 
   const existingModelConfig = asPlainObject(next.model) ?? {};
   // Hermes' per-launch output cap is top-level model.max_tokens (provider

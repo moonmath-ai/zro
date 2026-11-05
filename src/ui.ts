@@ -49,6 +49,14 @@ ${colors.strong("Make it yours")}
   zro feedback               Send feedback to the Zro team
   zro claude --dry-run       Preview without launching
 
+${colors.strong("Inference endpoint")}
+  zro claude --inference-url https://gateway.example
+                             Send inference to another OpenAI-compatible gateway
+  zro models --no-auth --inference-url https://gateway.example
+                             Use a no-auth gateway with public model metadata
+  ZRO_INFERENCE_URL          Default inference root (flag wins)
+  ZRO_NO_AUTH=1              Shorthand for --no-auth
+
 ${colors.strong("Tools")}
   ${TOOLS.map((tool) => tool.id).join("  ")}
 

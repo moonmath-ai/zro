@@ -6,7 +6,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/run.js";
-import { catalogFetch } from "./fixtures.js";
+import { catalogFetch, fakeSandboxBinDir } from "./fixtures.js";
 import type { RunIo, SpawnProcess } from "../src/types.js";
 
 function harness(options: {
@@ -110,6 +110,21 @@ describe("zro <tool> --install", () => {
     expect(calls.at(-1)?.command).toBe("grok");
   });
 
+  it("installs and launches OpenCode 2 through its official installer", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-opencode2-"));
+    const { spawn, calls } = harness();
+
+    const code = await run(
+      ["opencode2", "--install", "--api-key", "sk-test"],
+      launchIo(home, spawn, { PATH: "" }),
+    );
+
+    expect(code).toBe(0);
+    expect(calls[0].command).toBe("bash");
+    expect(calls[0].args.join(" ")).toContain("https://opencode.ai/v2/install");
+    expect(calls.at(-1)?.command).toBe("opencode2");
+  });
+
   it("installs and launches Kilo Code through its npm package", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-kilo-"));
     const { spawn, calls } = harness();
@@ -141,6 +156,21 @@ describe("zro <tool> --install", () => {
     expect(calls[0].args.join(" ")).toContain("https://omp.sh/install");
     expect(calls[0].args.join(" ")).toContain("--binary");
     expect(calls.at(-1)?.command).toBe("omp");
+  });
+
+  it("installs and launches Asimi through its official installer", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "zro-install-asimi-"));
+    const { spawn, calls } = harness();
+
+    const code = await run(
+      ["asimi", "--install", "--api-key", "sk-test"],
+      launchIo(home, spawn, { PATH: await fakeSandboxBinDir() }),
+    );
+
+    expect(code).toBe(0);
+    expect(calls[0].command).toBe("bash");
+    expect(calls[0].args.join(" ")).toContain("https://asimi.dev/installer");
+    expect(calls.at(-1)?.command).toBe("asimi");
   });
 
   it("stops when installation fails", async () => {

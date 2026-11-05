@@ -1,6 +1,6 @@
 {
   "name": "@moonmath-ai/zro",
-  "version": "0.3.0",
+  "version": "0.4.2",
   "description": "Open coding agents on Zro with isolated, Zro-owned configuration.",
   "type": "module",
   "repository": {
@@ -57,6 +57,7 @@
     "omp",
     "openclaw",
     "opencode",
+    "opencode2",
     "pi",
     "prime-agent",
     "prime-intellect"

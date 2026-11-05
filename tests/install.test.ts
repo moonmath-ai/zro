@@ -106,6 +106,7 @@ describe("zro install", () => {
 
   it.each([
     ["hermes", "hermes-agent.nousresearch.com/install.sh", "--skip-setup"],
+    ["asimi", "https://asimi.dev/installer", ""],
   ])("uses the official installer for %s", async (tool, url, expectedArg) => {
     const { spawn, calls } = recorder();
     const code = await run(["install", tool], io(spawn));
