@@ -5,6 +5,17 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- **Asimi support.** [Asimi](https://asimi.dev/), the open-source vi-inspired coding agent, is now a
+  supported harness (`zro asimi`). Asimi is launched entirely through its provider env conventions
+  (`OPENAI_API_KEY`/`OPENAI_BASE_URL` with `ASIMI_PROVIDER=openai`), so no config files are written
+  and the API key never touches disk. Asimi runs its shell in a podman sandbox, so `podman` and
+  `just` must be on PATH; the launch explains how to install them when they are missing. Install with
+  `zro install asimi`.
+
 ## [0.4.2] - 2026-10-29
 
 ### Tools

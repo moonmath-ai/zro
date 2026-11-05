@@ -24,6 +24,7 @@ import {
   codexAppTool,
   codexTool,
 } from "./engine/tools/codex.js";
+import { asimiTool } from "./engine/tools/asimi.js";
 import { grokTool } from "./engine/tools/grok.js";
 import { hermesTool } from "./engine/tools/hermes.js";
 import { kiloTool } from "./engine/tools/kilo.js";
@@ -62,7 +63,8 @@ const tools: Record<ToolId, ToolModule> = {
   opencode: opencodeTool,
   opencode2: opencode2Tool,
   pi: piTool,
-  prime: primeTool
+  prime: primeTool,
+  asimi: asimiTool
 };
 
 const PACKAGE_VERSION = (

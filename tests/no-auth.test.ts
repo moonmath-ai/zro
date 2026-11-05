@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { TEST_CATALOG_RESPONSE, TEST_MODELS } from "./fixtures.js";
+import { TEST_CATALOG_RESPONSE, TEST_MODELS, fakeSandboxBinDir } from "./fixtures.js";
 import type { LaunchContext, SpawnOptions, SpawnProcess, ToolModule } from "../src/engine/types.js";
 import { claudeTool } from "../src/engine/tools/claude.js";
 import { codexAppTool, codexTool } from "../src/engine/tools/codex.js";
@@ -18,6 +18,7 @@ import { opencodeTool } from "../src/engine/tools/opencode.js";
 import { opencode2Tool } from "../src/engine/tools/opencode2.js";
 import { piTool } from "../src/engine/tools/pi.js";
 import { primeTool } from "../src/engine/tools/prime.js";
+import { asimiTool } from "../src/engine/tools/asimi.js";
 import { run } from "../src/run.js";
 
 const GATEWAY_ROOT = "https://gateway.example";
@@ -37,6 +38,7 @@ const tools: readonly ToolModule[] = [
   opencode2Tool,
   piTool,
   primeTool,
+  asimiTool,
 ];
 
 describe("no-auth gateway mode", () => {
@@ -197,12 +199,14 @@ describe("no-auth gateway mode", () => {
     "points %s at the gateway and omits the Zro MCP server",
     async (_id, tool) => {
       const home = await fs.mkdtemp(path.join(os.tmpdir(), `zro-no-auth-${tool.id}-`));
-      const plan = await tool.launch(context(home));
+      const plan = await tool.launch(context(home, { PATH: await fakeSandboxBinDir() }));
 
       if (tool.id === "claude") {
         expect(plan.env?.ANTHROPIC_BASE_URL).toBe(GATEWAY_ROOT);
         expect(plan.env?.ANTHROPIC_AUTH_TOKEN).toBe("zro-no-auth");
         expect(plan.args).not.toContain("--mcp-config");
+      } else if (tool.id === "asimi") {
+        expect(plan.env?.OPENAI_API_KEY).toBe("zro-no-auth");
       } else {
         expect(plan.env?.ZRO_API_KEY).toBe("zro-no-auth");
       }
@@ -216,7 +220,7 @@ describe("no-auth gateway mode", () => {
   );
 });
 
-function context(homeDir: string): LaunchContext {
+function context(homeDir: string, env: NodeJS.ProcessEnv = {}): LaunchContext {
   return {
     apiKey: "zro-no-auth",
     apiKeySource: "none",
@@ -224,7 +228,7 @@ function context(homeDir: string): LaunchContext {
     inferenceBaseUrl: GATEWAY_BASE_URL,
     mcpUrl: "https://zro.moonmath.ai/mcp/zro",
     noAuth: true,
-    env: {},
+    env,
     model: "glm-5.3",
     models: TEST_MODELS,
     extraArgs: [],

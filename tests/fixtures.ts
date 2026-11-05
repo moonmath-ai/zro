@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { ZroModel, ZroModalities, ZroReasoningConfig } from "../src/engine/constants.js";
 
 export function testModel(
@@ -111,4 +114,14 @@ export function catalogFetch(otherStatus = 200) {
     String(input).endsWith("/api/cli/models")
       ? Response.json(TEST_CATALOG_RESPONSE)
       : new Response(null, { status: otherStatus });
+}
+
+// The asimi adapter requires podman and just on PATH before it builds a plan.
+// Returns a temp directory containing fake executables for both.
+export async function fakeSandboxBinDir(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zro-sandbox-bin-"));
+  for (const command of ["podman", "just"]) {
+    await fs.writeFile(path.join(dir, command), "#!/bin/sh\n", { mode: 0o755 });
+  }
+  return dir;
 }
