@@ -127,11 +127,11 @@ export function codexAppCredentialFilePath(homeDir: string): string {
   return path.join(codexAppHome(homeDir), ".env");
 }
 
-// Codex applies this budget per tool/function output when recording history,
-// plus a 20% serialization allowance. It is not the context window: sizing it
-// from `contextWindow` lets a single command result exceed the model's input
-// limit before auto-compaction can run.
-const CODEX_TOOL_OUTPUT_BUDGET_BYTES = 10_000;
+// Codex's built-in catalog uses 10,000 tokens as the per-tool/function-output
+// budget recorded in history, plus a 20% serialization allowance. It is not
+// the context window: sizing it from `contextWindow` lets a single result
+// exceed the model's input limit before auto-compaction can run.
+const CODEX_TOOL_OUTPUT_BUDGET_TOKENS = 10_000;
 
 export function buildCodexModelCatalog(
   modelSpecs: readonly ZroModel[],
@@ -168,8 +168,8 @@ export function buildCodexModelCatalog(
       apply_patch_tool_type: "freeform",
       web_search_tool_type: "text_and_image",
       truncation_policy: {
-        mode: "bytes",
-        limit: CODEX_TOOL_OUTPUT_BUDGET_BYTES
+        mode: "tokens",
+        limit: CODEX_TOOL_OUTPUT_BUDGET_TOKENS
       },
       supports_parallel_tool_calls: true,
       supports_image_detail_original: true,

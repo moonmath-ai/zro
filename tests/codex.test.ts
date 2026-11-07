@@ -25,7 +25,7 @@ describe("codex model catalog tool-output budget", () => {
     ];
 
     for (const entry of catalogEntries(models)) {
-      expect(entry.truncation_policy).toEqual({ mode: "bytes", limit: 10_000 });
+      expect(entry.truncation_policy).toEqual({ mode: "tokens", limit: 10_000 });
     }
   });
 
