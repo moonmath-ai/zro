@@ -1,0 +1,63 @@
+name: VS Code Extension CI
+
+on:
+  pull_request:
+    branches: main
+    paths:
+      - "vscode-extension/**"
+  push:
+    branches: main
+    paths:
+      - "vscode-extension/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vsce-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} (Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node-version: [20, 22]
+    defaults:
+      run:
+        working-directory: vscode-extension
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and compile
+        run: npm run compile
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package extension (.vsix)
+        run: npm run package -- --out zro-extension.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zro-extension-${{ matrix.os }}-node-${{ matrix.node-version }}
+          path: vscode-extension/zro-extension.vsix
+          if-no-files-found: error
+          retention-days: 7
