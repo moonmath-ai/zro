@@ -68,7 +68,7 @@ function nodeBinary(distName, tarball, workDir) {
   return binary;
 }
 
-async function bundle(version) {
+async function bundle(version, platform) {
   const outfile = path.join(repoRoot, "dist", "sea", "zro.cjs");
   fs.mkdirSync(path.dirname(outfile), { recursive: true });
   await esbuild.build({
@@ -79,8 +79,10 @@ async function bundle(version) {
     target: "node22",
     outfile,
     legalComments: "none",
+    // Inlined so the executable knows its own version and release platform (self-update).
     define: {
       __ZRO_VERSION__: JSON.stringify(version),
+      __ZRO_PLATFORM__: JSON.stringify(platform),
     },
     plugins: [{
       name: "inline-version",
@@ -173,9 +175,8 @@ async function main() {
     console.error(`Platforms: ${Object.keys(PLATFORMS).join(", ")}`);
     process.exit(platforms.includes("--help") || platforms.includes("-h") ? 0 : 1);
   }
-  const bundlePath = await bundle(readPackageVersion());
   for (const platform of platforms) {
-    await buildPlatform(platform, bundlePath);
+    await buildPlatform(platform, await bundle(readPackageVersion(), platform));
   }
 }
 
