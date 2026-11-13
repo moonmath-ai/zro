@@ -65,6 +65,7 @@ export interface RunIo {
   spawn?: SpawnProcess;
   platform?: NodeJS.Platform;
   version?: string;
+  execPath?: string;
   fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   openBrowser?: (url: string) => Promise<boolean>;
   sleep?: (milliseconds: number) => Promise<void>;
