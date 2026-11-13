@@ -60,7 +60,10 @@ describe("selfUpdate", () => {
     expect(await selfUpdate({ currentVersion: "0.4.2", platform: "linux-x64", execPath }, io)).toBe(0);
 
     expect(await fs.readFile(execPath, "utf8")).toBe("new-binary");
-    expect((await fs.stat(execPath)).mode & 0o111).toBe(0o111);
+    if (process.platform !== "win32") {
+      // Windows stat modes never carry the execute bits; only POSIX can assert them.
+      expect((await fs.stat(execPath)).mode & 0o111).toBe(0o111);
+    }
     expect(await text(stdout)).toContain("Updated zro from 0.4.2 to 0.5.0.");
     expect(await stagingLeftovers(execPath)).toEqual([]);
   });
