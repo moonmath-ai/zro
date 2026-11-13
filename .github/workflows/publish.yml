@@ -115,6 +115,8 @@ jobs:
             echo "dist/sea/zro-${{ matrix.platform }} --version printed '$actual', expected '$expected'" >&2
             exit 1
           fi
+          # Self-upgrade must refuse in the binary and point at the installer.
+          dist/sea/zro-${{ matrix.platform }} install --upgrade 2>&1 | grep -q "release binary"
 
       - name: Upload binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

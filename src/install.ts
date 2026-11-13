@@ -8,6 +8,8 @@ import { spawnCommand } from "./process.js";
 
 const ZRO_PACKAGE = "@moonmath-ai/zro";
 
+declare const __ZRO_VERSION__: string | undefined;
+
 export interface InstallArgs {
   tool?: string;
   upgrade?: boolean;
@@ -20,6 +22,17 @@ export async function install(
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
   if (!request.tool) {
+    // The single-executable build inlines __ZRO_VERSION__; the npm build leaves it undefined.
+    if (typeof __ZRO_VERSION__ === "string") {
+      io.stderr.write(
+        "This zro is a release binary; it does not update through npm.\n" +
+        "Update it by re-running the installer:\n" +
+        "    curl -fsSL https://zro.moonmath.ai/install.sh | bash\n" +
+        "To install a specific version:\n" +
+        "    curl -fsSL https://zro.moonmath.ai/install.sh | bash -s -- 0.4.2\n",
+      );
+      return 1;
+    }
     return installNpm(
       `${ZRO_PACKAGE}@${request.version ?? "latest"}`,
       request.version ? `Installing Zro ${request.version}` : "Upgrading Zro",

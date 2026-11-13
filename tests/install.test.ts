@@ -104,6 +104,22 @@ describe("zro install", () => {
     expect(self.calls[0].args.at(-1)).toBe("@moonmath-ai/zro@latest");
   });
 
+  it("refuses self-upgrade in release binaries and points at the installer", async () => {
+    const { spawn, calls } = recorder();
+    const stderr = new PassThrough();
+    const globals = globalThis as { __ZRO_VERSION__?: string };
+    globals.__ZRO_VERSION__ = "0.4.2";
+    try {
+      expect(await run(["install", "--upgrade"], io(spawn, new PassThrough(), stderr))).toBe(1);
+    } finally {
+      delete globals.__ZRO_VERSION__;
+    }
+    expect(calls).toEqual([]);
+    const message = await text(stderr);
+    expect(message).toContain("This zro is a release binary");
+    expect(message).toContain("curl -fsSL https://zro.moonmath.ai/install.sh | bash");
+  });
+
   it.each([
     ["hermes", "hermes-agent.nousresearch.com/install.sh", "--skip-setup"],
   ])("uses the official installer for %s", async (tool, url, expectedArg) => {
