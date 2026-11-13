@@ -61,3 +61,113 @@ jobs:
           tag_name: v${{ env.version }}
           name: v${{ env.version }}
           generate_release_notes: true
+
+  # macos-13 was retired in December 2025; macos-15-intel is the x64 runner.
+  # Node.js does not publish linux-arm64-musl, so Alpine arm64 stays on npm.
+  binaries:
+    name: Binary (${{ matrix.platform }})
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            smoke: true
+          # The musl binary cannot run on the glibc builder, so it gets no smoke test.
+          - os: ubuntu-latest
+            platform: linux-x64-musl
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            smoke: true
+          - os: macos-latest
+            platform: darwin-arm64
+            smoke: true
+          - os: macos-15-intel
+            platform: darwin-x64
+            smoke: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: npm install --global pnpm@11.20.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build single executable
+        run: node scripts/build-sea.mjs ${{ matrix.platform }}
+
+      - name: Smoke test binary
+        if: matrix.smoke
+        run: |
+          expected="$(node -p "require('./package.json').version")"
+          actual="$(dist/sea/zro-${{ matrix.platform }} --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "dist/sea/zro-${{ matrix.platform }} --version printed '$actual', expected '$expected'" >&2
+            exit 1
+          fi
+
+      - name: Upload binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zro-${{ matrix.platform }}
+          path: dist/sea/zro-${{ matrix.platform }}
+          if-no-files-found: error
+
+  release-binaries:
+    name: Attach binaries to the release
+    needs: binaries
+    # Attach whatever binaries built; one failed matrix leg must not leave the
+    # release empty. Skipped when publish failed, as no release exists to attach to.
+    if: ${{ !cancelled() && needs.binaries.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Download binaries
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: zro-*
+          path: dist/release
+          merge-multiple: true
+
+      - name: Compress binaries
+        run: |
+          # ubuntu runners ship zstd; install only when missing to avoid an apt-get flake
+          command -v zstd >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y zstd; }
+          for binary in dist/release/zro-*; do
+            zstd -q -19 -f -k "$binary"
+          done
+
+      - name: Write release manifests
+        run: >-
+          node scripts/release-manifest.mjs dist/release
+          ${{ needs.binaries.result != 'success' && '--allow-partial' || '' }}
+
+      # Binaries and checksum manifests only. install.sh is served from the website.
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release upload "$tag" \
+            dist/release/zro-* \
+            dist/release/manifest.json \
+            dist/release/manifest.zst.json \
+            --clobber
