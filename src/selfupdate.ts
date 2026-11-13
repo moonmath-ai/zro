@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { RunIo } from "./types.js";
 
-const RELEASE_BASE = "https://github.com/moonmath-ai/zro/releases/latest/download";
+const DEFAULT_RELEASE_BASE = "https://github.com/moonmath-ai/zro/releases/latest/download";
+
+function releaseBase(env: NodeJS.ProcessEnv | undefined): string {
+  return env?.ZRO_UPDATE_BASE ?? DEFAULT_RELEASE_BASE;
+}
 
 export interface SelfUpdateArgs {
   currentVersion: string;
@@ -18,10 +22,11 @@ interface ReleaseManifest {
 
 export async function selfUpdate(args: SelfUpdateArgs, io: RunIo): Promise<number> {
   const fetcher = io.fetch ?? globalThis.fetch;
+  const base = releaseBase(io.env);
   const guidance = installerGuidance(args.currentVersion);
   let manifest: ReleaseManifest;
   try {
-    const response = await fetcher(`${RELEASE_BASE}/manifest.json`, {
+    const response = await fetcher(`${base}/manifest.json`, {
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) {
@@ -54,7 +59,7 @@ export async function selfUpdate(args: SelfUpdateArgs, io: RunIo): Promise<numbe
 
   let buffer: Buffer;
   try {
-    const response = await fetcher(`${RELEASE_BASE}/zro-${args.platform}`, {
+    const response = await fetcher(`${base}/zro-${args.platform}`, {
       signal: AbortSignal.timeout(300_000),
     });
     if (!response.ok) {

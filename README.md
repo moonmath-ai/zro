@@ -54,8 +54,9 @@ zro status                # connection, installed tools, last session, usage
 
 - **Requirements:** Node.js 22 or later on macOS, Linux, or Windows.
 - **Install:** `npm install --global @moonmath-ai/zro` (also `pnpm add --global @moonmath-ai/zro`).
-- **Upgrade:** `zro install --upgrade` (upgrade zro); `zro install <tool> --upgrade`
-  or `zro install claude@2.1.105` / `zro install claude --version 2.1.105` for an agent.
+- **Upgrade:** `zro update` or `zro install --upgrade`
+  `zro install <tool> --upgrade` or `zro install claude@2.1.105` /
+  `zro install claude --version 2.1.105` for an agent.
 - **Agent-assisted setup:** [SETUP_PROMPT.md](SETUP_PROMPT.md) has copy-paste prompts for end-user
   installs and local development checkouts.
 

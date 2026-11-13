@@ -92,6 +92,13 @@ describe("zro install", () => {
     });
   });
 
+  it("updates zro itself through the update alias", async () => {
+    const self = recorder();
+
+    expect(await run(["update"], io(self.spawn))).toBe(0);
+    expect(self.calls[0].args.at(-1)).toBe("@moonmath-ai/zro@latest");
+  });
+
   it("upgrades agents and Zro by reinstalling latest", async () => {
     const agent = recorder();
     const self = recorder();

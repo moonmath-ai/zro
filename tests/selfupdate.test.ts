@@ -75,6 +75,21 @@ describe("selfUpdate", () => {
     expect(await fs.readFile(execPath, "utf8")).toBe("old-binary");
   });
 
+  it("honors ZRO_UPDATE_BASE as the release source", async () => {
+    const execPath = await makeExecPath();
+    const urls: string[] = [];
+    const { io, stdout } = makeIo(async (input) => {
+      urls.push(String(input));
+      return Response.json({ version: "0.4.4", platforms: {} });
+    });
+    io.env = { ZRO_UPDATE_BASE: "https://example.test/zro/releases/download/v9.9.9" };
+
+    expect(await selfUpdate({ currentVersion: "0.4.4", platform: "linux-x64", execPath }, io)).toBe(0);
+
+    expect(urls).toEqual(["https://example.test/zro/releases/download/v9.9.9/manifest.json"]);
+    expect(await text(stdout)).toContain("zro 0.4.4 is up to date.");
+  });
+
   it("does not downgrade a binary newer than the latest release", async () => {
     const execPath = await makeExecPath();
     const { io, stdout } = makeIo(manifestFetcher({ version: "0.4.2", platforms: {} }));
