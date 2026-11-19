@@ -108,16 +108,14 @@ export function buildOpenCode2Config(
   const mcp = objectAt(next, "mcp");
   delete mcp[PROVIDER_ID];
   const servers = objectAt(mcp, "servers");
-  if (endpoints.noAuth) {
+  if (endpoints.noAuth && !endpoints.mcpUrl) {
     delete servers[PROVIDER_ID];
   } else {
     servers[PROVIDER_ID] = {
       type: "remote",
       url: endpoints.mcpUrl ?? MCP_URL,
       oauth: false,
-      headers: {
-        Authorization: `Bearer {env:${ZRO_ENV_KEY}}`
-      }
+      ...(endpoints.noAuth ? {} : { headers: { Authorization: `Bearer {env:${ZRO_ENV_KEY}}` } })
     };
   }
   return next;

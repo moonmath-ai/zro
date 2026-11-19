@@ -5,6 +5,14 @@ Releases still mark tagged builds.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **MCP in no-auth mode.** Set `ZRO_MCP_URL` with `--no-auth` to give every agent a gateway's
+  unauthenticated MCP server (for example `https://gateway.example/mcp/zro`). Without it, no-auth
+  mode still omits the Zro MCP server.
+
 ## [0.4.2] - 2026-10-29
 
 ### Tools

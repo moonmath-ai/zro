@@ -184,14 +184,12 @@ export function buildKiloConfigOverlay(
         models,
       },
     },
-    ...(noAuth ? {} : {
+    ...(noAuth && !mcpUrl ? {} : {
       mcp: {
         [PROVIDER_ID]: {
           type: "remote",
           url: mcpUrl,
-          headers: {
-            Authorization: `Bearer {env:${ZRO_ENV_KEY}}`,
-          },
+          ...(noAuth ? {} : { headers: { Authorization: `Bearer {env:${ZRO_ENV_KEY}}` } }),
           enabled: true,
           oauth: false,
         },

@@ -107,8 +107,14 @@ non-empty value. Public model metadata comes from the main webapp
 (`/api/cli/models/public`) and is intersected with the gateway's live `/v1/models`
 list, so `zro models` only shows models the gateway can serve. That metadata is cached
 separately at `~/.cache/zro/model-catalog-public.json`. The Zro MCP server is omitted
-from every agent config because it requires an account, and `zro feedback` is
-unavailable in this mode.
+from every agent config unless `ZRO_MCP_URL` points at one that also needs no
+authentication, such as a dedicated gateway's `/mcp/zro`; it is then configured
+without credentials. `zro feedback` is unavailable in this mode.
+
+```bash
+ZRO_NO_AUTH=1 ZRO_INFERENCE_URL=https://gateway.example \
+  ZRO_MCP_URL=https://gateway.example/mcp/zro zro claude
+```
 
 ---
 
