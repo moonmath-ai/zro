@@ -141,9 +141,9 @@ export const ompTool: ToolModule = {
           path: path.join(agentDir, "models.yml"),
           contents: yamlSerializer.stringify(buildOmpModelsConfig(ctx.models, ctx.inferenceBaseUrl)),
         },
-        ...(ctx.noAuth ? [] : [{
+        ...(ctx.noAuth && !ctx.mcpUrl ? [] : [{
           path: path.join(agentDir, "mcp.json"),
-          contents: jsonSerializer.stringify(buildOmpMcpConfig(ctx.mcpUrl)),
+          contents: jsonSerializer.stringify(buildOmpMcpConfig(ctx.mcpUrl, ctx.noAuth)),
         }]),
         ...userFiles,
       ],
@@ -268,14 +268,14 @@ function ompThinkingLevel(level: ZroModel["reasoning"]["levels"][number]): strin
   return OMP_THINKING_LEVELS.has(level.id) ? level.id : level.piLevel;
 }
 
-function buildOmpMcpConfig(mcpUrl: string): Record<string, unknown> {
+function buildOmpMcpConfig(mcpUrl: string, noAuth: boolean): Record<string, unknown> {
   return {
     $schema: OMP_MCP_SCHEMA,
     mcpServers: {
       [PROVIDER_ID]: {
         type: "http",
         url: mcpUrl,
-        headers: { Authorization: OMP_MCP_AUTH_ENV_KEY },
+        ...(noAuth ? {} : { headers: { Authorization: OMP_MCP_AUTH_ENV_KEY } }),
         enabled: true,
       },
     },

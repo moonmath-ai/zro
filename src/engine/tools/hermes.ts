@@ -90,19 +90,20 @@ function buildHermesConfig(
   }
 
   const mcpServers = { ...(asPlainObject(next.mcp_servers) ?? {}) };
-  if (noAuth) {
+  if (noAuth && !mcpUrl) {
     delete mcpServers[PROVIDER_ID];
     if (Object.keys(mcpServers).length) next.mcp_servers = mcpServers;
     else delete next.mcp_servers;
   } else {
     const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
+    const { Authorization: _staleAuthorization, ...existingHeaders } = asPlainObject(existingMcpServer.headers) ?? {};
     mcpServers[PROVIDER_ID] = {
       ...existingMcpServer,
       url: mcpUrl,
       enabled: true,
       headers: {
-        ...(asPlainObject(existingMcpServer.headers) ?? {}),
-        Authorization: `Bearer \${${ZRO_ENV_KEY}}`
+        ...existingHeaders,
+        ...(noAuth ? {} : { Authorization: `Bearer \${${ZRO_ENV_KEY}}` })
       },
       tools: {
         ...(asPlainObject(existingMcpServer.tools) ?? {}),

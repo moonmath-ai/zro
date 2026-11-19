@@ -47,14 +47,14 @@ export const primeTool: ToolModule = {
           path: filePath,
           contents: jsonSerializer.stringify(nextConfig)
         },
-        ...(ctx.noAuth ? [] : [{
+        ...(ctx.noAuth && !ctx.mcpUrl ? [] : [{
           path: settingsPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
                 type: "http",
                 url: ctx.mcpUrl,
-                bearer_token_env_var: ZRO_ENV_KEY
+                ...(ctx.noAuth ? {} : { bearer_token_env_var: ZRO_ENV_KEY })
               }
             }
           })

@@ -22,6 +22,7 @@ import { run } from "../src/run.js";
 
 const GATEWAY_ROOT = "https://gateway.example";
 const GATEWAY_BASE_URL = `${GATEWAY_ROOT}/v1`;
+const GATEWAY_MCP_URL = `${GATEWAY_ROOT}/mcp/zro`;
 const PUBLIC_CATALOG_URL = "https://zro.moonmath.ai/api/cli/models/public";
 
 const tools: readonly ToolModule[] = [
@@ -214,15 +215,30 @@ describe("no-auth gateway mode", () => {
       expect(files + envText).not.toContain("Authorization");
     },
   );
+
+  it.each(tools.map((tool) => [tool.id, tool] as const))(
+    "connects %s to ZRO_MCP_URL without credentials",
+    async (_id, tool) => {
+      const home = await fs.mkdtemp(path.join(os.tmpdir(), `zro-no-auth-mcp-${tool.id}-`));
+      const plan = await tool.launch(context(home, GATEWAY_MCP_URL));
+
+      if (tool.id === "claude") expect(plan.args).toContain("--mcp-config");
+      const files = (plan.files ?? []).map((file) => String(file.contents)).join("\n");
+      const envText = JSON.stringify(plan.env);
+      expect(files + envText).toContain(GATEWAY_MCP_URL);
+      expect(files + envText).not.toContain("Authorization");
+      expect(files + envText).not.toContain("bearer_token");
+    },
+  );
 });
 
-function context(homeDir: string): LaunchContext {
+function context(homeDir: string, mcpUrl = ""): LaunchContext {
   return {
     apiKey: "zro-no-auth",
     apiKeySource: "none",
     inferenceRoot: GATEWAY_ROOT,
     inferenceBaseUrl: GATEWAY_BASE_URL,
-    mcpUrl: "https://zro.moonmath.ai/mcp/zro",
+    mcpUrl,
     noAuth: true,
     env: {},
     model: "glm-5.3",

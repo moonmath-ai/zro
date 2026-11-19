@@ -36,7 +36,7 @@ export const claudeTool: ToolModule = {
         claudeModelId(ctx.model, claudeSpecFor(ctx.model, ctx.models), sessionBudget),
         "--managed-settings",
         buildClaudeManagedSettingsArg(ctx.models, aliasPlan),
-        ...(ctx.noAuth ? [] : ["--mcp-config", mcpConfigPath]),
+        ...(ctx.noAuth && !ctx.mcpUrl ? [] : ["--mcp-config", mcpConfigPath]),
         "--settings",
         settingsPath,
         ...ctx.extraArgs
@@ -57,14 +57,14 @@ export const claudeTool: ToolModule = {
         DO_NOT_TRACK: "1"
       },
       files: [
-        ...(ctx.noAuth ? [] : [{
+        ...(ctx.noAuth && !ctx.mcpUrl ? [] : [{
           path: mcpConfigPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
               zro: {
                 type: "http",
                 url: ctx.mcpUrl,
-                headers: { Authorization: `Bearer ${ctx.apiKey}` }
+                ...(ctx.noAuth ? {} : { headers: { Authorization: `Bearer ${ctx.apiKey}` } })
               }
             }
           }),

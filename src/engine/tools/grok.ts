@@ -65,10 +65,10 @@ function buildGrokConfig(
     lines.push("");
   }
 
-  if (!noAuth) {
+  if (!noAuth || mcpUrl) {
     lines.push(`[mcp_servers.${PROVIDER_ID}]`);
     lines.push(`url = ${tomlString(mcpUrl)}`);
-    lines.push(`headers = { "Authorization" = ${tomlString(`Bearer ${apiKey}`)} }`);
+    if (!noAuth) lines.push(`headers = { "Authorization" = ${tomlString(`Bearer ${apiKey}`)} }`);
     lines.push("");
   }
 

@@ -152,7 +152,7 @@ async function launch(
   let mcpUrl: string;
   try {
     inference = resolveInference(env, request.inferenceUrl, noAuth);
-    mcpUrl = resolveMcpUrl(env);
+    mcpUrl = noAuth ? env.ZRO_MCP_URL || "" : resolveMcpUrl(env);
   } catch (error) {
     io.stderr.write(`${messageOf(error)}\n`);
     return 1;

@@ -256,11 +256,11 @@ export function buildCodexConfig(
     `wire_api = "responses"`,
     `env_key = ${tomlString(ZRO_ENV_KEY)}`,
     `supports_websockets = false`,
-    ...(options.noAuth ? [] : [
+    ...(options.noAuth && !options.mcpUrl ? [] : [
       "",
       `[mcp_servers.${PROVIDER_ID}]`,
       `url = ${tomlString(options.mcpUrl ?? MCP_URL)}`,
-      `bearer_token_env_var = ${tomlString(ZRO_ENV_KEY)}`,
+      ...(options.noAuth ? [] : [`bearer_token_env_var = ${tomlString(ZRO_ENV_KEY)}`]),
     ]),
     "",
     "[otel]",

@@ -93,21 +93,22 @@ function buildOpenClawConfig(
     models: providerModels
   };
 
-  if (noAuth) {
+  if (noAuth && !mcpUrl) {
     const mcp = asPlainObject(next.mcp);
     const mcpServers = asPlainObject(mcp?.servers);
     if (mcpServers) delete mcpServers[PROVIDER_ID];
   } else {
     const mcpServers = objectAt(objectAt(next, "mcp"), "servers");
     const existingMcpServer = asPlainObject(mcpServers[PROVIDER_ID]) ?? {};
+    const { Authorization: _staleAuthorization, ...existingHeaders } = asPlainObject(existingMcpServer.headers) ?? {};
     mcpServers[PROVIDER_ID] = {
       ...existingMcpServer,
       url: mcpUrl,
       transport: "streamable-http",
       enabled: true,
       headers: {
-        ...(asPlainObject(existingMcpServer.headers) ?? {}),
-        Authorization: `Bearer \${${ZRO_ENV_KEY}}`
+        ...existingHeaders,
+        ...(noAuth ? {} : { Authorization: `Bearer \${${ZRO_ENV_KEY}}` })
       },
       toolFilter: {
         include: ["zro-web_search"]

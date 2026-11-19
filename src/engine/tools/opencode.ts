@@ -63,7 +63,7 @@ export function buildOpenCodeConfig(
     useEnvReference,
     endpoints.baseUrl
   );
-  if (endpoints.noAuth) {
+  if (endpoints.noAuth && !endpoints.mcpUrl) {
     const mcp = asPlainObject(next.mcp);
     if (mcp) delete mcp[PROVIDER_ID];
   } else {
@@ -73,9 +73,7 @@ export function buildOpenCodeConfig(
       url: endpoints.mcpUrl ?? MCP_URL,
       enabled: true,
       oauth: false,
-      headers: {
-        Authorization: `Bearer {env:${ZRO_ENV_KEY}}`
-      }
+      ...(endpoints.noAuth ? {} : { headers: { Authorization: `Bearer {env:${ZRO_ENV_KEY}}` } })
     };
   }
   return next;

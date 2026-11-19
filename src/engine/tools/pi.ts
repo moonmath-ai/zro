@@ -28,7 +28,7 @@ export const piTool: ToolModule = {
       args: [
         "--provider", PROVIDER_ID,
         "--model", ctx.model,
-        ...(ctx.noAuth ? [] : ["--extension", PI_MCP_EXTENSION]),
+        ...(ctx.noAuth && !ctx.mcpUrl ? [] : ["--extension", PI_MCP_EXTENSION]),
         ...ctx.extraArgs
       ],
       env: {
@@ -41,7 +41,7 @@ export const piTool: ToolModule = {
           path: filePath,
           contents: jsonSerializer.stringify(nextConfig)
         },
-        ...(ctx.noAuth ? [] : [{
+        ...(ctx.noAuth && !ctx.mcpUrl ? [] : [{
           path: mcpConfigPath,
           contents: jsonSerializer.stringify({
             mcpServers: {
@@ -49,7 +49,7 @@ export const piTool: ToolModule = {
                 transport: "streamable-http",
                 url: ctx.mcpUrl,
                 lifecycle: "eager",
-                headers: { Authorization: `Bearer ${ctx.apiKey}` }
+                ...(ctx.noAuth ? {} : { headers: { Authorization: `Bearer ${ctx.apiKey}` } })
               }
             }
           })
