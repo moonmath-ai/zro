@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -8,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import { commandExists } from "../src/install.js";
 import { run } from "../src/run.js";
 import type { SpawnProcess } from "../src/types.js";
+
+const sha256Hex = (contents: string): string => createHash("sha256").update(contents).digest("hex");
 
 function recorder(exitCode = 0): {
   spawn: SpawnProcess;
@@ -89,6 +92,17 @@ describe("zro install", () => {
     });
   });
 
+  it("updates zro itself through the update alias", async () => {
+    const self = recorder();
+    const pinned = recorder();
+
+    expect(await run(["update"], io(self.spawn))).toBe(0);
+    expect(self.calls[0].args.at(-1)).toBe("@moonmath-ai/zro@latest");
+
+    expect(await run(["update", "--version", "0.3.0"], io(pinned.spawn))).toBe(0);
+    expect(pinned.calls[0].args.at(-1)).toBe("@moonmath-ai/zro@0.3.0");
+  });
+
   it("upgrades agents and Zro by reinstalling latest", async () => {
     const agent = recorder();
     const self = recorder();
@@ -102,6 +116,62 @@ describe("zro install", () => {
 
     expect(await run(["install", "--upgrade"], io(self.spawn))).toBe(0);
     expect(self.calls[0].args.at(-1)).toBe("@moonmath-ai/zro@latest");
+  });
+
+  it("updates itself from the release manifest in single-executable builds", async () => {
+    const { spawn, calls } = recorder();
+    const stdout = new PassThrough();
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "zro-selfupdate-"));
+    const execPath = path.join(directory, "zro");
+    await fs.writeFile(execPath, "old-binary");
+    const globals = globalThis as { __ZRO_VERSION__?: string; __ZRO_PLATFORM__?: string };
+    globals.__ZRO_VERSION__ = "0.4.2";
+    globals.__ZRO_PLATFORM__ = "linux-x64";
+    try {
+      const code = await run(["install", "--upgrade"], {
+        ...io(spawn, stdout),
+        execPath,
+        fetch: async (input: string | URL | Request): Promise<Response> => {
+          const url = String(input);
+          if (url.endsWith("/manifest.json")) {
+            return Response.json({
+              version: "0.5.0",
+              platforms: { "linux-x64": { checksum: sha256Hex("new-binary"), size: 10 } },
+            });
+          }
+          return new Response("new-binary");
+        },
+      });
+      expect(code).toBe(0);
+    } finally {
+      delete globals.__ZRO_VERSION__;
+      delete globals.__ZRO_PLATFORM__;
+    }
+    expect(calls).toEqual([]);
+    expect(await fs.readFile(execPath, "utf8")).toBe("new-binary");
+    expect(await text(stdout)).toContain("Updated zro from 0.4.2 to 0.5.0.");
+  });
+
+  it("refuses a pinned self-version in single-executable builds", async () => {
+    const { spawn, calls } = recorder();
+    const stderr = new PassThrough();
+    const globals = globalThis as { __ZRO_VERSION__?: string };
+    globals.__ZRO_VERSION__ = "0.4.2";
+    try {
+      const code = await run(["install", "--upgrade", "--version", "0.3.0"], {
+        ...io(spawn, new PassThrough(), stderr),
+        fetch: async () => {
+          throw new Error("unexpected fetch");
+        },
+      });
+      expect(code).toBe(1);
+    } finally {
+      delete globals.__ZRO_VERSION__;
+    }
+    expect(calls).toEqual([]);
+    const message = await text(stderr);
+    expect(message).toContain("Release binaries cannot install a specific version");
+    expect(message).toContain("bash -s -- 0.3.0");
   });
 
   it.each([

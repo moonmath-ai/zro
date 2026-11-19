@@ -107,6 +107,19 @@ describe("the direct command language", () => {
     expect(() => parseArgs(["claude", "--alias"])).toThrow("needs a value");
   });
 
+  it("maps update to a zro self-upgrade", () => {
+    expect(parseArgs(["update"])).toEqual({
+      command: "install",
+      upgrade: true
+    });
+    expect(parseArgs(["update", "--version", "0.3.0"])).toEqual({
+      command: "install",
+      upgrade: true,
+      version: "0.3.0"
+    });
+    expect(() => parseArgs(["update", "claude"])).toThrow("Unexpected argument for install: claude");
+  });
+
   it("parses install, upgrade, and pinned harness versions", () => {
     expect(parseArgs(["install", "claude@2.1.105"])).toEqual({
       command: "install",

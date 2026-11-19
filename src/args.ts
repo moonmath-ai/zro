@@ -50,6 +50,7 @@ export function parseArgs(argv: string[]): CliRequest {
     return { command: "models", output: parsed.output, ...endpointOptions(parsed) };
   }
   if (command === "install") return parseInstallArgs(argv.slice(1));
+  if (command === "update") return parseInstallArgs(["--upgrade", ...argv.slice(1)]);
   if (command === "again") {
     const parsed = parseOptions(argv.slice(1), false);
     assertNoExtraArgs(parsed.extraArgs, command);

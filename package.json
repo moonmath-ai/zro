@@ -26,6 +26,7 @@
   "packageManager": "pnpm@11.20.0",
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "build:sea": "node scripts/build-sea.mjs",
     "prepack": "pnpm run build",
     "test": "vitest run",
     "test:clients": "node scripts/ci/check-clients.mjs",
@@ -38,6 +39,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "esbuild": "^0.28.2",
+    "postject": "1.0.0-alpha.6",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
     "vitest": "^3.2.4"

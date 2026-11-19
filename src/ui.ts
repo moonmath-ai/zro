@@ -45,7 +45,8 @@ ${colors.strong("Make it yours")}
   zro models                 Browse the model catalog
   zro install claude         Install a supported agent
   zro claude --install       Install if missing, then open
-  zro install --upgrade      Upgrade zro itself
+  zro update                 Upgrade zro itself
+  zro install --upgrade      Same as zro update
   zro feedback               Send feedback to the Zro team
   zro claude --dry-run       Preview without launching
 

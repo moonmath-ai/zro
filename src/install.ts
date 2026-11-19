@@ -5,8 +5,12 @@ import { resolveTool, TOOLS, type ToolDescriptor } from "./catalog.js";
 import type { SpawnProcess } from "./engine/types.js";
 import type { RunIo } from "./types.js";
 import { spawnCommand } from "./process.js";
+import { selfUpdate } from "./selfupdate.js";
 
 const ZRO_PACKAGE = "@moonmath-ai/zro";
+
+declare const __ZRO_VERSION__: string | undefined;
+declare const __ZRO_PLATFORM__: string | undefined;
 
 export interface InstallArgs {
   tool?: string;
@@ -20,6 +24,29 @@ export async function install(
   env: NodeJS.ProcessEnv,
 ): Promise<number> {
   if (!request.tool) {
+    // The single-executable build inlines these; the npm build leaves them undefined.
+    if (typeof __ZRO_VERSION__ === "string") {
+      if (request.version) {
+        io.stderr.write(
+          "Release binaries cannot install a specific version of zro.\n" +
+          "Run the installer with the version instead:\n" +
+          `    curl -fsSL https://zro.moonmath.ai/install.sh | bash -s -- ${request.version}\n`,
+        );
+        return 1;
+      }
+      if (typeof __ZRO_PLATFORM__ !== "string") {
+        io.stderr.write("This zro build is missing its release platform and cannot self-update.\n");
+        return 1;
+      }
+      return selfUpdate(
+        {
+          currentVersion: __ZRO_VERSION__,
+          platform: __ZRO_PLATFORM__,
+          execPath: io.execPath ?? process.execPath,
+        },
+        io,
+      );
+    }
     return installNpm(
       `${ZRO_PACKAGE}@${request.version ?? "latest"}`,
       request.version ? `Installing Zro ${request.version}` : "Upgrading Zro",

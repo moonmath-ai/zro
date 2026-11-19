@@ -4,7 +4,6 @@ import {
   generateKeyPairSync,
   privateDecrypt,
 } from "node:crypto";
-import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +48,7 @@ import {
 import type { CliRequest, RunIo } from "./types.js";
 import { spawnCommand } from "./process.js";
 import { banner, chooseConnectMethod, chooseInstall, chooseTool, helpText, isTty, modelName, promptLine, theme } from "./ui.js";
+import { readInstalledPackageVersion } from "./version.js";
 
 const tools: Record<ToolId, ToolModule> = {
   claude: claudeTool,
@@ -65,9 +65,10 @@ const tools: Record<ToolId, ToolModule> = {
   prime: primeTool
 };
 
-const PACKAGE_VERSION = (
-  JSON.parse(fsSync.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
-).version;
+declare const __ZRO_VERSION__: string | undefined;
+
+// The single-executable build replaces __ZRO_VERSION__. The npm build reads package.json.
+const PACKAGE_VERSION = typeof __ZRO_VERSION__ === "string" ? __ZRO_VERSION__ : readInstalledPackageVersion();
 
 export async function run(argv: string[], io: RunIo = defaultIo()): Promise<number> {
   let request: CliRequest;
